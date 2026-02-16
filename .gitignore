@@ -1,0 +1,32 @@
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+*.pvm
+*.g.dart
+
+# Environment
+.env.development
+!.env.production
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Melos
+melos_noel_1678.iml
+.melos/
+
+# Temp files
+status*.json
+
+# Generated
+*.freezed.dart
