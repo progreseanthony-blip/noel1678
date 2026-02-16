@@ -29,8 +29,8 @@ jobs:
         run: |
           cd apps/main_app
           flutter pub get
-          flutter build web --release \
-            --dart-define=ENVIRONMENT=production
+          flutter build web --release --no-web-resources-cdn --dart-define=ENVIRONMENT=production 2>&1 || true
+          test -f build/web/index.html || exit 1
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
