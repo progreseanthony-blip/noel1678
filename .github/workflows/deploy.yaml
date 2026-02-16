@@ -17,16 +17,15 @@ jobs:
           flutter-version: '3.38.5'
           cache: true
 
-      - name: Create .env.production
-        run: |
-          printf 'SUPABASE_URL=https://mvesrkpudqsyhmoqjdsc.supabase.co\nSUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12ZXNya3B1ZHFzeWhtb3FqZHNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyMDA1MzEsImV4cCI6MjA4Njc3NjUzMX0.W6JW-kexTmxGASwG-g6LTpgf21wiZqLuczsqUZKyFQk\nENVIRONMENT=production\n' > apps/main_app/.env.production
-          cat apps/main_app/.env.production
-
       - name: Build Web
         run: |
           cd apps/main_app
           flutter pub get
-          flutter build web --release --no-web-resources-cdn --dart-define=ENVIRONMENT=production 2>&1 || true
+          flutter build web --release --no-web-resources-cdn \
+            --dart-define=ENVIRONMENT=production \
+            --dart-define=SUPABASE_URL=https://mvesrkpudqsyhmoqjdsc.supabase.co \
+            --dart-define=SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12ZXNya3B1ZHFzeWhtb3FqZHNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyMDA1MzEsImV4cCI6MjA4Njc3NjUzMX0.W6JW-kexTmxGASwG-g6LTpgf21wiZqLuczsqUZKyFQk \
+            2>&1 || true
           test -f build/web/index.html || exit 1
 
       - name: Setup Supabase CLI
