@@ -14,26 +14,20 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.38.5'
+          channel: 'stable'
           cache: true
 
       - name: Build Web
         run: |
           cd apps/main_app
           flutter pub get
-          echo "Starting Flutter Build..."
-          flutter build web --release --no-web-resources-cdn \
+          flutter build web --release \
             --dart-define=ENVIRONMENT=production \
             --dart-define=SUPABASE_URL=https://mvesrkpudqsyhmoqjdsc.supabase.co \
             --dart-define=SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12ZXNya3B1ZHFzeWhtb3FqZHNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyMDA1MzEsImV4cCI6MjA4Njc3NjUzMX0.W6JW-kexTmxGASwG-g6LTpgf21wiZqLuczsqUZKyFQk
           
-          echo "Build finished. Listing output directory:"
-          ls -R build/web
-          
-          if [ ! -f build/web/main.dart.js ]; then
-            echo "Error: main.dart.js was not generated!"
-            exit 1
-          fi
+          # Verificar que se generó el JS (Jesus 1677 no tiene esto, pero es bueno para nosotros hoy)
+          test -f build/web/main.dart.js || exit 1
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
