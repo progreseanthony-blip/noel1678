@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../features/auth/presentation/pages/signin_page.dart';
 import '../features/auth/presentation/pages/signup_page.dart';
-import '../features/dashboard/presentation/pages/dashboard_page.dart';
 import '../features/users/presentation/pages/user_list_page.dart';
 
 final goRouter = GoRouter(
@@ -18,10 +17,6 @@ final goRouter = GoRouter(
     ),
     GoRoute(
       path: '/',
-      builder: (context, state) => const DashboardPage(),
-    ),
-    GoRoute(
-      path: '/users',
       builder: (context, state) => const UserListPage(),
     ),
   ],
