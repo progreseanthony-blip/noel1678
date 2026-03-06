@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import '../features/auth/presentation/pages/signin_page.dart';
 import '../features/auth/presentation/pages/signup_page.dart';
 import '../features/users/presentation/pages/user_list_page.dart';
+import '../features/quotes/presentation/pages/quotes_list_page.dart';
+import '../features/quotes/presentation/pages/quote_detail_page.dart';
 
 final goRouter = GoRouter(
   initialLocation: '/signin',
@@ -18,6 +20,18 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/',
       builder: (context, state) => const UserListPage(),
+    ),
+    GoRoute(
+      path: '/users',
+      builder: (context, state) => const UserListPage(),
+    ),
+    GoRoute(
+      path: '/quotes',
+      builder: (context, state) => const QuotesListPage(),
+    ),
+    GoRoute(
+      path: '/quotes/:id',
+      builder: (context, state) => QuoteDetailPage(quoteId: state.pathParameters['id']!),
     ),
   ],
 );

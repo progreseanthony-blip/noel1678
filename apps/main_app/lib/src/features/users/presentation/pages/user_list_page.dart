@@ -237,6 +237,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               _buildBottomNavItem(Icons.group_outlined, 'Users', true, () {}),
+              _buildBottomNavItem(Icons.request_quote_rounded, 'Quotes', false, () => context.go('/quotes')),
             ],
           ),
         ),
@@ -1106,10 +1107,17 @@ class _Sidebar extends StatelessWidget {
                 children: [
                   // User Management (active)
                   _NavItem(
-                    icon: Icons.group,
+                    icon: Icons.group_outlined,
                     label: 'User Management',
                     isActive: true,
                     onTap: () {},
+                  ),
+                  const SizedBox(height: 4),
+                  _NavItem(
+                    icon: Icons.request_quote_rounded,
+                    label: 'Quotes',
+                    isActive: false,
+                    onTap: () => context.go('/quotes'),
                   ),
                 ],
               ),
