@@ -1,13 +1,24 @@
 
 class EnvConfig {
-  static const String supabaseUrl = 'http://127.0.0.1:54421';
-  static const String supabaseAnonKey = 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH';
-  static const String environment = 'development';
+  static const String supabaseUrl = String.fromEnvironment(
+    'SUPABASE_URL',
+    defaultValue: 'http://127.0.0.1:54421',
+  );
+  
+  static const String supabaseAnonKey = String.fromEnvironment(
+    'SUPABASE_ANON_KEY',
+    defaultValue: 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH',
+  );
+  
+  static const String environment = String.fromEnvironment(
+    'ENVIRONMENT',
+    defaultValue: 'development',
+  );
 
   static bool get isProduction => environment == 'production';
   static bool get isDevelopment => environment == 'development';
 
   static Future<void> initialize() async {
-    // No initialization needed for const String.fromEnvironment
+    // String.fromEnvironment is resolved at compile time
   }
 }
