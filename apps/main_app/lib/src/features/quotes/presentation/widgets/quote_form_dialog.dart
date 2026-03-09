@@ -20,6 +20,7 @@ class MachineryEntry {
   double quantity;
   double gallonsPerHour;
   double gallonCost;
+  double deliveryCost;
 
   MachineryEntry({
     this.machineName = '',
@@ -28,6 +29,7 @@ class MachineryEntry {
     this.quantity = 1,
     this.gallonsPerHour = 0,
     this.gallonCost = 0,
+    this.deliveryCost = 0,
   });
 
   double get ratePerHour => monthlyRentCost / 160;
@@ -35,7 +37,8 @@ class MachineryEntry {
   double get totalRent => ratePerHour * hoursWorkedPerMonth;
   double get totalGallons => hoursWorkedPerMonth * gallonsPerHour;
   double get totalGallonsCost => totalGallons * gallonCost;
-  double get totalGeneral => totalRent + totalGallonsCost;
+  double get deliveryTotal => deliveryCost * quantity;
+  double get totalGeneral => totalRent + totalGallonsCost + deliveryTotal;
 }
 
 class LaborEntry {
@@ -81,9 +84,10 @@ class ServiceEntry {
 
   double get totalMachinery => machineries.fold(0.0, (s, m) => s + m.totalRent);
   double get totalGasoline => machineries.fold(0.0, (s, m) => s + m.totalGallonsCost);
+  double get totalDelivery => machineries.fold(0.0, (s, m) => s + m.deliveryTotal);
   double get totalLabor => labors.fold(0.0, (s, l) => s + l.totalPay);
   double get totalPerDiem => labors.fold(0.0, (s, l) => s + l.totalPerDiem);
-  double get subTotal => totalMachinery + totalGasoline + totalLabor + totalPerDiem;
+  double get subTotal => totalMachinery + totalGasoline + totalDelivery + totalLabor + totalPerDiem;
   double get overheadAmount => subTotal * (overheadPercentage / 100);
   double get totalPlusOverhead => subTotal + overheadAmount;
   double get profitAmount => totalPlusOverhead * (profitPercentage / 100);
@@ -712,11 +716,12 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 },
                 onAddNew: () => _openMachineryCatalogAdd(svc, index),
               ),
-              _fieldCard('Months', m.monthsToUse, 80, onNum: (v) => setState(() => m.monthsToUse = v)),
-              _fieldCard('Monthly Rent \$', m.monthlyRentCost, 110, onNum: (v) => setState(() => m.monthlyRentCost = v)),
-              _fieldCard('Qty', m.quantity, 60, onNum: (v) => setState(() => m.quantity = v)),
-              _fieldCard('Gal/Hour', m.gallonsPerHour, 80, onNum: (v) => setState(() => m.gallonsPerHour = v)),
-              _fieldCard('Gal Cost \$', m.gallonCost, 90, onNum: (v) => setState(() => m.gallonCost = v)),
+              _fieldCard('Months', m.monthsToUse, 70, onNum: (v) => setState(() => m.monthsToUse = v)),
+              _fieldCard('Monthly Rent \$', m.monthlyRentCost, 100, onNum: (v) => setState(() => m.monthlyRentCost = v)),
+              _fieldCard('Qty', m.quantity, 50, onNum: (v) => setState(() => m.quantity = v)),
+              _fieldCard('Gal/Hour', m.gallonsPerHour, 70, onNum: (v) => setState(() => m.gallonsPerHour = v)),
+              _fieldCard('Gal Cost \$', m.gallonCost, 80, onNum: (v) => setState(() => m.gallonCost = v)),
+              _fieldCard('Delivery \$', m.deliveryCost, 80, onNum: (v) => setState(() => m.deliveryCost = v)),
             ],
           ),
           const SizedBox(height: 12),
@@ -727,9 +732,10 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               spacing: 16, runSpacing: 8,
               children: [
                 _calcChip('Rate/Hr', m.ratePerHour),
-                _calcChip('Hours/Mo', m.hoursWorkedPerMonth),
+                _calcChip('Hours/Mo', m.hoursWorkedPerMonth, isCurrency: false),
                 _calcChip('Total Rent', m.totalRent),
-                _calcChip('Total Gal', m.totalGallons),
+                _calcChip('Total Gal', m.totalGallons, isCurrency: false),
+                _calcChip('Delivery Total', m.deliveryTotal),
                 _calcChip('Gas Cost', m.totalGallonsCost),
                 _calcChip('TOTAL', m.totalGeneral, highlight: true),
               ],
@@ -756,8 +762,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text('Total Rent: \$${_currencyFormat.format(svc.totalMachinery)}', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate700, fontWeight: FontWeight.w600)),
+              Text('Total Delivery: \$${_currencyFormat.format(svc.totalDelivery)}', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate700, fontWeight: FontWeight.w600)),
               Text('Total Gas: \$${_currencyFormat.format(svc.totalGasoline)}', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate700, fontWeight: FontWeight.w600)),
-              Text('Combined: \$${_currencyFormat.format(svc.totalMachinery + svc.totalGasoline)}', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.primaryGreen, fontWeight: FontWeight.w800)),
+              Text('Combined: \$${_currencyFormat.format(svc.totalMachinery + svc.totalGasoline + svc.totalDelivery)}', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.primaryGreen, fontWeight: FontWeight.w800)),
             ],
           ),
         ],
@@ -927,6 +934,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           Text('${svc.name}  (${svc.quantity} ${svc.unitOfMeasure})', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
           const SizedBox(height: 16),
           _summaryRow('Total Machinery', svc.totalMachinery),
+          _summaryRow('Total Delivery', svc.totalDelivery),
           _summaryRow('Total Gasoline', svc.totalGasoline),
           _summaryRow('Total Labor', svc.totalLabor),
           _summaryRow('Total PerDiem', svc.totalPerDiem),
@@ -1209,12 +1217,12 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     );
   }
 
-  Widget _calcChip(String label, double value, {bool highlight = false}) {
+  Widget _calcChip(String label, double value, {bool highlight = false, bool isCurrency = true}) {
     return Column(
       children: [
         Text(label, style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w600, color: AppTheme.slate400)),
         Text(
-          '\$${_currencyFormat.format(value)}',
+          isCurrency ? '\$${_currencyFormat.format(value)}' : NumberFormat('#,##0.00').format(value),
           style: GoogleFonts.manrope(fontSize: 12, fontWeight: highlight ? FontWeight.w800 : FontWeight.w600, color: highlight ? AppTheme.primaryGreen : AppTheme.slate900),
         ),
       ],
