@@ -56,7 +56,7 @@ class _UserFormDialogState extends State<UserFormDialog> {
           .from('roles')
           .select('name')
           .order('name');
-      final roles = List<Map<String, dynamic>>.from(response)
+      final roles = List<Map<String, dynamic>>.from(response ?? [])
           .map((r) => r['name'].toString())
           .toList();
       setState(() {
@@ -157,7 +157,7 @@ class _UserFormDialogState extends State<UserFormDialog> {
         border: Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.1),
+            color: Colors.black.withOpacity(0.1),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -286,7 +286,7 @@ class _UserFormDialogState extends State<UserFormDialog> {
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
+                color: Colors.black.withOpacity(0.15),
                 blurRadius: 30,
                 offset: const Offset(0, 10),
               ),
@@ -379,7 +379,7 @@ class _UserFormDialogState extends State<UserFormDialog> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryGreen.withValues(alpha: 0.1),
+                    color: AppTheme.primaryGreen.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Center(
@@ -565,7 +565,7 @@ class _UserFormDialogState extends State<UserFormDialog> {
                       borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide(
                         color: _selectedRole != null
-                            ? AppTheme.primaryGreen.withValues(alpha: 0.5)
+                            ? AppTheme.primaryGreen.withOpacity(0.5)
                             : const Color(0xFFE2E8F0),
                       ),
                     ),
@@ -654,7 +654,7 @@ class _UserFormDialogState extends State<UserFormDialog> {
                   borderRadius: BorderRadius.circular(8),
                   boxShadow: [
                     BoxShadow(
-                      color: AppTheme.primaryGreen.withValues(alpha: 0.2),
+                      color: AppTheme.primaryGreen.withOpacity(0.2),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -720,7 +720,7 @@ class _RoleDropdownItemState extends State<_RoleDropdownItem> {
           color: _hovered
               ? const Color(0xFFF1F5F9)
               : widget.isSelected
-                  ? AppTheme.primaryGreen.withValues(alpha: 0.05)
+                  ? AppTheme.primaryGreen.withOpacity(0.05)
                   : Colors.white,
           child: Row(
             children: [
@@ -730,7 +730,7 @@ class _RoleDropdownItemState extends State<_RoleDropdownItem> {
                 height: 28,
                 decoration: BoxDecoration(
                   color: widget.isSelected
-                      ? AppTheme.primaryGreen.withValues(alpha: 0.1)
+                      ? AppTheme.primaryGreen.withOpacity(0.1)
                       : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(6),
                 ),

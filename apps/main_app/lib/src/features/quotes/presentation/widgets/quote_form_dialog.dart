@@ -5,6 +5,9 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:intl/intl.dart';
+import 'package:noel_app/src/features/catalogs/presentation/widgets/service_dialog.dart';
+import 'package:noel_app/src/features/catalogs/presentation/widgets/machinery_dialog.dart';
+import 'package:noel_app/src/features/catalogs/presentation/widgets/labor_role_dialog.dart';
 
 // ══════════════════════════════════════════════════════════════
 //  DATA MODELS (local, in-memory for the wizard)
@@ -106,7 +109,14 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
 
   // Step 0 - Quote Info
   late TextEditingController _titleController;
+  late TextEditingController _clientController;
+  DateTime _quoteDate = DateTime.now();
   String _selectedStatus = 'draft';
+
+  // Catalogs for step 1+
+  List<Map<String, dynamic>> _catalogServices = [];
+  List<Map<String, dynamic>> _catalogMachinery = [];
+  List<Map<String, dynamic>> _catalogLaborRoles = [];
 
   // Step 1+ - Services
   List<ServiceEntry> _services = [];
@@ -120,12 +130,36 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.quoteToEdit?['title'] ?? '');
+    _clientController = TextEditingController(text: widget.quoteToEdit?['client_name'] ?? '');
+    if (widget.quoteToEdit?['quote_date'] != null) {
+      _quoteDate = DateTime.tryParse(widget.quoteToEdit!['quote_date']) ?? DateTime.now();
+    }
     _selectedStatus = widget.quoteToEdit?['status'] ?? 'draft';
 
+    _loadCatalogs();
     if (_isEditing) {
       _loadExistingData();
     } else {
       _services.add(ServiceEntry(name: 'Service 1'));
+    }
+  }
+
+  Future<void> _loadCatalogs() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final svcs = await supabase.from('services').select().order('description');
+      final mach = await supabase.from('machinery').select().order('description');
+      final labr = await supabase.from('labor_roles').select().order('description');
+      
+      if (mounted) {
+        setState(() {
+          _catalogServices = List<Map<String, dynamic>>.from(svcs ?? []);
+          _catalogMachinery = List<Map<String, dynamic>>.from(mach ?? []);
+          _catalogLaborRoles = List<Map<String, dynamic>>.from(labr ?? []);
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading catalogs: $e');
     }
   }
 
@@ -136,22 +170,25 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       final quoteId = widget.quoteToEdit!['id'];
 
       // Load services for this quote
-      final servicesData = await supabase
+      final responseServices = await supabase
           .from('quote_services')
           .select()
           .eq('quote_id', quoteId)
           .order('created_at');
-
+      
+      final servicesData = List<Map<String, dynamic>>.from(responseServices ?? []);
       final loadedServices = <ServiceEntry>[];
 
       for (final svcData in servicesData) {
         final svcId = svcData['id'];
 
         // Load machineries for this service
-        final machData = await supabase
+        final responseMach = await supabase
             .from('quote_service_machineries')
             .select()
             .eq('quote_service_id', svcId);
+        
+        final machData = List<Map<String, dynamic>>.from(responseMach ?? []);
 
         final machineries = machData.map<MachineryEntry>((m) => MachineryEntry(
           machineName: m['machine_name'] ?? '',
@@ -163,13 +200,15 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         )).toList();
 
         // Load labors for this service
-        final laborData = await supabase
+        final responseLabor = await supabase
             .from('quote_service_labors')
             .select()
             .eq('quote_service_id', svcId);
+        
+        final laborData = List<Map<String, dynamic>>.from(responseLabor ?? []);
 
         final labors = laborData.map<LaborEntry>((l) => LaborEntry(
-          roleName: '',
+          roleName: l['role_name'] ?? '',
           monthsToWork: (l['months_to_work'] as num?)?.toDouble() ?? 0,
           employeesQuantity: (l['employees_quantity'] as num?)?.toDouble() ?? 1,
           hourlyRate: (l['hourly_rate'] as num?)?.toDouble() ?? 0,
@@ -207,6 +246,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   @override
   void dispose() {
     _titleController.dispose();
+    _clientController.dispose();
     super.dispose();
   }
 
@@ -225,9 +265,17 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       final supabase = Supabase.instance.client;
       String quoteId;
 
+      double totalAmount = 0;
+      for (final svc in _services) {
+         totalAmount += svc.totalSaleV2;
+      }
+
       if (_isEditing) {
         await supabase.from('quotes').update({
           'title': _titleController.text.trim(),
+          'client_name': _clientController.text.trim(),
+          'total_amount': totalAmount,
+          'quote_date': _quoteDate.toIso8601String().split('T')[0],
           'status': _selectedStatus,
           'updated_at': DateTime.now().toIso8601String(),
         }).eq('id', widget.quoteToEdit!['id']);
@@ -238,6 +286,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       } else {
         final result = await supabase.from('quotes').insert({
           'title': _titleController.text.trim(),
+          'client_name': _clientController.text.trim(),
+          'total_amount': totalAmount,
+          'quote_date': _quoteDate.toIso8601String().split('T')[0],
           'status': _selectedStatus,
         }).select().single();
         quoteId = result['id'];
@@ -317,7 +368,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 30, offset: const Offset(0, 10))],
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 30, offset: const Offset(0, 10))],
           ),
           child: Column(
             children: [
@@ -343,7 +394,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         children: [
           Container(
             width: 40, height: 40,
-            decoration: BoxDecoration(color: AppTheme.primaryGreen.withValues(alpha: 0.1), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.1), shape: BoxShape.circle),
             child: Icon(_isEditing ? Icons.edit_outlined : Icons.request_quote_outlined, color: AppTheme.primaryGreen, size: 20),
           ),
           const SizedBox(width: 12),
@@ -398,7 +449,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                     width: 32, height: 32,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: isActive ? AppTheme.primaryGreen : isDone ? AppTheme.primaryGreen.withValues(alpha: 0.15) : const Color(0xFFE2E8F0),
+                      color: isActive ? AppTheme.primaryGreen : isDone ? AppTheme.primaryGreen.withOpacity(0.15) : const Color(0xFFE2E8F0),
                     ),
                     child: Center(
                       child: isDone
@@ -443,7 +494,48 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
             decoration: _inputDeco('e.g. Golf Course Renovation Phase 1', Icons.description_outlined),
           )),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _labeledField('Client / Customer', TextFormField(
+                  controller: _clientController,
+                  style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
+                  decoration: _inputDeco('Client name', Icons.person_outline),
+                )),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _labeledField('Quote Date', InkWell(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _quoteDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2030),
+                    );
+                    if (picked != null) setState(() => _quoteDate = picked);
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.white,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.calendar_today_outlined, size: 18, color: AppTheme.slate400),
+                        const SizedBox(width: 10),
+                        Text(DateFormat('MMM dd, yyyy').format(_quoteDate), style: GoogleFonts.manrope(fontSize: 14)),
+                      ],
+                    ),
+                  ),
+                )),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
           _labeledField('Status', DropdownButtonFormField<String>(
             value: _selectedStatus,
             decoration: _inputDeco(null, Icons.flag_outlined),
@@ -471,7 +563,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: _activeServiceIndex == index ? AppTheme.primaryGreen.withValues(alpha: 0.08) : Colors.white,
+        color: _activeServiceIndex == index ? AppTheme.primaryGreen.withOpacity(0.08) : Colors.white,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: _activeServiceIndex == index ? AppTheme.primaryGreen : const Color(0xFFE2E8F0)),
       ),
@@ -487,15 +579,24 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                     children: [
                       SizedBox(
                         width: 200,
-                        child: TextFormField(
+                        child: _SearchableCatalogDropdown(
+                          label: 'Service name',
+                          items: _catalogServices,
+                          excludeItems: _services.map((s) => s.name).where((n) => n != svc.name).toList(),
                           initialValue: svc.name,
-                          style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate900),
-                          decoration: InputDecoration(hintText: 'Service name', border: InputBorder.none, isDense: true, contentPadding: EdgeInsets.zero),
-                          onChanged: (v) => svc.name = v,
+                          onSelected: (val, item) {
+                            setState(() {
+                              svc.name = val;
+                              if (item != null && item['unit'] != null) {
+                                svc.unitOfMeasure = item['unit'];
+                              }
+                            });
+                          },
+                          onAddNew: () => _openServiceCatalogAdd(index),
                         ),
                       ),
                       const Spacer(),
-                      _miniField('Unit', svc.unitOfMeasure, 60, (v) => setState(() => svc.unitOfMeasure = v)),
+                      _miniField('Unit', svc.unitOfMeasure, 60, (v) => setState(() => svc.unitOfMeasure = v), key: ValueKey('unit_${index}_${svc.name}')),
                       const SizedBox(width: 8),
                       _miniNumField('Qty', svc.quantity, 60, (v) => setState(() => svc.quantity = v)),
                       const SizedBox(width: 8),
@@ -595,7 +696,22 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           Wrap(
             spacing: 12, runSpacing: 12,
             children: [
-              _fieldCard('Machine Name', null, 180, initialText: m.machineName, onText: (v) => setState(() => m.machineName = v)),
+              _SearchableCatalogDropdown(
+                label: 'Machine Name',
+                width: 180,
+                items: _catalogMachinery,
+                excludeItems: svc.machineries.map((mx) => mx.machineName).where((n) => n != m.machineName).toList(),
+                initialValue: m.machineName,
+                onSelected: (val, item) {
+                  setState(() {
+                    m.machineName = val;
+                    if (item != null && item['capacity'] != null) {
+                      // m.capacity = item['capacity']; // model doesn't have it yet
+                    }
+                  });
+                },
+                onAddNew: () => _openMachineryCatalogAdd(svc, index),
+              ),
               _fieldCard('Months', m.monthsToUse, 80, onNum: (v) => setState(() => m.monthsToUse = v)),
               _fieldCard('Monthly Rent \$', m.monthlyRentCost, 110, onNum: (v) => setState(() => m.monthlyRentCost = v)),
               _fieldCard('Qty', m.quantity, 60, onNum: (v) => setState(() => m.quantity = v)),
@@ -628,9 +744,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.primaryGreen.withValues(alpha: 0.05),
+        color: AppTheme.primaryGreen.withOpacity(0.05),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.2)),
+        border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -712,10 +828,25 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           Wrap(
             spacing: 12, runSpacing: 12,
             children: [
-              _fieldCard('Role/Position', null, 180, initialText: l.roleName, onText: (v) => setState(() => l.roleName = v)),
+              _SearchableCatalogDropdown(
+                label: 'Role/Position',
+                width: 180,
+                items: _catalogLaborRoles,
+                excludeItems: svc.labors.map((lx) => lx.roleName).where((n) => n != l.roleName).toList(),
+                initialValue: l.roleName,
+                onSelected: (val, item) {
+                  setState(() {
+                    l.roleName = val;
+                    if (item != null && item['hourly_rate'] != null) {
+                      l.hourlyRate = (item['hourly_rate'] as num).toDouble();
+                    }
+                  });
+                },
+                onAddNew: () => _openLaborCatalogAdd(svc, index),
+              ),
               _fieldCard('Months', l.monthsToWork, 80, onNum: (v) => setState(() => l.monthsToWork = v)),
               _fieldCard('Employees', l.employeesQuantity, 80, onNum: (v) => setState(() => l.employeesQuantity = v)),
-              _fieldCard('Hourly Rate \$', l.hourlyRate, 100, onNum: (v) => setState(() => l.hourlyRate = v)),
+              _fieldCard('Hourly Rate \$', l.hourlyRate, 100, onNum: (v) => setState(() => l.hourlyRate = v), key: ValueKey('rate_${index}_${l.roleName}')),
               _fieldCard('Per Diem \$', l.perDiem, 100, onNum: (v) => setState(() => l.perDiem = v)),
             ],
           ),
@@ -742,9 +873,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.primaryGreen.withValues(alpha: 0.05),
+        color: AppTheme.primaryGreen.withOpacity(0.05),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.2)),
+        border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -817,9 +948,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppTheme.primaryGreen.withValues(alpha: 0.08),
+        color: AppTheme.primaryGreen.withOpacity(0.08),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.3)),
+        border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.3)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -922,7 +1053,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             color: primary ? (onTap != null ? AppTheme.primaryGreen : AppTheme.slate400) : Colors.white,
             borderRadius: BorderRadius.circular(8),
             border: primary ? null : Border.all(color: const Color(0xFFCBD5E1)),
-            boxShadow: primary ? [BoxShadow(color: AppTheme.primaryGreen.withValues(alpha: 0.15), blurRadius: 8, offset: const Offset(0, 3))] : null,
+            boxShadow: primary ? [BoxShadow(color: AppTheme.primaryGreen.withOpacity(0.15), blurRadius: 8, offset: const Offset(0, 3))] : null,
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1001,8 +1132,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     );
   }
 
-  Widget _fieldCard(String label, double? value, double width, {String? initialText, Function(double)? onNum, Function(String)? onText}) {
+  Widget _fieldCard(String label, double? value, double width, {String? initialText, Function(double)? onNum, Function(String)? onText, Key? key}) {
     return SizedBox(
+      key: key,
       width: width,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1031,8 +1163,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     );
   }
 
-  Widget _miniField(String label, String value, double width, Function(String) onChange) {
+  Widget _miniField(String label, String value, double width, Function(String) onChange, {Key? key}) {
     return SizedBox(
+      key: key,
       width: width,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1052,8 +1185,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     );
   }
 
-  Widget _miniNumField(String label, double value, double width, Function(double) onChange) {
+  Widget _miniNumField(String label, double value, double width, Function(double) onChange, {Key? key}) {
     return SizedBox(
+      key: key,
       width: width,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1084,6 +1218,177 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           style: GoogleFonts.manrope(fontSize: 12, fontWeight: highlight ? FontWeight.w800 : FontWeight.w600, color: highlight ? AppTheme.primaryGreen : AppTheme.slate900),
         ),
       ],
+    );
+  }
+
+  // ═══════════════════════════════
+  // QUICK ADD METHODS
+  // ═══════════════════════════════
+  void _openServiceCatalogAdd(int index) {
+    showDialog(context: context, builder: (context) => ServiceDialog())
+      .then((success) { if (success == true) _loadCatalogs(); });
+  }
+  void _openMachineryCatalogAdd(ServiceEntry svc, int mIndex) {
+    showDialog(context: context, builder: (context) => MachineryDialog())
+      .then((success) { if (success == true) _loadCatalogs(); });
+  }
+  void _openLaborCatalogAdd(ServiceEntry svc, int lIndex) {
+    showDialog(context: context, builder: (context) => LaborRoleDialog())
+      .then((success) { if (success == true) _loadCatalogs(); });
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  SEARCHABLE DROPDOWN COMPONENT
+// ══════════════════════════════════════════════════════════════
+
+class _SearchableCatalogDropdown extends StatelessWidget {
+  final String label;
+  final List<Map<String, dynamic>> items;
+  final List<String> excludeItems;
+  final String initialValue;
+  final Function(String, Map<String, dynamic>?) onSelected;
+  final VoidCallback onAddNew;
+  final double? width;
+
+  const _SearchableCatalogDropdown({
+    required this.label,
+    required this.items,
+    this.excludeItems = const [],
+    required this.initialValue,
+    required this.onSelected,
+    required this.onAddNew,
+    this.width,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width ?? double.infinity,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
+          const SizedBox(height: 4),
+          Autocomplete<Map<String, dynamic>>(
+            initialValue: TextEditingValue(text: initialValue),
+            displayStringForOption: (option) => option['description'] ?? '',
+            optionsBuilder: (textEditingValue) {
+              final available = items.where((i) => !excludeItems.contains(i['description']));
+              
+              final t = textEditingValue.text.toLowerCase();
+              // If empty or a default placeholder, show all available
+              if (t.isEmpty || t.startsWith('service') || t.startsWith('machine') || t.startsWith('role')) {
+                return available;
+              }
+              
+              return available.where((i) => i['description'].toString().toLowerCase().contains(t)).toList();
+            },
+            onSelected: (option) => onSelected(option['description'], option),
+            fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+              return TextFormField(
+                controller: controller,
+                focusNode: focusNode,
+                style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Search or type...',
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                  enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                  focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 1.5)),
+                  suffixIcon: const Icon(Icons.search, size: 16, color: AppTheme.slate400),
+                ),
+                onChanged: (v) => onSelected(v, null),
+                onTap: () {
+                  final t = controller.text.toLowerCase();
+                  if (t.startsWith('service') || t.startsWith('machine') || t.startsWith('role')) {
+                    controller.clear();
+                    onSelected('', null);
+                  }
+                },
+              );
+            },
+            optionsViewBuilder: (context, onSelectedInternal, options) {
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 8,
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: 400,
+                    constraints: const BoxConstraints(maxHeight: 300),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(color: AppTheme.slate200),
+                      borderRadius: BorderRadius.circular(10),
+                      boxShadow: [
+                        BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 15, offset: const Offset(0, 8)),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (options.isNotEmpty)
+                          Expanded(
+                            child: ListView.builder(
+                              padding: EdgeInsets.zero,
+                              shrinkWrap: true,
+                              itemCount: options.length,
+                              itemBuilder: (context, index) {
+                                final option = options.elementAt(index);
+                              final photoUrl = option['photo_url'] as String?;
+                              
+                              return ListTile(
+                                dense: true,
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                leading: label.toLowerCase().contains('machine') 
+                                  ? Container(
+                                      width: 40, height: 40,
+                                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), color: AppTheme.slate50, border: Border.all(color: AppTheme.slate200)),
+                                      clipBehavior: Clip.antiAlias,
+                                      child: (photoUrl != null && photoUrl.isNotEmpty)
+                                        ? Image.network(photoUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.settings, size: 20, color: AppTheme.slate400))
+                                        : const Icon(Icons.settings, size: 20, color: AppTheme.slate400),
+                                    )
+                                  : null,
+                                title: Text(option['description'] ?? '', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+                                subtitle: option['hourly_rate'] != null 
+                                  ? Text('\$${option['hourly_rate']}/hr', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500))
+                                  : (option['unit'] != null ? Text('Unit: ${option['unit']}', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500)) : null),
+                                hoverColor: AppTheme.primaryGreen.withOpacity(0.05),
+                                onTap: () => onSelectedInternal(option),
+                              );
+                              },
+                            ),
+                          ),
+                        const Divider(height: 1),
+                        InkWell(
+                          onTap: () {
+                            onAddNew();
+                          },
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                            color: AppTheme.primaryGreen.withOpacity(0.05),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.add_circle_outline, size: 18, color: AppTheme.primaryGreen),
+                                const SizedBox(width: 8),
+                                Text('Add New to Catalog', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }

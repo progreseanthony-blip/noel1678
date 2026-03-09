@@ -1,0 +1,1 @@
+flutter build web --dart-define=SUPABASE_URL=https://mvesrkpudqsyhmoqjdsc.supabase.co --dart-define=SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im12ZXNya3B1ZHFzeWhtb3FqZHNjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzEyMDA1MzEsImV4cCI6MjA4Njc3NjUzMX0.W6JW-kexTmxGASwG-g6LTpgf21wiZqLuczsqUZKyFQk --dart-define=ENVIRONMENT=production

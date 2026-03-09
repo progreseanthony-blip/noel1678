@@ -1,8 +1,8 @@
 
 class EnvConfig {
-  static const String supabaseUrl = String.fromEnvironment('SUPABASE_URL');
-  static const String supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
-  static const String environment = String.fromEnvironment('ENVIRONMENT', defaultValue: 'development');
+  static const String supabaseUrl = 'http://127.0.0.1:54421';
+  static const String supabaseAnonKey = 'sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH';
+  static const String environment = 'development';
 
   static bool get isProduction => environment == 'production';
   static bool get isDevelopment => environment == 'development';

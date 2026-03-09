@@ -29,7 +29,7 @@ class _RoleManagementDialogState extends State<RoleManagementDialog> {
           .select()
           .order('name');
       setState(() {
-        _roles = List<Map<String, dynamic>>.from(response);
+        _roles = List<Map<String, dynamic>>.from(response ?? []);
         _isLoading = false;
       });
     } catch (e) {
@@ -40,7 +40,7 @@ class _RoleManagementDialogState extends State<RoleManagementDialog> {
   Future<void> _addRole() async {
     final result = await showDialog<bool>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.5),
+      barrierColor: Colors.black.withOpacity(0.5),
       builder: (ctx) => const _RoleFormDialog(),
     );
     if (result == true) _loadRoles();
@@ -49,7 +49,7 @@ class _RoleManagementDialogState extends State<RoleManagementDialog> {
   Future<void> _editRole(Map<String, dynamic> role) async {
     final result = await showDialog<bool>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.5),
+      barrierColor: Colors.black.withOpacity(0.5),
       builder: (ctx) => _RoleFormDialog(roleToEdit: role),
     );
     if (result == true) _loadRoles();
@@ -130,7 +130,7 @@ class _RoleManagementDialogState extends State<RoleManagementDialog> {
                 width: 40,
                 height: 40,
                 decoration: BoxDecoration(
-                  color: AppTheme.primaryGreen.withValues(alpha: 0.1),
+                  color: AppTheme.primaryGreen.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Center(
@@ -243,7 +243,7 @@ class _RoleManagementDialogState extends State<RoleManagementDialog> {
                   borderRadius: BorderRadius.circular(8),
                   boxShadow: [
                     BoxShadow(
-                      color: AppTheme.primaryGreen.withValues(alpha: 0.2),
+                      color: AppTheme.primaryGreen.withOpacity(0.2),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -483,7 +483,7 @@ class _RoleFormDialogState extends State<_RoleFormDialog> {
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            color: AppTheme.primaryGreen.withValues(alpha: 0.1),
+                            color: AppTheme.primaryGreen.withOpacity(0.1),
                             shape: BoxShape.circle,
                           ),
                           child: Center(
@@ -585,7 +585,7 @@ class _RoleFormDialogState extends State<_RoleFormDialog> {
                             borderRadius: BorderRadius.circular(8),
                             boxShadow: [
                               BoxShadow(
-                                color: AppTheme.primaryGreen.withValues(alpha: 0.2),
+                                color: AppTheme.primaryGreen.withOpacity(0.2),
                                 blurRadius: 10,
                                 offset: const Offset(0, 4),
                               ),
@@ -688,7 +688,7 @@ class _DeleteConfirmDialog extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.15),
+              color: Colors.black.withOpacity(0.15),
               blurRadius: 20,
               offset: const Offset(0, 8),
             ),
@@ -701,7 +701,7 @@ class _DeleteConfirmDialog extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                color: AppTheme.errorRed.withValues(alpha: 0.1),
+                color: AppTheme.errorRed.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Center(

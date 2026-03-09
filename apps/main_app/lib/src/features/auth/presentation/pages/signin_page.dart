@@ -27,18 +27,24 @@ class _SignInPageState extends ConsumerState<SignInPage> {
     });
 
     try {
+      debugPrint('Attempting sign in with ${EnvConfig.supabaseUrl}');
       final response = await Supabase.instance.client.auth.signInWithPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
       if (response.user != null && mounted) {
+        debugPrint('Sign in successful for: ${response.user!.email}');
         context.go('/');
+      } else {
+        debugPrint('Sign in failed: No user returned');
       }
     } on AuthException catch (e) {
+      debugPrint('AuthException: ${e.message}');
       setState(() => _errorMessage = e.message);
     } catch (e) {
-      setState(() => _errorMessage = e.toString());
+      debugPrint('Unexpected error during sign in: $e');
+      setState(() => _errorMessage = 'Error inesperado: ${e.toString()}');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

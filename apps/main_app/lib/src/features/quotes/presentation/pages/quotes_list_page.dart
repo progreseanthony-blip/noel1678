@@ -38,7 +38,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
           .select()
           .order('created_at', ascending: false);
       setState(() {
-        _quotes = List<Map<String, dynamic>>.from(response);
+        _quotes = List<Map<String, dynamic>>.from(response ?? []);
         _isLoading = false;
       });
     } catch (e) {
@@ -374,19 +374,30 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
                   _buildStatusBadge(status),
                 ],
               ),
-              const SizedBox(height: 12),
               Text(title, style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900)),
               const SizedBox(height: 12),
-              GestureDetector(
-                onTap: () => _showQuoteForm(quote),
-                child: Row(
-                 mainAxisAlignment: MainAxisAlignment.end,
-                 children: [
-                    Icon(Icons.edit, size: 16, color: AppTheme.slate400),
-                    const SizedBox(width: 8),
-                    Text('Edit Quote', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
-                 ],
-                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                   Column(
+                     crossAxisAlignment: CrossAxisAlignment.start,
+                     children: [
+                       Text(quote['client_name'] ?? 'No client', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700, fontWeight: FontWeight.w600)),
+                       const SizedBox(height: 2),
+                       Text('\$${NumberFormat('#,##0.00', 'en_US').format(quote['total_amount'] ?? 0)}', style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+                     ],
+                   ),
+                   GestureDetector(
+                    onTap: () => _showQuoteForm(quote),
+                    child: Row(
+                     children: [
+                        Icon(Icons.edit, size: 16, color: AppTheme.slate400),
+                        const SizedBox(width: 8),
+                        Text('Edit Quote', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
+                     ],
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -537,10 +548,12 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
             ),
             child: Row(
               children: [
-                Expanded(flex: 3, child: _colHeader('TITLE')),
-                Expanded(flex: 2, child: _colHeader('CREATED DATE')),
-                Expanded(flex: 2, child: _colHeader('STATUS')),
-                Expanded(flex: 1, child: _colHeader('ACTIONS')),
+                Expanded(flex: 25, child: _colHeader('TITLE')),
+                Expanded(flex: 20, child: _colHeader('CLIENT')),
+                Expanded(flex: 20, child: _colHeader('CREATED DATE')),
+                Expanded(flex: 15, child: _colHeader('TOTAL')),
+                Expanded(flex: 12, child: _colHeader('STATUS')),
+                Expanded(flex: 8, child: _colHeader('ACTIONS')),
               ],
             ),
           ),
@@ -622,10 +635,12 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
           ),
           child: Row(
             children: [
-              Expanded(flex: 3, child: Text(title, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900))),
-              Expanded(flex: 2, child: Text(date, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500))),
-              Expanded(flex: 2, child: _buildStatusBadge(status)),
-              Expanded(flex: 1, child: Align(alignment: Alignment.centerLeft, child: Row(mainAxisSize: MainAxisSize.min, children: [_editIconButton(quote), const SizedBox(width: 6), _deleteIconButton(quote)]))),
+              Expanded(flex: 25, child: Text(title, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900))),
+              Expanded(flex: 20, child: Text(quote['client_name'] ?? '-', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700))),
+              Expanded(flex: 20, child: Text(date, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500))),
+              Expanded(flex: 15, child: Text('\$${NumberFormat('#,##0.00', 'en_US').format(quote['total_amount'] ?? 0)}', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen))),
+              Expanded(flex: 12, child: _buildStatusBadge(status)),
+              Expanded(flex: 8, child: Align(alignment: Alignment.centerLeft, child: Row(mainAxisSize: MainAxisSize.min, children: [_editIconButton(quote), const SizedBox(width: 6), _deleteIconButton(quote)]))),
             ],
           ),
         ),
@@ -760,7 +775,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
   void _showQuoteForm([Map<String, dynamic>? quote]) {
     showDialog(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.2),
+      barrierColor: Colors.black.withOpacity(0.2),
       builder: (context) => QuoteFormDialog(quoteToEdit: quote),
     ).then((updated) {
       if (updated == true) {
@@ -824,7 +839,9 @@ class _Sidebar extends StatelessWidget {
                 children: [
                   _NavItem(icon: Icons.group_outlined, label: 'User Management', isActive: false, onTap: () => context.go('/users')),
                   const SizedBox(height: 4),
-                  _NavItem(icon: Icons.request_quote_rounded, label: 'Quotes', isActive: true, onTap: () {}),
+                  _NavItem(icon: Icons.request_quote_rounded, label: 'Quotes', isActive: true, onTap: () => context.go('/quotes')),
+                  const SizedBox(height: 4),
+                  _NavItem(icon: Icons.folder_copy_outlined, label: 'Catalogs', isActive: false, onTap: () => context.go('/catalogs')),
                 ],
               ),
             ),

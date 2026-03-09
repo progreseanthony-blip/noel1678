@@ -17,7 +17,7 @@ class QuotesService {
   // ── Quotes ──
   Future<List<Map<String, dynamic>>> getQuotes() async {
     final response = await _supabase.from('quotes').select().order('created_at', ascending: false);
-    return List<Map<String, dynamic>>.from(response);
+    return List<Map<String, dynamic>>.from(response ?? []);
   }
 
   Future<Map<String, dynamic>> getQuoteById(String id) async {
@@ -41,7 +41,7 @@ class QuotesService {
   // ── Quote Services ──
   Future<List<Map<String, dynamic>>> getServicesForQuote(String quoteId) async {
     final response = await _supabase.from('quote_services').select().eq('quote_id', quoteId).order('created_at');
-    return List<Map<String, dynamic>>.from(response);
+    return List<Map<String, dynamic>>.from(response ?? []);
   }
 
   Future<Map<String, dynamic>> createQuoteService(Map<String, dynamic> serviceData) async {
@@ -60,7 +60,7 @@ class QuotesService {
   // ── Quote Service Machineries ──
   Future<List<Map<String, dynamic>>> getMachineriesForService(String quoteServiceId) async {
     final response = await _supabase.from('quote_service_machineries').select().eq('quote_service_id', quoteServiceId).order('created_at');
-    return List<Map<String, dynamic>>.from(response);
+    return List<Map<String, dynamic>>.from(response ?? []);
   }
 
   Future<Map<String, dynamic>> createMachinery(Map<String, dynamic> machineryData) async {
@@ -83,7 +83,7 @@ class QuotesService {
       .select('*, roles(name)')
       .eq('quote_service_id', quoteServiceId)
       .order('created_at');
-    return List<Map<String, dynamic>>.from(response);
+    return List<Map<String, dynamic>>.from(response ?? []);
   }
 
   Future<Map<String, dynamic>> createLabor(Map<String, dynamic> laborData) async {

@@ -35,7 +35,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
           .select()
           .order('name');
       setState(() {
-        _users = List<Map<String, dynamic>>.from(response);
+        _users = List<Map<String, dynamic>>.from(response ?? []);
         _isLoading = false;
       });
     } catch (e) {
@@ -95,7 +95,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
   Future<void> _showUserForm({Map<String, dynamic>? user}) async {
     final result = await showDialog<bool>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.6),
+      barrierColor: Colors.black.withOpacity(0.6),
       builder: (context) => UserFormDialog(userToEdit: user),
     );
 
@@ -107,7 +107,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
   void _showRoleManager() {
     showDialog(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.6),
+      barrierColor: Colors.black.withOpacity(0.6),
       builder: (context) => const RoleManagementDialog(),
     );
   }
@@ -300,7 +300,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: AppTheme.slate200,
-              border: Border.all(color: AppTheme.primaryGreen.withValues(alpha: 0.2)),
+              border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2)),
             ),
             child: Center(
               child: Text(
@@ -450,9 +450,9 @@ class _UserListPageState extends ConsumerState<UserListPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.slate200.withValues(alpha: 0.6)),
+        border: Border.all(color: AppTheme.slate200.withOpacity(0.6)),
         boxShadow: [
-          BoxShadow(color: Colors.black.withValues(alpha: 0.03), blurRadius: 6, offset: const Offset(0, 2)),
+          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 6, offset: const Offset(0, 2)),
         ],
       ),
       child: Column(
@@ -470,7 +470,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: isActive
-                          ? AppTheme.primaryGreen.withValues(alpha: 0.1)
+                          ? AppTheme.primaryGreen.withOpacity(0.1)
                           : AppTheme.slate200,
                     ),
                     child: Center(
@@ -527,7 +527,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: isAdmin
-                      ? AppTheme.primaryGreen.withValues(alpha: 0.1)
+                      ? AppTheme.primaryGreen.withOpacity(0.1)
                       : const Color(0xFFF1F5F9),
                   borderRadius: BorderRadius.circular(4),
                 ),
@@ -756,7 +756,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: AppTheme.primaryGreen.withValues(alpha: 0.25),
+                    color: AppTheme.primaryGreen.withOpacity(0.25),
                     blurRadius: 16,
                     offset: const Offset(0, 6),
                   ),
@@ -848,7 +848,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
         border: Border.all(color: AppTheme.slate200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withOpacity(0.04),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1119,6 +1119,13 @@ class _Sidebar extends StatelessWidget {
                     isActive: false,
                     onTap: () => context.go('/quotes'),
                   ),
+                  const SizedBox(height: 4),
+                  _NavItem(
+                    icon: Icons.folder_copy_outlined,
+                    label: 'Catalogs',
+                    isActive: false,
+                    onTap: () => context.go('/catalogs'),
+                  ),
                 ],
               ),
             ),
@@ -1146,7 +1153,7 @@ class _Sidebar extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryGreen.withValues(alpha: 0.08),
+                    color: AppTheme.primaryGreen.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -1157,9 +1164,9 @@ class _Sidebar extends StatelessWidget {
                         height: 40,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: AppTheme.primaryGreen.withValues(alpha: 0.15),
+                          color: AppTheme.primaryGreen.withOpacity(0.15),
                           border: Border.all(
-                            color: AppTheme.primaryGreen.withValues(alpha: 0.25),
+                            color: AppTheme.primaryGreen.withOpacity(0.25),
                           ),
                         ),
                         child: Icon(Icons.person,
@@ -1247,7 +1254,7 @@ class _NavItemState extends State<_NavItem> {
             color: widget.isActive
                 ? AppTheme.primaryGreen
                 : _hovered
-                    ? Colors.white.withValues(alpha: 0.08)
+                    ? Colors.white.withOpacity(0.08)
                     : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
@@ -1452,7 +1459,7 @@ class _UserRowState extends State<_UserRow> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: widget.isActive
-                          ? AppTheme.primaryGreen.withValues(alpha: 0.1)
+                          ? AppTheme.primaryGreen.withOpacity(0.1)
                           : AppTheme.slate200,
                     ),
                     child: Center(
@@ -1532,12 +1539,12 @@ class _UserRowState extends State<_UserRow> {
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: widget.isActive
-                          ? AppTheme.primaryGreen.withValues(alpha: 0.1)
+                          ? AppTheme.primaryGreen.withOpacity(0.1)
                           : const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(999),
                       border: Border.all(
                         color: widget.isActive
-                            ? AppTheme.primaryGreen.withValues(alpha: 0.2)
+                            ? AppTheme.primaryGreen.withOpacity(0.2)
                             : AppTheme.slate200,
                       ),
                     ),
@@ -1802,7 +1809,7 @@ class _StatCard extends StatelessWidget {
         border: Border.all(color: AppTheme.slate200),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withOpacity(0.03),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1814,7 +1821,7 @@ class _StatCard extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: AppTheme.primaryGreen.withValues(alpha: 0.08),
+              color: AppTheme.primaryGreen.withOpacity(0.08),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Center(
