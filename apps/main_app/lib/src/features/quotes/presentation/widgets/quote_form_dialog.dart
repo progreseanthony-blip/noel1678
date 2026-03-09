@@ -675,6 +675,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
 
   Widget _buildMachineryCard(ServiceEntry svc, int index, MachineryEntry m) {
     return Container(
+      key: ValueKey(m),
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1143,6 +1144,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   }
 
   Widget _fieldCard(String label, double? value, double width, {String? initialText, Function(double)? onNum, Function(String)? onText, Key? key}) {
+    final val = onText != null ? initialText! : (value != null && value != 0 ? value.toString() : '');
     return SizedBox(
       key: key,
       width: width,
@@ -1151,22 +1153,14 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         children: [
           Text(label, style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
           const SizedBox(height: 4),
-          TextFormField(
-            initialValue: onText != null ? initialText : (value != null && value != 0 ? value.toString() : ''),
-            keyboardType: onNum != null ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
-            inputFormatters: onNum != null ? [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))] : null,
-            style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
-            decoration: InputDecoration(
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-              enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-              focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 1.5)),
-            ),
+          _AutoSelectField(
+            initialValue: val,
             onChanged: (v) {
               if (onNum != null) onNum(double.tryParse(v) ?? 0);
               if (onText != null) onText(v);
             },
+            keyboardType: onNum != null ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+            inputFormatters: onNum != null ? [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))] : null,
           ),
         ],
       ),
@@ -1399,6 +1393,74 @@ class _SearchableCatalogDropdown extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AutoSelectField extends StatefulWidget {
+  final String initialValue;
+  final Function(String) onChanged;
+  final TextInputType keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
+
+  const _AutoSelectField({
+    required this.initialValue,
+    required this.onChanged,
+    this.keyboardType = TextInputType.text,
+    this.inputFormatters,
+  });
+
+  @override
+  State<_AutoSelectField> createState() => _AutoSelectFieldState();
+}
+
+class _AutoSelectFieldState extends State<_AutoSelectField> {
+  late TextEditingController _controller;
+  late FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+    _focusNode = FocusNode();
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus) {
+        _controller.selection = TextSelection(baseOffset: 0, extentOffset: _controller.text.length);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(_AutoSelectField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focusNode.hasFocus && widget.initialValue != _controller.text) {
+      _controller.text = widget.initialValue;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: _controller,
+      focusNode: _focusNode,
+      keyboardType: widget.keyboardType,
+      inputFormatters: widget.inputFormatters,
+      style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+      decoration: InputDecoration(
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 1.5)),
+      ),
+      onChanged: widget.onChanged,
     );
   }
 }
