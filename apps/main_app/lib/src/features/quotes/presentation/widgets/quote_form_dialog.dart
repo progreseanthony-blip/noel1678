@@ -201,6 +201,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           quantity: (m['quantity'] as num?)?.toDouble() ?? 1,
           gallonsPerHour: (m['gallons_per_hour'] as num?)?.toDouble() ?? 0,
           gallonCost: (m['gallon_cost'] as num?)?.toDouble() ?? 0,
+          deliveryCost: (m['delivery_cost'] as num?)?.toDouble() ?? 0,
         )).toList();
 
         // Load labors for this service
@@ -319,6 +320,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             'quantity': m.quantity,
             'gallons_per_hour': m.gallonsPerHour,
             'gallon_cost': m.gallonCost,
+            'delivery_cost': m.deliveryCost,
           });
         }
 
