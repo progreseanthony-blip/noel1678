@@ -150,8 +150,9 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
             child: Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 24),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
+                child: AutofillGroup(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 440),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -236,7 +237,9 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
                       const SizedBox(height: 8),
                       TextField(
                         controller: _nameController,
+                        autofillHints: const [AutofillHints.name],
                         style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.slate900),
+                        textInputAction: TextInputAction.next,
                         decoration: InputDecoration(
                           hintText: 'John Doe',
                           prefixIcon: Icon(Icons.person_outline, color: AppTheme.slate400, size: 20),
@@ -251,7 +254,9 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
                       TextField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
                         style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.slate900),
+                        textInputAction: TextInputAction.next,
                         decoration: InputDecoration(
                           hintText: 'name@company.com',
                           prefixIcon: Icon(Icons.mail_outline, color: AppTheme.slate400, size: 20),
@@ -266,7 +271,9 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
                       TextField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
+                        autofillHints: const [AutofillHints.newPassword],
                         style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.slate900),
+                        textInputAction: TextInputAction.next,
                         decoration: InputDecoration(
                           hintText: '••••••••',
                           prefixIcon: Icon(Icons.lock_outline, color: AppTheme.slate400, size: 20),
@@ -289,7 +296,9 @@ class _SignUpPageState extends ConsumerState<SignUpPage> {
                       TextField(
                         controller: _confirmPasswordController,
                         obscureText: _obscureConfirm,
+                        autofillHints: const [AutofillHints.newPassword],
                         style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.slate900),
+                        textInputAction: TextInputAction.done,
                         decoration: InputDecoration(
                           hintText: '••••••••',
                           prefixIcon: Icon(Icons.lock_outline, color: AppTheme.slate400, size: 20),

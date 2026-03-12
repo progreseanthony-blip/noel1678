@@ -129,8 +129,9 @@ class _SignInPageState extends ConsumerState<SignInPage> {
             child: Center(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 24),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
+                child: AutofillGroup(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 440),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -195,7 +196,9 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                       TextField(
                         controller: _emailController,
                         keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
                         style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.slate900),
+                        textInputAction: TextInputAction.next,
                         decoration: InputDecoration(
                           hintText: 'name@company.com',
                           prefixIcon: Icon(Icons.mail_outline, color: AppTheme.slate400, size: 20),
@@ -233,7 +236,9 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                       TextField(
                         controller: _passwordController,
                         obscureText: _obscurePassword,
+                        autofillHints: const [AutofillHints.password],
                         style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.slate900),
+                        textInputAction: TextInputAction.done,
                         decoration: InputDecoration(
                           hintText: '••••••••',
                           prefixIcon: Icon(Icons.lock_outline, color: AppTheme.slate400, size: 20),
