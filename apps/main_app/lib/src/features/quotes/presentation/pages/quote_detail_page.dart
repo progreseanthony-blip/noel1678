@@ -6,6 +6,7 @@ import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:intl/intl.dart';
 import '../widgets/quote_form_dialog.dart';
+import '../widgets/service_estimation_dialog.dart';
 
 class QuoteDetailPage extends ConsumerStatefulWidget {
   final String quoteId;
@@ -19,6 +20,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
   List<Map<String, dynamic>> _services = [];
   Map<String, List<Map<String, dynamic>>> _machineries = {};
   Map<String, List<Map<String, dynamic>>> _labors = {};
+  Map<String, Map<String, dynamic>> _estimations = {};
   bool _isLoading = true;
   String? _error;
 
@@ -40,6 +42,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
 
       final machMap = <String, List<Map<String, dynamic>>>{};
       final laborMap = <String, List<Map<String, dynamic>>>{};
+      final estMap = <String, Map<String, dynamic>>{};
 
       for (final svc in servicesData) {
         final svcId = svc['id'] as String;
@@ -47,6 +50,12 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
         machMap[svcId] = List<Map<String, dynamic>>.from(machRaw);
         final laborRaw = await sb.from('quote_service_labors').select().eq('quote_service_id', svcId);
         laborMap[svcId] = List<Map<String, dynamic>>.from(laborRaw);
+
+        // Fetch estimation
+        final estData = await sb.from('quote_service_estimations').select().eq('quote_service_id', svcId).maybeSingle();
+        if (estData != null) {
+          estMap[svcId] = estData;
+        }
       }
 
       if (mounted) {
@@ -55,6 +64,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
           _services = List<Map<String, dynamic>>.from(servicesData);
           _machineries = machMap;
           _labors = laborMap;
+          _estimations = estMap;
           _isLoading = false;
         });
       }
@@ -244,7 +254,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(32),
+      padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -288,7 +298,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
 
                 // ── Grand Total ──
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   decoration: BoxDecoration(
                     color: AppTheme.primaryGreen.withOpacity(0.06),
                     borderRadius: BorderRadius.circular(12),
@@ -296,9 +306,9 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                   ),
                   child: Column(
                     children: [
-                      Text('GRAND TOTAL', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 1, color: AppTheme.slate500)),
-                      const SizedBox(height: 4),
-                      Text('\$${_fmt.format(grandTotal)}', style: GoogleFonts.manrope(fontSize: 26, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+                      Text('GRAND TOTAL', style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1, color: AppTheme.slate500)),
+                      const SizedBox(height: 2),
+                      Text('\$${_fmt.format(grandTotal)}', style: GoogleFonts.manrope(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
                     ],
                   ),
                 ),
@@ -314,18 +324,31 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                       ).then((updated) { if (updated == true) _loadData(); });
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
                       decoration: BoxDecoration(
                         color: AppTheme.primaryGreen,
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [BoxShadow(color: AppTheme.primaryGreen.withOpacity(0.2), blurRadius: 12, offset: const Offset(0, 4))],
+                        borderRadius: BorderRadius.circular(999),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.primaryGreen.withOpacity(0.25),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
+                          ),
+                        ],
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.edit_outlined, color: Colors.white, size: 18),
-                          const SizedBox(width: 8),
-                          Text('Edit Quote', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+                          const Icon(Icons.edit_outlined, color: Color(0xFF0F172A), size: 20),
+                          const SizedBox(width: 10),
+                          Text(
+                            'Edit Quote',
+                            style: GoogleFonts.manrope(
+                              color: const Color(0xFF0F172A),
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -396,23 +419,36 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
               color: const Color(0xFF0F172A),
               borderRadius: const BorderRadius.only(topLeft: Radius.circular(14), topRight: Radius.circular(14)),
             ),
-            child: Row(
+            child: Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              runSpacing: 12,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(color: AppTheme.primaryGreen, borderRadius: BorderRadius.circular(6)),
-                  child: Text('#${index + 1}', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(color: AppTheme.primaryGreen, borderRadius: BorderRadius.circular(5)),
+                      child: Text('#${index + 1}', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(name, style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Text(name, style: GoogleFonts.manrope(fontSize: 17, fontWeight: FontWeight.w800, color: Colors.white)),
-                const Spacer(),
-                _infoChipDark('Quantity', qty.toString()),
-                const SizedBox(width: 12),
-                _infoChipDark('Unit', unit),
-                const SizedBox(width: 12),
-                _infoChipDark('OH%', '${_d(svc, 'overhead_percentage')}%'),
-                const SizedBox(width: 12),
-                _infoChipDark('Profit%', '${_d(svc, 'profit_percentage')}%'),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                   children: [
+                    _infoChipDark('Quantity', qty.toString()),
+                    _infoChipDark('Unit', unit),
+                    _infoChipDark('OH%', '${_d(svc, 'overhead_percentage')}%'),
+                    _infoChipDark('Profit%', '${_d(svc, 'profit_percentage')}%'),
+                    const SizedBox(width: 6),
+                    _buildEstimationSummaryBoxes(svcId),
+                  ],
+                ),
               ],
             ),
           ),
@@ -505,40 +541,40 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
         children: [
           // Header
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: const BoxDecoration(color: Color(0xFFF8FAFC), border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0)))),
             child: Row(
               children: [
-                _colH('Machine', 3),
-                _colH('Months', 1),
+                _colH('Machine', 2.5),
+                _colH('Mo', 0.8),
                 _colH('Rent/Mo', 1),
-                _colH('Qty', 1),
+                _colH('Qty', 0.8),
                 _colH('Rate/Hr', 1),
-                _colH('Hours', 1),
-                _colH('Rent Total', 1),
-                _colH('Gal/Hr', 1),
+                _colH('Hrs', 0.8),
+                _colH('Rent Tot', 1),
+                _colH('G/H', 0.8),
                 _colH('Gas \$', 1),
-                _colH('TOTAL', 1),
+                _colH('TOTAL', 1.2),
               ],
             ),
           ),
           // Rows
           ...mList.map((m) {
             return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
               child: Row(
                 children: [
-                  _colV(m['machine_name'] ?? '-', 3, bold: true),
-                  _colV(_d(m, 'months_to_use').toStringAsFixed(0), 1),
+                  _colV(m['machine_name'] ?? '-', 2.5, bold: true),
+                  _colV(_d(m, 'months_to_use').toStringAsFixed(0), 0.8),
                   _colV('\$${_fmt.format(_d(m, 'monthly_rent_cost'))}', 1),
-                  _colV(_d(m, 'quantity').toStringAsFixed(0), 1),
+                  _colV(_d(m, 'quantity').toStringAsFixed(0), 0.8),
                   _colV('\$${_fmt.format(_machRatePerHour(m))}', 1),
-                  _colV(_machHoursPerMonth(m).toStringAsFixed(0), 1),
+                  _colV(_machHoursPerMonth(m).toStringAsFixed(0), 0.8),
                   _colV('\$${_fmt.format(_machTotalRent(m))}', 1),
-                  _colV(_d(m, 'gallons_per_hour').toStringAsFixed(1), 1),
+                  _colV(_d(m, 'gallons_per_hour').toStringAsFixed(1), 0.8),
                   _colV('\$${_fmt.format(_machTotalGasCost(m))}', 1),
-                  _colV('\$${_fmt.format(_machTotal(m))}', 1, highlight: true),
+                  _colV('\$${_fmt.format(_machTotal(m))}', 1.2, highlight: true),
                 ],
               ),
             );
@@ -557,37 +593,37 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
       child: Column(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: const BoxDecoration(color: Color(0xFFF8FAFC), border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0)))),
             child: Row(
               children: [
-                _colH('Position', 3),
-                _colH('Months', 1),
-                _colH('Employees', 1),
-                _colH('Rate/Hr', 1),
-                _colH('Hours/Mo', 1),
-                _colH('Total Pay', 2),
-                _colH('Per Diem', 1),
-                _colH('Total PD', 1),
-                _colH('TOTAL', 1),
+                _colH('Position', 2.5),
+                _colH('Mo', 1),
+                _colH('Emp', 1),
+                _colH('Rate/Hr', 1.2),
+                _colH('Hrs/Mo', 1),
+                _colH('Tot Pay', 1.5),
+                _colH('P.Diem', 1.2),
+                _colH('Tot PD', 1.5),
+                _colH('TOTAL', 1.5),
               ],
             ),
           ),
           ...lList.map((l) {
             return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
               child: Row(
                 children: [
-                  _colV('Labor', 3, bold: true),
+                  _colV(l['role_name'] ?? 'Labor', 2.5, bold: true),
                   _colV(_d(l, 'months_to_work').toStringAsFixed(0), 1),
                   _colV(_d(l, 'employees_quantity').toStringAsFixed(0), 1),
-                  _colV('\$${_fmt.format(_d(l, 'hourly_rate'))}', 1),
+                  _colV('\$${_fmt.format(_d(l, 'hourly_rate'))}', 1.2),
                   _colV(_laborHoursPerMonth(l).toStringAsFixed(0), 1),
-                  _colV('\$${_fmt.format(_laborTotalPay(l))}', 2),
-                  _colV('\$${_fmt.format(_d(l, 'per_diem'))}', 1),
-                  _colV('\$${_fmt.format(_laborTotalPerDiem(l))}', 1),
-                  _colV('\$${_fmt.format(_laborTotal(l))}', 1, highlight: true),
+                  _colV('\$${_fmt.format(_laborTotalPay(l))}', 1.5),
+                  _colV('\$${_fmt.format(_d(l, 'per_diem'))}', 1.2),
+                  _colV('\$${_fmt.format(_laborTotalPerDiem(l))}', 1.5),
+                  _colV('\$${_fmt.format(_laborTotal(l))}', 1.5, highlight: true),
                 ],
               ),
             );
@@ -653,13 +689,13 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
     );
   }
 
-  Widget _colH(String label, int flex) {
-    return Expanded(flex: flex, child: Text(label.toUpperCase(), style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: AppTheme.slate500)));
+  Widget _colH(String label, num flex) {
+    return Expanded(flex: (flex * 10).toInt(), child: Text(label.toUpperCase(), style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: AppTheme.slate500)));
   }
 
-  Widget _colV(String val, int flex, {bool bold = false, bool highlight = false}) {
+  Widget _colV(String val, num flex, {bool bold = false, bool highlight = false}) {
     return Expanded(
-      flex: flex,
+      flex: (flex * 10).toInt(),
       child: Text(val, style: GoogleFonts.manrope(fontSize: 12, fontWeight: bold || highlight ? FontWeight.w700 : FontWeight.w500, color: highlight ? AppTheme.primaryGreen : AppTheme.slate900)),
     );
   }
@@ -716,6 +752,8 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                 _navItem(Icons.group_outlined, 'User Management', false, () => context.go('/users')),
                 const SizedBox(height: 4),
                 _navItem(Icons.request_quote_rounded, 'Quotes', true, () => context.go('/quotes')),
+                const SizedBox(height: 4),
+                _navItem(Icons.folder_copy_outlined, 'Catalogs', false, () => context.go('/catalogs')),
               ]),
             ),
           ),
@@ -765,6 +803,57 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
             Text(label, style: GoogleFonts.manrope(color: isActive ? AppTheme.primaryGreen : AppTheme.slate400, fontSize: 14, fontWeight: isActive ? FontWeight.w700 : FontWeight.w600)),
           ]),
         ),
+      ),
+    );
+  }
+
+  Widget _buildEstimationSummaryBoxes(String svcId) {
+    final data = _estimations[svcId];
+    if (data == null) return const SizedBox.shrink();
+
+    final startDateStr = data['start_date'] as String?;
+    final endDateStr = data['end_date'] as String?;
+    final workingDays = data['total_working_days'] ?? 0;
+    
+    String period = '-';
+    String months = '0';
+    String calendarDays = '0';
+
+    if (startDateStr != null && endDateStr != null) {
+      final startDate = DateTime.parse(startDateStr);
+      final endDate = DateTime.parse(endDateStr);
+      period = '${DateFormat('MMM dd').format(startDate)} - ${DateFormat('MMM dd').format(endDate)}';
+      final diff = endDate.difference(startDate).inDays;
+      calendarDays = diff.toString();
+      months = (diff / 30.44).toStringAsFixed(1);
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _estBoxDark('Period', period),
+        _estBoxDark('Months', months),
+        _estBoxDark('Production Days', workingDays.toString()),
+        _estBoxDark('Total Days', calendarDays),
+      ],
+    );
+  }
+
+  Widget _estBoxDark(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.3)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: GoogleFonts.manrope(fontSize: 8, fontWeight: FontWeight.w700, color: Colors.white.withOpacity(0.4))),
+          Text(value, style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+        ],
       ),
     );
   }

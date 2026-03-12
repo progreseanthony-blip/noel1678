@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:noel_app/src/features/catalogs/presentation/widgets/service_dialog.dart';
 import 'package:noel_app/src/features/catalogs/presentation/widgets/machinery_dialog.dart';
 import 'package:noel_app/src/features/catalogs/presentation/widgets/labor_role_dialog.dart';
+import 'service_estimation_dialog.dart';
 
 // ══════════════════════════════════════════════════════════════
 //  DATA MODELS (local, in-memory for the wizard)
@@ -71,6 +72,8 @@ class ServiceEntry {
   List<MachineryEntry> machineries;
   List<LaborEntry> labors;
 
+  Map<String, dynamic>? estimationData;
+
   ServiceEntry({
     this.name = '',
     this.unitOfMeasure = 'und',
@@ -79,6 +82,7 @@ class ServiceEntry {
     this.profitPercentage = 0,
     List<MachineryEntry>? machineries,
     List<LaborEntry>? labors,
+    this.estimationData,
   })  : machineries = machineries ?? [],
         labors = labors ?? [];
 
@@ -148,6 +152,55 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     }
   }
 
+  void _syncMachineryFromEstimation(ServiceEntry svc, Map<String, dynamic> result) {
+    // 1. Calculate duration in months (using the same logic as the result card)
+    final start = result['start_date'] as DateTime;
+    final end = result['end_date'] as DateTime;
+    final calendarDays = end.difference(start).inDays + 1;
+    final months = double.parse((calendarDays / 30.44).toStringAsFixed(1));
+
+    // 2. Fetch resources from estimation result
+    final resources = result['resources'] as List;
+    if (resources.isEmpty) return;
+
+    // 3. Clear existing machineries if they were default/empty
+    if (svc.machineries.isEmpty || (svc.machineries.length == 1 && svc.machineries[0].machineName.isEmpty)) {
+      svc.machineries.clear();
+    }
+
+    for (final res in resources) {
+      final machineId = res['machine_id'];
+      final machineName = res['machine_name'] ?? '';
+      
+      // Try to find if this machine is already in the list to update it, 
+      // otherwise add it as new.
+      final existingIndex = svc.machineries.indexWhere((m) => m.machineName == machineName);
+      
+      if (existingIndex >= 0) {
+        svc.machineries[existingIndex].monthsToUse = months;
+        svc.machineries[existingIndex].quantity = (res['quantity'] as num).toDouble();
+      } else {
+        // Find in catalog for default costs
+        final catalogItem = _catalogMachinery.firstWhere(
+          (m) => m['id'] == machineId || m['description'] == machineName, 
+          orElse: () => {}
+        );
+
+        svc.machineries.add(MachineryEntry(
+          machineName: machineName,
+          monthsToUse: months,
+          quantity: (res['quantity'] as num).toDouble(),
+          // Defaults or catalog values
+          monthlyRentCost: (catalogItem['monthly_rent_cost'] as num?)?.toDouble() ?? 0,
+          gallonsPerHour: (catalogItem['gallons_per_hour'] as num?)?.toDouble() ?? 0,
+          gallonCost: (catalogItem['gallon_cost'] as num?)?.toDouble() ?? 5.25,
+          deliveryCost: (catalogItem['delivery_cost'] as num?)?.toDouble() ?? 0,
+        ));
+      }
+    }
+    setState(() {});
+  }
+
   Future<void> _loadCatalogs() async {
     try {
       final supabase = Supabase.instance.client;
@@ -186,6 +239,41 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       for (final svcData in servicesData) {
         final svcId = svcData['id'];
 
+        // Load estimation for this service
+        final responseEst = await supabase
+            .from('quote_service_estimations')
+            .select()
+            .eq('quote_service_id', svcId)
+            .maybeSingle();
+
+        Map<String, dynamic>? estimationData;
+        if (responseEst != null) {
+          final estId = responseEst['id'];
+          final responseRes = await supabase
+              .from('quote_service_estimation_resources')
+              .select('*, machinery(description, capacity, default_trips_per_day)')
+              .eq('estimation_id', estId);
+
+          final resources = (responseRes as List).map((r) => {
+            'machine_id': r['machine_id'],
+            'machine_name': r['machinery']?['description'] ?? 'Unknown',
+            'quantity': (r['quantity'] as num).toDouble(),
+            'trips_per_day': (r['trips_per_day'] as num).toDouble(),
+            'capacity_per_trip': (r['capacity_per_trip'] as num).toDouble(),
+          }).toList();
+
+          estimationData = {
+            'topsoil_volume': (responseEst['topsoil_volume'] as num).toDouble(),
+            'compacted_volume': (responseEst['compacted_volume'] as num).toDouble(),
+            'swell_factor': (responseEst['swell_factor'] as num).toDouble(),
+            'total_cy_loose': (responseEst['total_cy_loose'] as num).toDouble(),
+            'working_days': (responseEst['total_working_days'] as num).toInt(),
+            'start_date': DateTime.parse(responseEst['start_date']),
+            'end_date': responseEst['end_date'] != null ? DateTime.parse(responseEst['end_date']) : null,
+            'resources': resources,
+          };
+        }
+
         // Load machineries for this service
         final responseMach = await supabase
             .from('quote_service_machineries')
@@ -220,6 +308,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           perDiem: (l['per_diem'] as num?)?.toDouble() ?? 0,
         )).toList();
 
+
         loadedServices.add(ServiceEntry(
           name: svcData['name'] ?? '',
           unitOfMeasure: svcData['unit_of_measure'] ?? 'und',
@@ -228,6 +317,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           profitPercentage: (svcData['profit_percentage'] as num?)?.toDouble() ?? 0,
           machineries: machineries,
           labors: labors,
+          estimationData: estimationData,
         ));
       }
 
@@ -327,11 +417,41 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         for (final l in svc.labors) {
           await supabase.from('quote_service_labors').insert({
             'quote_service_id': svcId,
+            'role_name': l.roleName,
             'months_to_work': l.monthsToWork,
             'employees_quantity': l.employeesQuantity,
             'hourly_rate': l.hourlyRate,
             'per_diem': l.perDiem,
           });
+        }
+
+        // Save estimation data if exists
+        if (svc.estimationData != null) {
+          final est = svc.estimationData!;
+          final estResult = await supabase.from('quote_service_estimations').insert({
+            'quote_service_id': svcId,
+            'topsoil_volume': est['topsoil_volume'] ?? 0,
+            'compacted_volume': est['compacted_volume'] ?? 0,
+            'swell_factor': est['swell_factor'] ?? 0.15,
+            'total_cy_loose': est['total_cy_loose'] ?? 0,
+            'start_date': (est['start_date'] as DateTime).toIso8601String(),
+            'end_date': est['end_date'] != null ? (est['end_date'] as DateTime).toIso8601String() : null,
+            'total_working_days': est['working_days'] ?? 0,
+          }).select().single();
+
+          final estId = estResult['id'];
+          final resources = est['resources'] as List?;
+          if (resources != null) {
+            for (final r in resources) {
+              await supabase.from('quote_service_estimation_resources').insert({
+                'estimation_id': estId,
+                'machine_id': r['machine_id'],
+                'quantity': r['quantity'] ?? 1,
+                'trips_per_day': r['trips_per_day'] ?? 60,
+                'capacity_per_trip': r['capacity_per_trip'] ?? 30,
+              });
+            }
+          }
         }
       }
 
@@ -581,7 +701,10 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    crossAxisAlignment: WrapCrossAlignment.end,
                     children: [
                       SizedBox(
                         width: 200,
@@ -601,16 +724,53 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                           onAddNew: () => _openServiceCatalogAdd(index),
                         ),
                       ),
-                      const Spacer(),
                       _miniField('Unit', svc.unitOfMeasure, 60, (v) => setState(() => svc.unitOfMeasure = v), key: ValueKey('unit_${index}_${svc.name}')),
-                      const SizedBox(width: 8),
-                      _miniNumField('Qty', svc.quantity, 60, (v) => setState(() => svc.quantity = v)),
-                      const SizedBox(width: 8),
+                      _miniNumField('Qty', svc.quantity, 85, (v) => setState(() => svc.quantity = v)),
                       _miniNumField('OH%', svc.overheadPercentage, 55, (v) => setState(() => svc.overheadPercentage = v)),
-                      const SizedBox(width: 8),
                       _miniNumField('Profit%', svc.profitPercentage, 60, (v) => setState(() => svc.profitPercentage = v)),
+                      // Estimation Button
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () async {
+                            final result = await showDialog(
+                              context: context,
+                              builder: (_) => ServiceEstimationDialog(
+                                service: {
+                                  'id': null, // New service in wizard
+                                  'name': svc.name,
+                                  'quantity': svc.quantity,
+                                  'estimationData': svc.estimationData,
+                                },
+                              ),
+                            );
+
+                            if (result != null && result is Map && result['applied'] == true) {
+                              setState(() {
+                                svc.quantity = (result['total_cy_loose'] as num).toDouble();
+                                svc.estimationData = Map<String, dynamic>.from(result as Map); 
+                                _syncMachineryFromEstimation(svc, result as Map<String, dynamic>);
+                              });
+                            }
+                          },
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 2),
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryGreen.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.3)),
+                            ),
+                            child: const Icon(Icons.analytics_outlined, color: AppTheme.primaryGreen, size: 16),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
+                  if (svc.estimationData != null) ...[
+                    const SizedBox(height: 12),
+                    _buildEstimationSummaryBoxes(svc),
+                  ],
                   const SizedBox(height: 4),
                   Text('Total: \$${_currencyFormat.format(svc.totalSaleV2)}  |  Unit Price: \$${_currencyFormat.format(svc.unitPrice)}',
                     style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.primaryGreen, fontWeight: FontWeight.w700)),
@@ -652,7 +812,13 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         children: [
           _buildServiceTabs(),
           const SizedBox(height: 20),
-          _sectionTitle('Machinery for "${svc.name}"'),
+          Row(
+            children: [
+              _sectionTitle('Machinery for "${svc.name}"'),
+              const Spacer(),
+              _buildEstimationSummaryBoxes(svc),
+            ],
+          ),
           const SizedBox(height: 16),
           if (svc.machineries.isEmpty)
             Container(
@@ -687,6 +853,50 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         children: [
           Row(
             children: [
+              if (m.machineName != null && m.machineName.isNotEmpty && _catalogMachinery.any((mx) => mx['description'] == m.machineName)) ...[
+                 Builder(builder: (context) {
+                    final item = _catalogMachinery.firstWhere((mx) => mx['description'] == m.machineName);
+                    final String? photoUrl = item['photo_url'];
+                    
+                    return Container(
+                      width: 50, height: 40,
+                      margin: const EdgeInsets.only(right: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: AppTheme.slate50,
+                        border: Border.all(color: AppTheme.slate200),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2)),
+                        ],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: (photoUrl != null && photoUrl.isNotEmpty)
+                        ? Image.network(
+                            photoUrl, 
+                            fit: BoxFit.cover, 
+                            errorBuilder: (c, e, s) => Container(
+                              color: AppTheme.slate50,
+                              child: const Icon(Icons.precision_manufacturing, size: 20, color: AppTheme.slate400),
+                            ),
+                            loadingBuilder: (context, child, loadingProgress) {
+                              if (loadingProgress == null) return child;
+                              return Center(
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  value: loadingProgress.expectedTotalBytes != null
+                                      ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                      : null,
+                                ),
+                              );
+                            },
+                          )
+                        : Container(
+                            color: AppTheme.slate50,
+                            child: const Icon(Icons.precision_manufacturing, size: 20, color: AppTheme.slate400),
+                          ),
+                    );
+                 }),
+              ],
               Text('Machine ${index + 1}', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
               const Spacer(),
               MouseRegion(
@@ -707,14 +917,11 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 label: 'Machine Name',
                 width: 180,
                 items: _catalogMachinery,
-                excludeItems: svc.machineries.map((mx) => mx.machineName).where((n) => n != m.machineName).toList(),
+                excludeItems: const [],
                 initialValue: m.machineName,
                 onSelected: (val, item) {
                   setState(() {
                     m.machineName = val;
-                    if (item != null && item['capacity'] != null) {
-                      // m.capacity = item['capacity']; // model doesn't have it yet
-                    }
                   });
                 },
                 onAddNew: () => _openMachineryCatalogAdd(svc, index),
@@ -789,7 +996,13 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         children: [
           _buildServiceTabs(),
           const SizedBox(height: 20),
-          _sectionTitle('Labor for "${svc.name}"'),
+          Row(
+            children: [
+              _sectionTitle('Labor for "${svc.name}"'),
+              const Spacer(),
+              _buildEstimationSummaryBoxes(svc),
+            ],
+          ),
           const SizedBox(height: 16),
           if (svc.labors.isEmpty)
             Container(
@@ -842,7 +1055,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 label: 'Role/Position',
                 width: 180,
                 items: _catalogLaborRoles,
-                excludeItems: svc.labors.map((lx) => lx.roleName).where((n) => n != l.roleName).toList(),
+                excludeItems: const [],
                 initialValue: l.roleName,
                 onSelected: (val, item) {
                   setState(() {
@@ -1094,6 +1307,64 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   Widget _sectionTitle(String title) {
     return Text(title, style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.slate900));
   }
+
+  Widget _buildEstimationSummaryBoxes(ServiceEntry svc) {
+    if (svc.estimationData == null) return const SizedBox.shrink();
+
+    final data = svc.estimationData!;
+    final startDate = data['start_date'] as DateTime?;
+    final endDate = data['end_date'] as DateTime?;
+    final workingDays = data['working_days'] ?? 0;
+    
+    String period = '-';
+    String months = '0';
+    String calendarDays = '0';
+
+    if (startDate != null && endDate != null) {
+      period = '${DateFormat('MMM dd').format(startDate)} - ${DateFormat('MMM dd').format(endDate)}';
+      final diff = endDate.difference(startDate).inDays;
+      calendarDays = diff.toString();
+      months = (diff / 30.44).toStringAsFixed(1);
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _estBox('Period', period),
+        _estBox('Months', months),
+        _estBox('Production Days', workingDays.toString()),
+        _estBox('Total Days', calendarDays),
+      ],
+    );
+  }
+
+  Widget _estBox(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.4)),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.primaryGreen.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
+          const SizedBox(height: 2),
+          Text(value, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+        ],
+      ),
+    );
+  }
+
 
   Widget _labeledField(String label, Widget field) {
     return Column(
@@ -1348,12 +1619,27 @@ class _SearchableCatalogDropdown extends StatelessWidget {
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                                 leading: label.toLowerCase().contains('machine') 
                                   ? Container(
-                                      width: 40, height: 40,
-                                      decoration: BoxDecoration(borderRadius: BorderRadius.circular(6), color: AppTheme.slate50, border: Border.all(color: AppTheme.slate200)),
+                                      width: 44, height: 44,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8), 
+                                        color: AppTheme.slate50, 
+                                        border: Border.all(color: AppTheme.slate200),
+                                        boxShadow: [
+                                          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4, offset: const Offset(0, 2)),
+                                        ],
+                                      ),
                                       clipBehavior: Clip.antiAlias,
                                       child: (photoUrl != null && photoUrl.isNotEmpty)
-                                        ? Image.network(photoUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.settings, size: 20, color: AppTheme.slate400))
-                                        : const Icon(Icons.settings, size: 20, color: AppTheme.slate400),
+                                        ? Image.network(
+                                            photoUrl, 
+                                            fit: BoxFit.cover, 
+                                            errorBuilder: (c, e, s) => const Center(child: Icon(Icons.precision_manufacturing, size: 22, color: AppTheme.slate400)),
+                                            loadingBuilder: (context, child, progress) {
+                                              if (progress == null) return child;
+                                              return const Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)));
+                                            },
+                                          )
+                                        : const Center(child: Icon(Icons.precision_manufacturing, size: 22, color: AppTheme.slate400)),
                                     )
                                   : null,
                                 title: Text(option['description'] ?? '', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),

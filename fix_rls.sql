@@ -1,9 +1,22 @@
-DROP POLICY IF EXISTS "Allow all actions for authenticated users on quotes" ON public.quotes;
-DROP POLICY IF EXISTS "Allow all actions for authenticated users on quote_services" ON public.quote_services;
-DROP POLICY IF EXISTS "Allow all actions for authenticated users on quote_service_machineries" ON public.quote_service_machineries;
-DROP POLICY IF EXISTS "Allow all actions for authenticated users on quote_service_labors" ON public.quote_service_labors;
+-- Enable RLS
+ALTER TABLE public.quote_service_estimations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.quote_service_estimation_resources ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY quotes_all ON public.quotes FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY quote_services_all ON public.quote_services FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY quote_service_machineries_all ON public.quote_service_machineries FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY quote_service_labors_all ON public.quote_service_labors FOR ALL TO authenticated USING (true) WITH CHECK (true);
+-- Drop existing policies if any
+DROP POLICY IF EXISTS "Allow all actions for authenticated users on quote_service_estimations" ON public.quote_service_estimations;
+DROP POLICY IF EXISTS "Allow all actions for authenticated users on quote_service_estimation_resources" ON public.quote_service_estimation_resources;
+
+-- Create new policies with WITH CHECK
+CREATE POLICY "Allow all actions for authenticated users on quote_service_estimations"
+ON public.quote_service_estimations
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+CREATE POLICY "Allow all actions for authenticated users on quote_service_estimation_resources"
+ON public.quote_service_estimation_resources
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);

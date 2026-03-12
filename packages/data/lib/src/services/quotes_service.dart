@@ -98,4 +98,37 @@ class QuotesService {
   Future<void> deleteLabor(String id) async {
     await _supabase.from('quote_service_labors').delete().eq('id', id);
   }
+
+  // ── Quote Service Estimations ──
+  Future<Map<String, dynamic>?> getEstimationForService(String quoteServiceId) async {
+    final response = await _supabase.from('quote_service_estimations').select().eq('quote_service_id', quoteServiceId).maybeSingle();
+    return response;
+  }
+
+  Future<Map<String, dynamic>> upsertEstimation(Map<String, dynamic> data) async {
+    final response = await _supabase.from('quote_service_estimations').upsert(data).select().single();
+    return response;
+  }
+
+  // ── Estimation Resources ──
+  Future<List<Map<String, dynamic>>> getResourcesForEstimation(String estimationId) async {
+    final response = await _supabase.from('quote_service_estimation_resources').select('*, machinery(*)').eq('estimation_id', estimationId);
+    return List<Map<String, dynamic>>.from(response ?? []);
+  }
+
+  Future<void> saveResources(String estimationId, List<Map<String, dynamic>> resources) async {
+    // Delete existing resources and insert new ones
+    await _supabase.from('quote_service_estimation_resources').delete().eq('estimation_id', estimationId);
+    if (resources.isNotEmpty) {
+      await _supabase.from('quote_service_estimation_resources').insert(
+        resources.map((r) => {
+          'estimation_id': estimationId,
+          'machine_id': r['machine_id'],
+          'quantity': r['quantity'],
+          'trips_per_day': r['trips_per_day'],
+          'capacity_per_trip': r['capacity_per_trip'],
+        }).toList()
+      );
+    }
+  }
 }
