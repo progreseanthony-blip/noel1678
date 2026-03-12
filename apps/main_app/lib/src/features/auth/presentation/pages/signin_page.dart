@@ -344,6 +344,7 @@ class _SignInPageState extends ConsumerState<SignInPage> {
                       ),
                     ],
                   ),
+                  ),
                 ),
               ),
             ),
