@@ -194,7 +194,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           quantity: (res['quantity'] as num).toDouble(),
           // Defaults or catalog values
           monthlyRentCost: (catalogItem['monthly_rent_cost'] as num?)?.toDouble() ?? 0,
-          gallonsPerHour: (catalogItem['gallons_per_hour'] as num?)?.toDouble() ?? 0,
+          gallonsPerHour: (catalogItem['fuel_gallons'] as num?)?.toDouble() ?? 0,
           gallonCost: (catalogItem['gallon_cost'] as num?)?.toDouble() ?? 5.25,
           deliveryCost: (catalogItem['delivery_cost'] as num?)?.toDouble() ?? 0,
         ));
