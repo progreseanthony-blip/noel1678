@@ -37,6 +37,9 @@ class EstimationCalculator {
         final factor = isSaturday ? 0.5 : 1.0;
         
         for (var res in resources) {
+          final type = res['machinery_type']?.toString() ?? 'hauling';
+          if (type == 'support') continue;
+
           final qty = (res['quantity'] as num?)?.toDouble() ?? 0;
           final trips = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
           final capacity = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0;
@@ -57,11 +60,19 @@ class EstimationCalculator {
             'production': productionToApply,
             'isSaturday': isSaturday,
             'resources': resources.map((res) {
+              final type = res['machinery_type']?.toString() ?? 'hauling';
               final trips = (res['trips_per_day'] as num?)?.toDouble() ?? 0.0;
               final qty = (res['quantity'] as num?)?.toDouble() ?? 0.0;
+              final capacity = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0.0;
+              
+              double dailyLoads = (trips * factor * qty);
+              if (type == 'support') dailyLoads = 0;
+
               return {
                 'name': res['machine_name'] ?? 'Machine',
-                'loads': (trips * factor * qty),
+                'type': type,
+                'loads': dailyLoads,
+                'production': dailyLoads * capacity,
               };
             }).toList(),
           });

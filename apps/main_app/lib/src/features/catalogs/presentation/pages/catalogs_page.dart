@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../widgets/labor_roles_tab.dart';
 import '../widgets/machinery_tab.dart';
 import '../widgets/services_tab.dart';
+import '../widgets/logistics_tab.dart';
 
 class CatalogsPage extends ConsumerStatefulWidget {
   const CatalogsPage({super.key});
@@ -22,7 +23,7 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -82,7 +83,7 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              'Manage your system base catalogs for roles, machinery, and services.',
+                              'Manage your system base catalogs for roles, machinery, logistics and services.',
                               style: GoogleFonts.manrope(
                                 fontSize: 14,
                                 color: AppTheme.slate500,
@@ -103,6 +104,7 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
                           children: const [
                             LaborRolesTab(),
                             MachineryTab(),
+                            LogisticsTab(),
                             ServicesTab(),
                           ],
                         ),
@@ -135,6 +137,7 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
         tabs: const [
           Tab(text: 'LABOR ROLES'),
           Tab(text: 'MACHINERY'),
+          Tab(text: 'INSTRUMENTS'),
           Tab(text: 'SERVICES'),
         ],
       ),
@@ -185,6 +188,7 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
                     children: const [
                       LaborRolesTab(),
                       MachineryTab(),
+                      LogisticsTab(),
                       ServicesTab(),
                     ],
                   ),

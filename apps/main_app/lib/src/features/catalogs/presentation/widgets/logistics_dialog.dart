@@ -8,23 +8,18 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
 
-class MachineryDialog extends ConsumerStatefulWidget {
-  final Map<String, dynamic>? machineryToEdit;
-  const MachineryDialog({super.key, this.machineryToEdit});
+class LogisticsDialog extends ConsumerStatefulWidget {
+  final Map<String, dynamic>? itemToEdit;
+  const LogisticsDialog({super.key, this.itemToEdit});
 
   @override
-  ConsumerState<MachineryDialog> createState() => _MachineryDialogState();
+  ConsumerState<LogisticsDialog> createState() => _LogisticsDialogState();
 }
 
-class _MachineryDialogState extends ConsumerState<MachineryDialog> {
+class _LogisticsDialogState extends ConsumerState<LogisticsDialog> {
   final _formKey = GlobalKey<FormState>();
   final _descriptionController = TextEditingController();
-  final _capacityController = TextEditingController(); // General capacity text
-  final _capacityYardsController = TextEditingController(); // Numeric for calculation
-  final _tripsController = TextEditingController(text: '60');
-  final _fuelController = TextEditingController();
-  final _appController = TextEditingController(); // For adding new apps
-  String _machineryType = 'hauling'; // hauling, production, support
+  final _appController = TextEditingController(); 
   
   Set<String> _selectedServiceIds = {};
   List<String> _applications = [];
@@ -43,16 +38,10 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
     super.initState();
     _fetchServices();
     _fetchGlobalApps();
-    if (widget.machineryToEdit != null) {
-      final m = widget.machineryToEdit!;
+    if (widget.itemToEdit != null) {
+      final m = widget.itemToEdit!;
       _descriptionController.text = m['description'] ?? '';
       _currentImageUrl = m['photo_url'];
-      _capacityController.text = m['capacity'] ?? '';
-      _capacityYardsController.text = m['capacity_yards']?.toString() ?? '';
-      _tripsController.text = m['trips_per_day']?.toString() ?? '60';
-      _fuelController.text = m['fuel_gallons']?.toString() ?? '';
-      
-      _machineryType = m['machinery_type'] ?? 'hauling';
       
       final ids = m['associated_service_ids'] as List?;
       if (ids != null) _selectedServiceIds = Set<String>.from(ids.map((id) => id.toString()));
@@ -77,7 +66,7 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
   Future<void> _fetchGlobalApps() async {
     setState(() => _isLoadingApps = true);
     try {
-      final apps = await ref.read(catalogsServiceProvider).getMachineryApplications();
+      final apps = await ref.read(catalogsServiceProvider).getLogisticsApplications();
       setState(() => _globalApplications = apps);
     } catch (e) {
       debugPrint('***** Error fetching applications: $e');
@@ -89,15 +78,11 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
   @override
   void dispose() {
     _descriptionController.dispose();
-    _capacityController.dispose();
-    _capacityYardsController.dispose();
-    _tripsController.dispose();
-    _fuelController.dispose();
     _appController.dispose();
     super.dispose();
   }
 
-  bool get _isEditing => widget.machineryToEdit != null;
+  bool get _isEditing => widget.itemToEdit != null;
 
   Future<void> _pickImage() async {
     try {
@@ -150,26 +135,17 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
     try {
       final imageUrl = await _uploadImage();
       
-      final capYards = double.tryParse(_capacityYardsController.text) ?? 0;
-      final trips = double.tryParse(_tripsController.text) ?? 0;
-      
       final data = {
         'description': _descriptionController.text.trim(),
         'photo_url': imageUrl,
-        'capacity': _capacityController.text.trim(),
-        'capacity_yards': capYards,
-        'trips_per_day': trips,
-        'fuel_gallons': double.tryParse(_fuelController.text) ?? 0,
-        'yards_per_day': capYards * trips,
-        'machinery_type': _machineryType,
         'associated_service_ids': _selectedServiceIds.toList(),
         'applications': _applications,
       };
       
       if (_isEditing) {
-        await ref.read(catalogsServiceProvider).updateMachinery(widget.machineryToEdit!['id'], data);
+        await ref.read(catalogsServiceProvider).updateLogisticsEquipment(widget.itemToEdit!['id'], data);
       } else {
-        await ref.read(catalogsServiceProvider).createMachinery(data);
+        await ref.read(catalogsServiceProvider).createLogisticsEquipment(data);
       }
       
       if (mounted) {
@@ -219,69 +195,10 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         _buildTextInput(
-                          label: 'Equipment Description',
-                          hint: 'e.g. Excavator 320D, JD 950 L',
-                          icon: Icons.precision_manufacturing_outlined,
+                          label: 'Equipment/Tool Description',
+                          hint: 'e.g. Laser Level, Total Station, Drone',
+                          icon: Icons.inventory_2_outlined,
                           controller: _descriptionController,
-                        ),
-                        const SizedBox(height: 24),
-                        _buildTypeSelector(),
-                        const SizedBox(height: 24),
-                        _buildTextInput(
-                          label: 'General Capacity (Text)',
-                          hint: 'e.g. 30 tons, Small Size',
-                          icon: Icons.fitness_center_outlined,
-                          controller: _capacityController,
-                          required: false,
-                        ),
-                        const SizedBox(height: 24),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildTextInput(
-                                label: 'Capacity (Yards)',
-                                hint: 'e.g. 1.5',
-                                icon: Icons.straighten_outlined,
-                                controller: _capacityYardsController,
-                                keyboardType: TextInputType.number,
-                                onChanged: (v) => setState(() {}),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: _buildTextInput(
-                                label: 'Trips per Day',
-                                hint: 'e.g. 60',
-                                icon: Icons.repeat_on_outlined,
-                                controller: _tripsController,
-                                keyboardType: TextInputType.number,
-                                onChanged: (v) => setState(() {}),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.05), borderRadius: BorderRadius.circular(8), border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.1))),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Text('Yards per Day (Production):', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.slate700)),
-                              Text(
-                                ((double.tryParse(_capacityYardsController.text) ?? 0) * (double.tryParse(_tripsController.text) ?? 0)).toStringAsFixed(1),
-                                style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        _buildTextInput(
-                          label: 'Fuel Gallons',
-                          hint: 'e.g. 25.5',
-                          icon: Icons.local_gas_station_outlined,
-                          controller: _fuelController,
-                          keyboardType: TextInputType.number,
                         ),
                         const SizedBox(height: 32),
                         _buildServiceSelector(),
@@ -295,49 +212,6 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
                 ),
               ),
               _buildFooter(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTypeSelector() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Equipment Classification', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            _typeCard('Hauling', Icons.local_shipping_outlined, 'hauling'),
-            const SizedBox(width: 12),
-            _typeCard('Production', Icons.precision_manufacturing_outlined, 'production'),
-            const SizedBox(width: 12),
-            _typeCard('Support', Icons.commute_outlined, 'support'),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _typeCard(String label, IconData icon, String type) {
-    bool isSelected = _machineryType == type;
-    return Expanded(
-      child: InkWell(
-        onTap: () => setState(() => _machineryType = type),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            color: isSelected ? AppTheme.primaryGreen.withOpacity(0.05) : Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: isSelected ? AppTheme.primaryGreen : AppTheme.slate200, width: isSelected ? 2 : 1),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: isSelected ? AppTheme.primaryGreen : AppTheme.slate400, size: 24),
-              const SizedBox(height: 8),
-              Text(label, style: GoogleFonts.manrope(fontSize: 12, fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600, color: isSelected ? AppTheme.primaryGreen : AppTheme.slate600)),
             ],
           ),
         ),
@@ -363,8 +237,8 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(_isEditing ? 'Edit Equipment' : 'Add Equipment', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
-                  Text('Registration of machinery and heavy equipment', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500)),
+                  Text(_isEditing ? 'Edit Logistics' : 'Add Logistics', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+                  Text('Registration of tools and logistics equipment', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500)),
                 ],
               ),
             ],
@@ -382,7 +256,6 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
     required TextEditingController controller, 
     TextInputType keyboardType = TextInputType.text,
     bool required = true,
-    ValueChanged<String>? onChanged,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -391,7 +264,6 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
-          onChanged: onChanged,
           style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
           decoration: InputDecoration(
             hintText: hint,
@@ -573,29 +445,16 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
   Future<void> _addNewApp() async {
     final val = _appController.text.trim();
     if (val.isEmpty) return;
-    
-    // Check if already in applications for THIS machine
-    if (_applications.contains(val)) {
-       _appController.clear();
-       return;
-    }
-
+    if (_applications.contains(val)) { _appController.clear(); return; }
     try {
-      // Check if already exists in GLOBAL
       final existing = _globalApplications.any((a) => a['name'].toString().toLowerCase() == val.toLowerCase());
       if (!existing) {
-        await ref.read(catalogsServiceProvider).createMachineryApplication(val);
-        await _fetchGlobalApps(); // Refresh global list
+        await ref.read(catalogsServiceProvider).createLogisticsApplication(val);
+        await _fetchGlobalApps();
       }
-      
-      setState(() {
-        _applications.add(val);
-        _appController.clear();
-      });
+      setState(() { _applications.add(val); _appController.clear(); });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error adding application: $e'), backgroundColor: AppTheme.errorRed));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error adding application: $e'), backgroundColor: AppTheme.errorRed));
     }
   }
 
@@ -603,40 +462,24 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
     final curName = app['name'] ?? '';
     final curId = app['id'].toString();
     final ctrl = TextEditingController(text: curName);
-    
     final newName = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Edit Application', style: GoogleFonts.manrope(fontWeight: FontWeight.bold)),
-        content: TextField(
-          controller: ctrl,
-          decoration: InputDecoration(hintText: 'Application name'),
-          autofocus: true,
-        ),
+        content: TextField(controller: ctrl, decoration: InputDecoration(hintText: 'Application name'), autofocus: true),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
-            child: const Text('Save'),
-          ),
+          ElevatedButton(onPressed: () => Navigator.pop(context, ctrl.text.trim()), child: const Text('Save')),
         ],
       ),
     );
-
     if (newName != null && newName.isNotEmpty && newName != curName) {
       try {
-        await ref.read(catalogsServiceProvider).updateMachineryApplication(curId, newName);
-        
-        // Sync the machine's selection if the old name was selected
-        if (_applications.remove(curName)) {
-           _applications.add(newName);
-        }
-        
+        await ref.read(catalogsServiceProvider).updateLogisticsApplication(curId, newName);
+        if (_applications.remove(curName)) _applications.add(newName);
         await _fetchGlobalApps();
       } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating: $e'), backgroundColor: AppTheme.errorRed));
-        }
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.errorRed));
       }
     }
   }
@@ -645,30 +488,21 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('Delete Application', style: GoogleFonts.manrope(fontWeight: FontWeight.bold)),
-        content: Text('Are you sure you want to delete "$name" globally? This will affect all machines.', style: GoogleFonts.manrope()),
+        title: Text('Delete Application'),
+        content: Text('Are you sure you want to delete "$name" globally?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('No')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
-            child: const Text('Yes, delete'),
-          ),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed), child: const Text('Yes')),
         ],
       ),
     );
-
     if (confirm == true) {
       try {
-        await ref.read(catalogsServiceProvider).deleteMachineryApplication(id);
-        setState(() {
-          _applications.remove(name);
-        });
+        await ref.read(catalogsServiceProvider).deleteLogisticsApplication(id);
+        setState(() { _applications.remove(name); });
         await _fetchGlobalApps();
       } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting: $e'), backgroundColor: AppTheme.errorRed));
-        }
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.errorRed));
       }
     }
   }
@@ -697,18 +531,7 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
                         child: Image.network(
                           _currentImageUrl!, 
                           fit: BoxFit.contain,
-                          errorBuilder: (c, e, s) => Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const Icon(Icons.broken_image_outlined, size: 40, color: AppTheme.slate400),
-                              const SizedBox(height: 8),
-                              Text('Image Failed to Load', style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 12)),
-                            ],
-                          ),
-                          loadingBuilder: (context, child, progress) {
-                            if (progress == null) return child;
-                            return const Center(child: CircularProgressIndicator());
-                          },
+                          errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.inventory_2_outlined, color: AppTheme.slate400, size: 40)),
                         ),
                       )
                     : Column(
@@ -717,21 +540,10 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
                           const Icon(Icons.add_a_photo_outlined, size: 40, color: AppTheme.slate400),
                           const SizedBox(height: 12),
                           Text('Upload Equipment Photo', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 13, fontWeight: FontWeight.w600)),
-                          Text('Supported: JPG, PNG', style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 11)),
                         ],
                       )),
           ),
         ),
-        if (_pickedFileBytes != null)
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: () => setState(() { _pickedFileBytes = null; _pickedFileName = null; }),
-              icon: const Icon(Icons.delete_sweep_outlined, size: 18),
-              label: Text('Remove selection', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700)),
-              style: TextButton.styleFrom(foregroundColor: AppTheme.errorRed),
-            ),
-          ),
       ],
     );
   }
@@ -743,23 +555,13 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: AppTheme.slate700)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: AppTheme.slate700))),
           const SizedBox(width: 16),
           ElevatedButton(
             onPressed: (_isSaving || _isUploading) ? null : _submit,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryGreen,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              elevation: 0,
-            ),
             child: (_isSaving || _isUploading)
                 ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Text(_isEditing ? 'Save Changes' : 'Add Equipment', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+                : Text(_isEditing ? 'Save Changes' : 'Add Logistics', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
           ),
         ],
       ),
