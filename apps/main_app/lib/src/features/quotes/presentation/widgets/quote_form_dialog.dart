@@ -997,12 +997,19 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                   setState(() {
                     m.machineName = val;
                     if (item != null) {
+                      // Pull fuel consumption from catalog
                       if (item['fuel_gallons'] != null) {
                         m.gallonsPerHour = (item['fuel_gallons'] as num).toDouble();
                       }
-                      if (item['monthly_rent'] != null) {
+                      // Pull monthly rent if it exists in catalog (field name sync)
+                      if (item['monthly_rent_cost'] != null) {
+                        m.monthlyRentCost = (item['monthly_rent_cost'] as num).toDouble();
+                      } else if (item['monthly_rent'] != null) {
                         m.monthlyRentCost = (item['monthly_rent'] as num).toDouble();
                       }
+                      
+                      // Default gasoline cost if not set
+                      if (m.gallonCost == 0) m.gallonCost = 5.25;
                     }
                   });
                 },
@@ -1497,7 +1504,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   }
 
   Widget _fieldCard(String label, double? value, double width, {String? initialText, Function(double)? onNum, Function(String)? onText, Key? key}) {
-    final val = onText != null ? initialText! : (value != null && value != 0 ? value.toString() : '');
+    final val = onText != null ? initialText! : (value != null ? value.toString() : '');
     return SizedBox(
       key: key,
       width: width,
