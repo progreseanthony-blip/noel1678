@@ -5,6 +5,7 @@ import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:intl/intl.dart';
 import 'schedule_calendar_view.dart';
+import 'machinery_selection_dialog.dart';
 
 class ServiceEstimationDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic> service;
@@ -47,12 +48,10 @@ class _ServiceEstimationDialogState
     _compactedCtrl.dispose();
     _swellFactorCtrl.dispose();
     for (final res in _selectedResources) {
-      if (res['qtyCtrl'] is TextEditingController) {
-        (res['qtyCtrl'] as TextEditingController).dispose();
-      }
-      if (res['tripsCtrl'] is TextEditingController) {
-        (res['tripsCtrl'] as TextEditingController).dispose();
-      }
+      if (res['qtyCtrl'] is TextEditingController) (res['qtyCtrl'] as TextEditingController).dispose();
+      if (res['tripsCtrl'] is TextEditingController) (res['tripsCtrl'] as TextEditingController).dispose();
+      if (res['capCtrl'] is TextEditingController) (res['capCtrl'] as TextEditingController).dispose();
+      if (res['perDayCtrl'] is TextEditingController) (res['perDayCtrl'] as TextEditingController).dispose();
     }
     super.dispose();
   }
@@ -78,8 +77,11 @@ class _ServiceEstimationDialogState
            _selectedResources = resList.map((r) => {
               ...Map<String, dynamic>.from(r),
               'photo_url': r['photo_url'] ?? _machineryCatalog.firstWhere((m) => m['id'] == r['machine_id'], orElse: () => {})['photo_url'],
+              'machinery_type': r['machinery_type'] ?? _machineryCatalog.firstWhere((m) => m['id'] == r['machine_id'], orElse: () => {})['machinery_type'] ?? 'hauling',
               'qtyCtrl': TextEditingController(text: r['quantity']?.toString() ?? '1'),
               'tripsCtrl': TextEditingController(text: r['trips_per_day']?.toString() ?? '60'),
+              'capCtrl': TextEditingController(text: r['capacity_per_trip']?.toString() ?? '1'),
+              'perDayCtrl': TextEditingController(text: ((r['trips_per_day'] as num? ?? 60) * (r['capacity_per_trip'] as num? ?? 1)).toStringAsFixed(0)),
            }).toList();
         }
       } else if (serviceId != null) {
@@ -100,8 +102,11 @@ class _ServiceEstimationDialogState
             'quantity': (r['quantity'] as num).toDouble(),
             'trips_per_day': (r['trips_per_day'] as num).toDouble(),
             'capacity_per_trip': (r['capacity_per_trip'] as num).toDouble(),
+            'machinery_type': r['machinery_type'] ?? r['machinery']?['machinery_type'] ?? 'hauling',
             'qtyCtrl': TextEditingController(text: r['quantity']?.toString() ?? '1'),
             'tripsCtrl': TextEditingController(text: r['trips_per_day']?.toString() ?? '60'),
+            'capCtrl': TextEditingController(text: r['capacity_per_trip']?.toString() ?? '30'),
+            'perDayCtrl': TextEditingController(text: ((r['trips_per_day'] as num? ?? 60) * (r['capacity_per_trip'] as num? ?? 30)).toStringAsFixed(0)),
           }).toList();
         } else {
            // New estimation but DB service
@@ -126,16 +131,21 @@ class _ServiceEstimationDialogState
   void _addResource(Map<String, dynamic> machine) {
     setState(() {
       final qty = 1.0;
-      final trips = (machine['default_trips_per_day'] as num?)?.toDouble() ?? 60.0;
+      final trips = (machine['trips_per_day'] as num?)?.toDouble() ?? 60.0;
+      final capacity = (machine['capacity_yards'] as num?)?.toDouble() ?? 30.0;
+      
       _selectedResources.add({
         'machine_id': machine['id'],
         'machine_name': machine['description'],
         'photo_url': machine['photo_url'],
         'quantity': qty,
         'trips_per_day': trips,
-        'capacity_per_trip': (num.tryParse(machine['capacity']?.toString() ?? '30'))?.toDouble() ?? 30.0,
+        'capacity_per_trip': capacity,
+        'machinery_type': machine['machinery_type'] ?? 'hauling',
         'qtyCtrl': TextEditingController(text: qty.toString()),
         'tripsCtrl': TextEditingController(text: trips.toString()),
+        'capCtrl': TextEditingController(text: capacity.toString()),
+        'perDayCtrl': TextEditingController(text: (trips * capacity).toStringAsFixed(0)),
       });
       _runCalculation();
     });
@@ -154,6 +164,7 @@ class _ServiceEstimationDialogState
         'trips_per_day': r['trips_per_day'],
         'capacity_per_trip': r['capacity_per_trip'],
         'machine_name': r['machine_name'],
+        'machinery_type': r['machinery_type'],
       }).toList(),
     );
 
@@ -180,7 +191,7 @@ class _ServiceEstimationDialogState
           'end_date': _calculationResult?['endDate'],
           'resources': _selectedResources.map((r) => {
              ...r,
-             'qtyCtrl': null, 'tripsCtrl': null // Strip controllers for storage
+             'qtyCtrl': null, 'tripsCtrl': null, 'capCtrl': null, 'perDayCtrl': null // Strip controllers for storage
           }).toList(),
           'topsoil_volume': topVal,
           'compacted_volume': compVal,
@@ -234,7 +245,7 @@ class _ServiceEstimationDialogState
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       child: Container(
-        width: 1400, // Widened for 3 columns
+        width: 1600, // Widened for 3 columns and calendar
         height: 850,
         decoration: BoxDecoration(
           color: AppTheme.backgroundLight,
@@ -570,7 +581,15 @@ class _ServiceEstimationDialogState
                     );
                  }),
               ],
-              Expanded(child: Text(res['machine_name'], style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A)))),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(res['machine_name'], style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A))),
+                    _typeBadge(res['machinery_type'] ?? 'hauling'),
+                  ],
+                ),
+              ),
               IconButton(
                 onPressed: () => setState(() { _selectedResources.removeAt(index); _runCalculation(); }),
                 icon: const Icon(Icons.remove_circle_outline, color: AppTheme.errorRed, size: 18),
@@ -582,15 +601,49 @@ class _ServiceEstimationDialogState
           const SizedBox(height: 8),
           Row(
             children: [
-              _miniInput('Qty', (val) {
+               _miniInput('QTY', (val) {
                 res['quantity'] = double.tryParse(val) ?? 1.0;
-                _runCalculation();
+                 _runCalculation();
               }, res['qtyCtrl']),
-              const SizedBox(width: 8),
-              _miniInput('Trips/D', (val) {
-                res['trips_per_day'] = double.tryParse(val) ?? 60.0;
-                _runCalculation();
-              }, res['tripsCtrl']),
+              if (res['machinery_type'] == 'hauling') ...[
+                const SizedBox(width: 8),
+                _miniInput('TRIPS/D', (val) {
+                  final tripsVal = double.tryParse(val) ?? 60.0;
+                  res['trips_per_day'] = tripsVal;
+                  final capVal = double.tryParse((res['capCtrl'] as TextEditingController).text) ?? 0;
+                  (res['perDayCtrl'] as TextEditingController).text = (tripsVal * capVal).toStringAsFixed(0);
+                  _runCalculation();
+                }, res['tripsCtrl']),
+                const SizedBox(width: 8),
+                _miniInput('CAP (CY)', (val) {
+                  final capVal = double.tryParse(val) ?? 30.0;
+                  res['capacity_per_trip'] = capVal;
+                  final tripsVal = double.tryParse((res['tripsCtrl'] as TextEditingController).text) ?? 0;
+                  (res['perDayCtrl'] as TextEditingController).text = (tripsVal * capVal).toStringAsFixed(0);
+                  _runCalculation();
+                }, res['capCtrl']),
+              ],
+              if (res['machinery_type'] != 'support') ...[
+                 const SizedBox(width: 8),
+                 _miniInput(res['machinery_type'] == 'production' ? 'CY/DAY' : 'CY/D (UNIT)', (val) {
+                    // Update capacity_per_trip effectively so (trips * cap) = total
+                    final totalVal = double.tryParse(val) ?? 0;
+                    if (res['machinery_type'] == 'production') {
+                      res['trips_per_day'] = 1.0; // Fixed at 1 trip
+                      res['capacity_per_trip'] = totalVal;
+                      (res['tripsCtrl'] as TextEditingController).text = '1';
+                      (res['capCtrl'] as TextEditingController).text = totalVal.toStringAsFixed(2);
+                    } else {
+                      final tripsVal = double.tryParse((res['tripsCtrl'] as TextEditingController).text) ?? 60.0;
+                      if (tripsVal > 0) {
+                        final newCap = totalVal / tripsVal;
+                        res['capacity_per_trip'] = newCap;
+                        (res['capCtrl'] as TextEditingController).text = newCap.toStringAsFixed(2);
+                      }
+                    }
+                    _runCalculation();
+                 }, res['perDayCtrl']),
+              ],
             ],
           ),
         ],
@@ -627,28 +680,20 @@ class _ServiceEstimationDialogState
   }
 
   Widget _addResourceButton() {
-    return PopupMenuButton<Map<String, dynamic>>(
-      onSelected: _addResource,
-      itemBuilder: (context) => _machineryCatalog.map((m) {
-        final photoUrl = m['photo_url'] as String?;
-        return PopupMenuItem(
-          value: m,
-          child: Row(
-            children: [
-              Container(
-                width: 35, height: 35,
-                decoration: BoxDecoration(borderRadius: BorderRadius.circular(4), color: AppTheme.slate50, border: Border.all(color: AppTheme.slate200)),
-                clipBehavior: Clip.antiAlias,
-                child: (photoUrl != null && photoUrl.isNotEmpty)
-                  ? Image.network(photoUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.settings, size: 16, color: AppTheme.slate400))
-                  : const Icon(Icons.settings, size: 16, color: AppTheme.slate400),
-              ),
-              const SizedBox(width: 12),
-              Expanded(child: Text(m['description'], style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700))),
-            ],
+    return InkWell(
+      onTap: () async {
+        final result = await showDialog<List<Map<String, dynamic>>>(
+          context: context,
+          builder: (context) => MachinerySelectionDialog(
+            serviceId: widget.service['id']?.toString() ?? widget.service['catalog_service_id']?.toString() ?? '',
           ),
         );
-      }).toList(),
+        if (result != null) {
+          for (final m in result) {
+            _addResource(m);
+          }
+        }
+      },
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(
@@ -690,6 +735,36 @@ class _ServiceEstimationDialogState
           _footerButton('Cancel', Colors.white, AppTheme.slate500, () => Navigator.pop(context), border: true),
           const SizedBox(width: 12),
           _footerButton(_isSaving ? 'Saving...' : 'Save Estimation', AppTheme.primaryGreen, Colors.white, _save),
+        ],
+      ),
+    );
+  }
+
+  Widget _typeBadge(String type) {
+    Color color = AppTheme.primaryGreen;
+    String label = 'HAULING';
+    IconData icon = Icons.local_shipping_outlined;
+
+    if (type == 'production') {
+      color = Colors.blue;
+      label = 'PRODUCTION';
+      icon = Icons.precision_manufacturing_outlined;
+    } else if (type == 'support') {
+      color = AppTheme.slate500;
+      label = 'SUPPORT';
+      icon = Icons.commute_outlined;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: color),
+          const SizedBox(width: 4),
+          Text(label, style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: color)),
         ],
       ),
     );

@@ -73,6 +73,7 @@ class ServiceEntry {
   List<LaborEntry> labors;
 
   Map<String, dynamic>? estimationData;
+  String? catalogId;
 
   ServiceEntry({
     this.name = '',
@@ -83,6 +84,7 @@ class ServiceEntry {
     List<MachineryEntry>? machineries,
     List<LaborEntry>? labors,
     this.estimationData,
+    this.catalogId,
   })  : machineries = machineries ?? [],
         labors = labors ?? [];
 
@@ -318,7 +320,16 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           machineries: machineries,
           labors: labors,
           estimationData: estimationData,
+          catalogId: svcData['service_id']?.toString(), // Map it if it exists in DB, otherwise we match by name below
         ));
+      }
+
+      // Fallback: If catalogId is null (e.g. old data), try to match by name
+      for (final s in loadedServices) {
+        if (s.catalogId == null) {
+          final cat = _catalogServices.firstWhere((c) => c['description'] == s.name, orElse: () => {});
+          if (cat.isNotEmpty) s.catalogId = cat['id']?.toString();
+        }
       }
 
       setState(() {
@@ -684,23 +695,73 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     );
   }
 
-  Widget _buildServiceChip(int index, ServiceEntry svc) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: _activeServiceIndex == index ? AppTheme.primaryGreen.withOpacity(0.08) : Colors.white,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: _activeServiceIndex == index ? AppTheme.primaryGreen : const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _activeServiceIndex = index),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+  Widget _buildServiceChip(int serviceIndex, ServiceEntry svc) {
+    final bool isSelected = _activeServiceIndex == serviceIndex;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: Listener(
+        onPointerDown: (_) {
+          // Absolute capture of the touch event before it reaches children
+          if (_activeServiceIndex != serviceIndex) {
+            FocusScope.of(context).unfocus();
+            setState(() => _activeServiceIndex = serviceIndex);
+            print('Raw selection triggered for: $serviceIndex');
+          }
+        },
+        behavior: HitTestBehavior.opaque,
+        child: GestureDetector(
+          onDoubleTap: () {
+            setState(() {
+              _activeServiceIndex = serviceIndex;
+              _currentStep = 1;
+            });
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            decoration: BoxDecoration(
+              color: isSelected ? AppTheme.primaryGreen.withOpacity(0.12) : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isSelected ? AppTheme.primaryGreen : const Color(0xFFE2E8F0),
+                width: isSelected ? 2.5 : 1,
+              ),
+              boxShadow: isSelected ? [
+                BoxShadow(
+                  color: AppTheme.primaryGreen.withOpacity(0.2),
+                  blurRadius: 15,
+                  spreadRadius: 1,
+                  offset: const Offset(0, 4),
+                )
+              ] : [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.04),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+          child: Row(
+            children: [
+              // Selection Indicator
+              Container(
+                margin: const EdgeInsets.only(right: 16),
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isSelected ? AppTheme.primaryGreen : AppTheme.slate200,
+                    width: isSelected ? 6 : 2,
+                  ),
+                  color: isSelected ? Colors.white : Colors.transparent,
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                   Wrap(
                     spacing: 12,
                     runSpacing: 12,
@@ -708,36 +769,46 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                     children: [
                       SizedBox(
                         width: 200,
-                        child: _SearchableCatalogDropdown(
-                          label: 'Service name',
-                          items: _catalogServices,
-                          excludeItems: _services.map((s) => s.name).where((n) => n != svc.name).toList(),
-                          initialValue: svc.name,
-                          onSelected: (val, item) {
-                            setState(() {
-                              svc.name = val;
-                              if (item != null && item['unit'] != null) {
-                                svc.unitOfMeasure = item['unit'];
-                              }
-                            });
-                          },
-                          onAddNew: () => _openServiceCatalogAdd(index),
+                        child: GestureDetector(
+                          onTapDown: (_) => setState(() => _activeServiceIndex = serviceIndex),
+                          child: _SearchableCatalogDropdown(
+                            label: 'Service name',
+                            items: _catalogServices,
+                            excludeItems: _services.map((s) => s.name).where((n) => n != svc.name).toList(),
+                            initialValue: svc.name,
+                            onSelected: (val, item) {
+                              setState(() {
+                                _activeServiceIndex = serviceIndex; // Auto-select on interact
+                                svc.name = val;
+                                if (item != null) {
+                                  svc.catalogId = item['id']?.toString();
+                                  if (item['unit'] != null) {
+                                    svc.unitOfMeasure = item['unit'];
+                                  }
+                                }
+                              });
+                            },
+                            onAddNew: () => _openServiceCatalogAdd(serviceIndex),
+                          ),
                         ),
                       ),
-                      _miniField('Unit', svc.unitOfMeasure, 60, (v) => setState(() => svc.unitOfMeasure = v), key: ValueKey('unit_${index}_${svc.name}')),
-                      _miniNumField('Qty', svc.quantity, 85, (v) => setState(() => svc.quantity = v)),
-                      _miniNumField('OH%', svc.overheadPercentage, 55, (v) => setState(() => svc.overheadPercentage = v)),
-                      _miniNumField('Profit%', svc.profitPercentage, 60, (v) => setState(() => svc.profitPercentage = v)),
+                      _miniField('Unit', svc.unitOfMeasure, 60, (v) => setState(() { _activeServiceIndex = serviceIndex; svc.unitOfMeasure = v; }), key: ValueKey('unit_${serviceIndex}_${svc.name}'), onTap: () => setState(() => _activeServiceIndex = serviceIndex)),
+                      _miniNumField('Qty', svc.quantity, 85, (v) => setState(() { _activeServiceIndex = serviceIndex; svc.quantity = v; }), onTap: () => setState(() => _activeServiceIndex = serviceIndex)),
+                      _miniNumField('OH%', svc.overheadPercentage, 55, (v) => setState(() { _activeServiceIndex = serviceIndex; svc.overheadPercentage = v; }), onTap: () => setState(() => _activeServiceIndex = serviceIndex)),
+                      _miniNumField('Profit%', svc.profitPercentage, 60, (v) => setState(() { _activeServiceIndex = serviceIndex; svc.profitPercentage = v; }), onTap: () => setState(() => _activeServiceIndex = serviceIndex)),
                       // Estimation Button
                       MouseRegion(
                         cursor: SystemMouseCursors.click,
                         child: GestureDetector(
+                          onDoubleTap: () {}, // Prevent bubbling
+                          onTapDown: (_) => setState(() => _activeServiceIndex = serviceIndex),
                           onTap: () async {
                             final result = await showDialog(
                               context: context,
                               builder: (_) => ServiceEstimationDialog(
                                 service: {
                                   'id': null, // New service in wizard
+                                  'catalog_service_id': svc.catalogId,
                                   'name': svc.name,
                                   'quantity': svc.quantity,
                                   'estimationData': svc.estimationData,
@@ -777,26 +848,29 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 ],
               ),
             ),
-          ),
-          if (_services.length > 1) ...[
+            if (_services.length > 1) ...[
             const SizedBox(width: 8),
             MouseRegion(
               cursor: SystemMouseCursors.click,
               child: GestureDetector(
+                onDoubleTap: () {}, // Prevent parent navigation bubbling
                 onTap: () {
                   setState(() {
-                    _services.removeAt(index);
+                    _services.removeAt(serviceIndex);
                     if (_activeServiceIndex >= _services.length) _activeServiceIndex = _services.length - 1;
                   });
                 },
                 child: const Icon(Icons.delete_outline, color: AppTheme.slate400, size: 18),
               ),
             ),
-          ],
-        ],
+            ],
+            ],
+          ),
+        ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   // ══════════════════════════════════════════════════════════════
   //  STEP 1: MACHINERY
@@ -922,6 +996,14 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 onSelected: (val, item) {
                   setState(() {
                     m.machineName = val;
+                    if (item != null) {
+                      if (item['fuel_gallons'] != null) {
+                        m.gallonsPerHour = (item['fuel_gallons'] as num).toDouble();
+                      }
+                      if (item['monthly_rent'] != null) {
+                        m.monthlyRentCost = (item['monthly_rent'] as num).toDouble();
+                      }
+                    }
                   });
                 },
                 onAddNew: () => _openMachineryCatalogAdd(svc, index),
@@ -1438,7 +1520,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     );
   }
 
-  Widget _miniField(String label, String value, double width, Function(String) onChange, {Key? key}) {
+  Widget _miniField(String label, String value, double width, Function(String) onChange, {Key? key, VoidCallback? onTap}) {
     return SizedBox(
       key: key,
       width: width,
@@ -1453,6 +1535,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate900),
               decoration: InputDecoration(isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFFE2E8F0)))),
               onChanged: onChange,
+              onTap: onTap,
             ),
           ),
         ],
@@ -1460,7 +1543,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     );
   }
 
-  Widget _miniNumField(String label, double value, double width, Function(double) onChange, {Key? key}) {
+  Widget _miniNumField(String label, double value, double width, Function(double) onChange, {Key? key, VoidCallback? onTap}) {
     return SizedBox(
       key: key,
       width: width,
@@ -1477,6 +1560,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate900),
               decoration: InputDecoration(isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFFE2E8F0)))),
               onChanged: (v) => onChange(double.tryParse(v) ?? 0),
+              onTap: onTap,
             ),
           ),
         ],

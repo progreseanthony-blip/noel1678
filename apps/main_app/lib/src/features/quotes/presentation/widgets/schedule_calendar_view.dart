@@ -209,8 +209,8 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
                       scrollbarTheme: ScrollbarThemeData(
                         thumbColor: WidgetStateProperty.all(const Color(0xFF11D411)),
                         trackColor: WidgetStateProperty.all(Colors.grey[200]),
-                        thickness: WidgetStateProperty.all(18),
-                        radius: const Radius.circular(9),
+                        thickness: WidgetStateProperty.all(14),
+                        radius: const Radius.circular(7),
                         thumbVisibility: WidgetStateProperty.all(true),
                         trackVisibility: WidgetStateProperty.all(true),
                         interactive: true,
@@ -224,7 +224,7 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
                         controller: controller,
                         scrollDirection: Axis.horizontal,
                         child: Padding(
-                          padding: const EdgeInsets.only(bottom: 0), // Removed 28px bottom space
+                          padding: const EdgeInsets.only(bottom: 14), // Added space for scrollbar to not overlap row
                           child: _buildDataTable(days, context),
                         ),
                       ),
@@ -241,24 +241,20 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
 
   Widget _buildFixedResourceColumn(List<Map<String, dynamic>> days, double theoNormal, double theoSat) {
     return Container(
-      width: 170, // Slightly wider
+      width: 170, // Fixed Width
       decoration: BoxDecoration(
         color: Colors.white,
         border: Border(right: BorderSide(color: AppTheme.slate200, width: 1.5)),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            offset: const Offset(2, 0),
-          ),
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(2, 0)),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          // Header Row Match
           Container(
-            height: 40,
+            height: 60, // Match DataTable headingRowHeight
             padding: const EdgeInsets.only(left: 16),
             alignment: Alignment.centerLeft,
             color: const Color(0xFFF8FAFC),
@@ -272,71 +268,124 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
               )
             ),
           ),
-          // Resource Rows
-          ...widget.resources.map((res) {
-            final name = res['machine_name'] ?? '';
-            final String? photoUrl = res['photo_url'];
+          // Grouping Resources by Type
+          ..._buildGroupedRows(widget.resources, days),
+          // Grand Total Row
+          _buildTotalTripsSeparator(),
+          const Divider(height: 1, color: Color(0xFFE2E8F0)),
+          const SizedBox(height: 14), // Match horizontal scrollbar thickness
+        ],
+      ),
+    );
+  }
 
-            return Container(
-              height: 40,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              alignment: Alignment.centerLeft,
-              decoration: const BoxDecoration(
-                border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 32, height: 24,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(4),
-                      color: AppTheme.slate50,
-                      border: Border.all(color: AppTheme.slate200),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: (photoUrl != null && photoUrl.isNotEmpty)
-                      ? Image.network(
-                          photoUrl, 
-                          fit: BoxFit.cover, 
-                          errorBuilder: (c, e, s) => const Center(child: Icon(Icons.precision_manufacturing, size: 14, color: AppTheme.slate400)),
-                        )
-                      : const Center(child: Icon(Icons.precision_manufacturing, size: 14, color: AppTheme.slate400)),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      name, 
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.manrope(
-                        fontSize: 11, 
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.slate700, 
-                      )
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }),
-          // Total Trips Row
+  List<Widget> _buildGroupedRows(List<Map<String, dynamic>> resources, List<Map<String, dynamic>> days) {
+    final groups = {
+      'hauling': resources.where((r) => (r['machinery_type'] ?? 'hauling') == 'hauling').toList(),
+      'production': resources.where((r) => (r['machinery_type'] ?? 'hauling') == 'production').toList(),
+      'support': resources.where((r) => (r['machinery_type'] ?? 'hauling') == 'support').toList(),
+    };
+
+    final labels = {
+      'hauling': 'HAULING EQUIP. (TRASLADO)',
+      'production': 'PRODUCTION EQUIP. (EMPUJE)',
+      'support': 'SUPPORT EQUIP. (APOYO)',
+    };
+
+    final colors = {
+      'hauling': AppTheme.primaryGreen.withOpacity(0.12),
+      'production': Colors.blue.withOpacity(0.12),
+      'support': AppTheme.slate200,
+    };
+
+    final List<Widget> items = [];
+
+    groups.forEach((key, list) {
+      if (list.isNotEmpty) {
+        // Section Header Strip
+        items.add(Container(
+          height: 26, // Fixed height
+          width: double.infinity,
+          color: colors[key],
+          padding: const EdgeInsets.only(left: 12),
+          alignment: Alignment.centerLeft,
+          child: Text(
+            labels[key]!,
+            style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w900, color: AppTheme.slate700, letterSpacing: 0.5),
+          ),
+        ));
+
+        // Rows for this group
+        for (var res in list) {
+          items.add(_buildResourceRow(res));
+        }
+
+        // Subtotal fixed row
+        items.add(Container(
+          height: 56, // Fixed height for subtotal
+          padding: const EdgeInsets.only(left: 24),
+          alignment: Alignment.centerLeft,
+          decoration: const BoxDecoration(
+            color: Color(0xFFF8FAFC),
+            border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+          ),
+          child: Text(
+            'SUBTOTAL ${key.toUpperCase()}', 
+            style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w900, color: AppTheme.slate500),
+          ),
+        ));
+      }
+    });
+
+    return items;
+  }
+
+  Widget _buildResourceRow(Map<String, dynamic> res) {
+    final name = res['machine_name'] ?? '';
+    final String? photoUrl = res['photo_url'];
+    final qty = (res['quantity'] as num?)?.toDouble() ?? 1;
+
+    return Container(
+      height: 44, // Fixed height for consistency
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      alignment: Alignment.centerLeft,
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+      ),
+      child: Row(
+        children: [
           Container(
-            height: 40,
-            color: const Color(0xFFF8FAFC),
-            padding: const EdgeInsets.only(left: 16),
-            alignment: Alignment.centerLeft,
+            width: 32, height: 24,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(4), color: AppTheme.slate50, border: Border.all(color: AppTheme.slate200),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: (photoUrl != null && photoUrl.isNotEmpty) ? Image.network(
+                  photoUrl, fit: BoxFit.cover, errorBuilder: (c, e, s) => const Icon(Icons.precision_manufacturing, size: 14, color: AppTheme.slate400),
+                ) : const Icon(Icons.precision_manufacturing, size: 14, color: AppTheme.slate400),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
             child: Text(
-              'TOTAL TRIPS', 
-              style: GoogleFonts.manrope(
-                fontSize: 10, 
-                fontWeight: FontWeight.w800, 
-                color: AppTheme.slate500
-              )
+              '$name (x${qty.toInt()})', 
+              maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.slate700),
             ),
           ),
-          const Divider(height: 1, color: Color(0xFFE2E8F0)),
-          const SizedBox(height: 18), // Match scrollbar thickness
         ],
+      ),
+    );
+  }
+
+  Widget _buildTotalTripsSeparator() {
+    return Container(
+      height: 60, // Match Grand Total height
+      color: const Color(0xFFF8FAFC),
+      padding: const EdgeInsets.only(left: 16),
+      alignment: Alignment.centerLeft,
+      child: Text(
+        'TOTAL PERIOD', 
+        style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500)
       ),
     );
   }
@@ -344,133 +393,204 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
   Widget _buildDataTable(List<Map<String, dynamic>> days, BuildContext context) {
     // 1. Build Columns
     final List<DataColumn> cols = [];
-    for (var day in days) {
-      final date = day['date'] as DateTime;
-      final isSun = day['isSunday'] == true;
-      final isSat = day['isSaturday'] == true;
-      cols.add(DataColumn(
-        label: Container(
-          width: 40,
-          alignment: Alignment.center,
-          color: (isSun || isSat) ? const Color(0xFFF1F5F9) : null,
-          child: Text(
-            DateFormat('dd').format(date),
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: isSat ? FontWeight.bold : FontWeight.normal,
-              color: isSun ? Colors.red[300] : Colors.black,
+    final List<Widget> columnWidgets = [];
+    
+    // 1. Header Row
+    columnWidgets.add(Row(
+      children: [
+        ...days.map((day) {
+          final date = day['date'] as DateTime;
+          final isSun = day['isSunday'] == true;
+          final isSat = day['isSaturday'] == true;
+          return Container(
+            width: 40, height: 60,
+            alignment: Alignment.center,
+            color: (isSun || isSat) ? const Color(0xFFF1F5F9) : const Color(0xFFF8FAFC),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(DateFormat('E').format(date).substring(0, 1).toUpperCase(), style: TextStyle(fontSize: 9, color: isSun ? Colors.red[300] : AppTheme.slate400, fontWeight: FontWeight.bold)),
+                Text(DateFormat('dd').format(date), style: TextStyle(fontSize: 10, fontWeight: isSat ? FontWeight.bold : FontWeight.w700, color: isSun ? Colors.red[300] : Colors.black)),
+              ],
             ),
-          ),
-        ),
-      ));
-    }
-    cols.add(const DataColumn(
-      label: SizedBox(
-        width: 70,
-        child: Center(
-          child: Text('TOTAL', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-        ),
-      ),
+          );
+        }),
+        Container(width: 70, height: 60, alignment: Alignment.center, color: const Color(0xFFF8FAFC), child: const Text('TOTAL', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold))),
+      ],
     ));
 
-    // 2. Build Rows
-    final List<DataRow> tableRows = [];
+    // Categorize
+    final categories = {
+      'hauling': widget.resources.where((r) => (r['machinery_type'] ?? 'hauling') == 'hauling').toList(),
+      'production': widget.resources.where((r) => (r['machinery_type'] ?? 'hauling') == 'production').toList(),
+      'support': widget.resources.where((r) => (r['machinery_type'] ?? 'hauling') == 'support').toList(),
+    };
 
-    // Resource rows
-    for (var res in widget.resources) {
-      final qty = (res['quantity'] as num?)?.toDouble() ?? 1;
-      final trips = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
-      double rowTotal = 0;
-      
-      final List<DataCell> cells = [];
-      for (var day in days) {
-        final isSun = day['isSunday'] == true;
-        final isSat = day['isSaturday'] == true;
-        final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
-        final val = trips * qty * f;
-        rowTotal += val;
-        
-        cells.add(DataCell(
-          Container(
-            width: 40,
-            alignment: Alignment.center,
-            color: (isSun || isSat) ? const Color(0xFFF8FAFC) : null,
-            child: Text(
-              val > 0 ? val.toStringAsFixed(0) : '-',
-              style: TextStyle(fontSize: 10, color: isSun ? Colors.grey[300] : Colors.black),
-            ),
+    categories.forEach((key, list) {
+      if (list.isNotEmpty) {
+        // Strip Row
+        columnWidgets.add(Container(
+          height: 26, // Category strip height (reduced)
+          width: (days.length * 40.0) + 70.0,
+          decoration: BoxDecoration(
+            color: key == 'hauling' ? AppTheme.primaryGreen.withOpacity(0.08) :
+                   key == 'production' ? Colors.blue.withOpacity(0.08) : AppTheme.slate50,
           ),
         ));
-      }
-      
-      // Total cell for the resource
-      cells.add(DataCell(
-        Center(
-          child: Text(
-            rowTotal.toStringAsFixed(0),
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF11D411)),
-          ),
-        ),
-      ));
-      
-      tableRows.add(DataRow(cells: cells));
-    }
 
-    // Total Trips Row
-    final List<DataCell> totalTripsCells = [];
-    for (var day in days) {
-      final isSun = day['isSunday'] == true;
-      final isSat = day['isSaturday'] == true;
-      final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
-      double dailyTotalTrips = 0;
-      for (var res in widget.resources) {
-        final qty = (res['quantity'] as num?)?.toDouble() ?? 1;
-        final trips = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
-        dailyTotalTrips += trips * qty * f;
+        // Data Rows
+        for (var res in list) {
+          final qty = (res['quantity'] as num?)?.toDouble() ?? 1;
+          final trips = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
+          final cap = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+          double rowTotal = 0;
+          
+          columnWidgets.add(Row(
+            children: [
+              ...days.map((day) {
+                final isSun = day['isSunday'] == true;
+                final isSat = day['isSaturday'] == true;
+                final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
+                
+                // If Production/Support, show CY instead of Trips
+                final val = key == 'hauling' ? (trips * qty * f) : (trips * qty * cap * f);
+                
+                rowTotal += val;
+                return Container(
+                  width: 40, height: 44, // Match Resource Row height
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: (isSun || isSat) ? const Color(0xFFF8FAFC) : null,
+                    border: const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+                  ),
+                  child: Text(val > 0 ? NumberFormat.compact().format(val) : '-', style: TextStyle(fontSize: 10, color: isSun ? Colors.grey[300] : Colors.black)),
+                );
+              }),
+              Container(
+                width: 70, height: 44, alignment: Alignment.center,
+                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
+                child: Text(NumberFormat.compact().format(rowTotal), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: key == 'hauling' ? AppTheme.primaryGreen : (key == 'production' ? Colors.blue : AppTheme.slate500))),
+              ),
+            ],
+          ));
+        }
+
+        // Subtotal Row
+        double catTotalCY = 0;
+        double catTotalTrips = 0;
+        columnWidgets.add(Row(
+          children: [
+            ...days.map((day) {
+              final isSun = day['isSunday'] == true;
+              final isSat = day['isSaturday'] == true;
+              final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
+              double dayCY = 0;
+              double dayTrips = 0;
+              for (var res in list) {
+                final q = (res['quantity'] as num?)?.toDouble() ?? 1;
+                final t = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
+                final c = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+                dayTrips += (t * q * f);
+                dayCY += (t * q * c * f);
+              }
+              catTotalCY += dayCY;
+              catTotalTrips += dayTrips;
+              return Container(
+                width: 40, height: 56, // Match Subtotal height
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: Colors.grey[50], 
+                  border: const Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (key == 'hauling') ...[
+                      Text(dayTrips > 0 ? dayTrips.toStringAsFixed(0) : '-', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
+                      Text(dayCY > 0 ? NumberFormat.compact().format(dayCY) : '-', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen)),
+                    ] else if (key == 'production') ...[
+                      Text(dayCY > 0 ? NumberFormat.compact().format(dayCY) : '-', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.blue)),
+                    ] else ...[const Text('-', style: TextStyle(fontSize: 9))],
+                  ],
+                ),
+              );
+            }),
+            Container(
+              width: 70, height: 56, alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: Colors.grey[50],
+                border: const Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (key == 'hauling') ...[
+                    Text(catTotalTrips.toStringAsFixed(0), style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
+                    Text(NumberFormat.compact().format(catTotalCY), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppTheme.primaryGreen)),
+                  ] else ...[
+                    Text(catTotalCY > 0 ? NumberFormat.compact().format(catTotalCY) : '-', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: key == 'production' ? Colors.blue : AppTheme.slate500)),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ));
       }
-      totalTripsCells.add(DataCell(
+    });
+
+    // Grand Total Row
+    double totalTrips = 0;
+    double totalCY = 0;
+    columnWidgets.add(Row(
+      children: [
+        ...days.map((day) {
+          final isSun = day['isSunday'] == true;
+          final isSat = day['isSaturday'] == true;
+          final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
+          double dCY = 0;
+          double dTrips = 0;
+          for (var res in widget.resources) {
+            final q = (res['quantity'] as num?)?.toDouble() ?? 1;
+            final t = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
+            final c = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+            dTrips += (t * q * f);
+            dCY += (t * q * c * f);
+          }
+          totalTrips += dTrips;
+          totalCY += dCY;
+          return Container(
+            width: 40, height: 60, // Grand Total row height
+            alignment: Alignment.center,
+            color: Colors.grey[100],
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(dTrips > 0 ? dTrips.toStringAsFixed(0) : '-', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppTheme.slate500)),
+                Text(dCY > 0 ? NumberFormat.compact().format(dCY) : '-', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.slate900)),
+              ],
+            ),
+          );
+        }),
         Container(
-          width: 40,
-          alignment: Alignment.center,
-          color: (isSun || isSat) ? const Color(0xFFF1F5F9) : null,
-          child: Text(
-            dailyTotalTrips > 0 ? dailyTotalTrips.toStringAsFixed(0) : '-',
-            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+          width: 70, height: 60, alignment: Alignment.center,
+          color: Colors.grey[100],
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(totalTrips.toStringAsFixed(0), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
+              Text(NumberFormat.compact().format(totalCY), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppTheme.slate900)),
+            ],
           ),
         ),
-      ));
-    }
-
-    // Grand total trips
-    double grandTotalTrips = 0;
-    for (var d in days) {
-      final f = d['isSunday'] == true ? 0.0 : (d['isSaturday'] == true ? 0.5 : 1.0);
-      for (var res in widget.resources) {
-        grandTotalTrips += ((res['trips_per_day'] as num?)?.toDouble() ?? 0) * ((res['quantity'] as num?)?.toDouble() ?? 1) * f;
-      }
-    }
-    totalTripsCells.add(DataCell(
-      Center(
-        child: Text(
-          grandTotalTrips.toStringAsFixed(0),
-          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
-        ),
-      ),
+      ],
     ));
 
-    tableRows.add(DataRow(
-      color: WidgetStateProperty.all(Colors.grey[50]),
-      cells: totalTripsCells,
-    ));
+    // Add spacer for scrollbar
+    columnWidgets.add(const SizedBox(height: 24));
 
-    return DataTable(
-      columnSpacing: 0,
-      headingRowHeight: 40,
-      dataRowMinHeight: 40,
-      dataRowMaxHeight: 40,
-      horizontalMargin: 0,
-      columns: cols,
-      rows: tableRows,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: columnWidgets,
     );
   }
 

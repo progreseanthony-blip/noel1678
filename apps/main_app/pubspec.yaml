@@ -41,6 +41,7 @@ dependencies:
   flutter_riverpod: ^2.3.6
   intl: ^0.20.2
   file_picker: ^8.0.7
+  google_fonts: ^6.1.0
   # flutter_dotenv: ^5.1.0
 
 dev_dependencies:
