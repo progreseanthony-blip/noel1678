@@ -7,6 +7,7 @@ add column if not exists fuel_gallons numeric default 0,
 add column if not exists capacity_yards numeric default 0,
 add column if not exists trips_per_day numeric default 0,
 add column if not exists yards_per_day numeric default 0,
+add column if not exists machinery_type text default 'hauling',
 add column if not exists associated_service_ids uuid[] default '{}',
 add column if not exists applications text[] default '{}';
 
