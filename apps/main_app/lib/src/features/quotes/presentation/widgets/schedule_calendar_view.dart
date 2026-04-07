@@ -280,62 +280,12 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
   }
 
   List<Widget> _buildGroupedRows(List<Map<String, dynamic>> resources, List<Map<String, dynamic>> days) {
-    final groups = {
-      'hauling': resources.where((r) => (r['machinery_type'] ?? 'hauling') == 'hauling').toList(),
-      'production': resources.where((r) => (r['machinery_type'] ?? 'hauling') == 'production').toList(),
-      'support': resources.where((r) => (r['machinery_type'] ?? 'hauling') == 'support').toList(),
-    };
-
-    final labels = {
-      'hauling': 'HAULING EQUIP. (TRASLADO)',
-      'production': 'PRODUCTION EQUIP. (EMPUJE)',
-      'support': 'SUPPORT EQUIP. (APOYO)',
-    };
-
-    final colors = {
-      'hauling': AppTheme.primaryGreen.withOpacity(0.12),
-      'production': Colors.blue.withOpacity(0.12),
-      'support': AppTheme.slate200,
-    };
-
     final List<Widget> items = [];
 
-    groups.forEach((key, list) {
-      if (list.isNotEmpty) {
-        // Section Header Strip
-        items.add(Container(
-          height: 26, // Fixed height
-          width: double.infinity,
-          color: colors[key],
-          padding: const EdgeInsets.only(left: 12),
-          alignment: Alignment.centerLeft,
-          child: Text(
-            labels[key]!,
-            style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w900, color: AppTheme.slate700, letterSpacing: 0.5),
-          ),
-        ));
-
-        // Rows for this group
-        for (var res in list) {
-          items.add(_buildResourceRow(res));
-        }
-
-        // Subtotal fixed row
-        items.add(Container(
-          height: 56, // Fixed height for subtotal
-          padding: const EdgeInsets.only(left: 24),
-          alignment: Alignment.centerLeft,
-          decoration: const BoxDecoration(
-            color: Color(0xFFF8FAFC),
-            border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-          ),
-          child: Text(
-            'SUBTOTAL ${key.toUpperCase()}', 
-            style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w900, color: AppTheme.slate500),
-          ),
-        ));
-      }
-    });
+    // Rows for all resources
+    for (var res in resources) {
+      items.add(_buildResourceRow(res));
+    }
 
     return items;
   }
@@ -419,125 +369,42 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
       ],
     ));
 
-    // Categorize
-    final categories = {
-      'hauling': widget.resources.where((r) => (r['machinery_type'] ?? 'hauling') == 'hauling').toList(),
-      'production': widget.resources.where((r) => (r['machinery_type'] ?? 'hauling') == 'production').toList(),
-      'support': widget.resources.where((r) => (r['machinery_type'] ?? 'hauling') == 'support').toList(),
-    };
-
-    categories.forEach((key, list) {
-      if (list.isNotEmpty) {
-        // Strip Row
-        columnWidgets.add(Container(
-          height: 26, // Category strip height (reduced)
-          width: (days.length * 40.0) + 70.0,
-          decoration: BoxDecoration(
-            color: key == 'hauling' ? AppTheme.primaryGreen.withOpacity(0.08) :
-                   key == 'production' ? Colors.blue.withOpacity(0.08) : AppTheme.slate50,
-          ),
-        ));
-
-        // Data Rows
-        for (var res in list) {
-          final qty = (res['quantity'] as num?)?.toDouble() ?? 1;
-          final trips = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
-          final cap = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0;
-          double rowTotal = 0;
-          
-          columnWidgets.add(Row(
-            children: [
-              ...days.map((day) {
-                final isSun = day['isSunday'] == true;
-                final isSat = day['isSaturday'] == true;
-                final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
-                
-                // If Production/Support, show CY instead of Trips
-                final val = key == 'hauling' ? (trips * qty * f) : (trips * qty * cap * f);
-                
-                rowTotal += val;
-                return Container(
-                  width: 40, height: 44, // Match Resource Row height
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: (isSun || isSat) ? const Color(0xFFF8FAFC) : null,
-                    border: const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
-                  ),
-                  child: Text(val > 0 ? NumberFormat.compact().format(val) : '-', style: TextStyle(fontSize: 10, color: isSun ? Colors.grey[300] : Colors.black)),
-                );
-              }),
-              Container(
-                width: 70, height: 44, alignment: Alignment.center,
-                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
-                child: Text(NumberFormat.compact().format(rowTotal), style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: key == 'hauling' ? AppTheme.primaryGreen : (key == 'production' ? Colors.blue : AppTheme.slate500))),
-              ),
-            ],
-          ));
-        }
-
-        // Subtotal Row
-        double catTotalCY = 0;
-        double catTotalTrips = 0;
-        columnWidgets.add(Row(
-          children: [
-            ...days.map((day) {
-              final isSun = day['isSunday'] == true;
-              final isSat = day['isSaturday'] == true;
-              final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
-              double dayCY = 0;
-              double dayTrips = 0;
-              for (var res in list) {
-                final q = (res['quantity'] as num?)?.toDouble() ?? 1;
-                final t = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
-                final c = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0;
-                dayTrips += (t * q * f);
-                dayCY += (t * q * c * f);
-              }
-              catTotalCY += dayCY;
-              catTotalTrips += dayTrips;
-              return Container(
-                width: 40, height: 56, // Match Subtotal height
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.grey[50], 
-                  border: const Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-                ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (key == 'hauling') ...[
-                      Text(dayTrips > 0 ? dayTrips.toStringAsFixed(0) : '-', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
-                      Text(dayCY > 0 ? NumberFormat.compact().format(dayCY) : '-', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen)),
-                    ] else if (key == 'production') ...[
-                      Text(dayCY > 0 ? NumberFormat.compact().format(dayCY) : '-', style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.blue)),
-                    ] else ...[const Text('-', style: TextStyle(fontSize: 9))],
-                  ],
-                ),
-              );
-            }),
-            Container(
-              width: 70, height: 56, alignment: Alignment.center,
+    // Data Rows
+    for (var res in widget.resources) {
+      final qty = (res['quantity'] as num?)?.toDouble() ?? 1;
+      final trips = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
+      final cap = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+      double rowTotal = 0;
+      
+      columnWidgets.add(Row(
+        children: [
+          ...days.map((day) {
+            final isSun = day['isSunday'] == true;
+            final isSat = day['isSaturday'] == true;
+            final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
+            
+            final val = trips * qty * cap * f;
+            
+            rowTotal += val;
+            return Container(
+              width: 40, height: 44, // Match Resource Row height
+              alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: Colors.grey[50],
-                border: const Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+                color: (isSun || isSat) ? const Color(0xFFF8FAFC) : null,
+                border: const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (key == 'hauling') ...[
-                    Text(catTotalTrips.toStringAsFixed(0), style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
-                    Text(NumberFormat.compact().format(catTotalCY), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppTheme.primaryGreen)),
-                  ] else ...[
-                    Text(catTotalCY > 0 ? NumberFormat.compact().format(catTotalCY) : '-', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: key == 'production' ? Colors.blue : AppTheme.slate500)),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ));
-      }
-    });
-
+              child: Text(val > 0 ? NumberFormat.compact().format(val) : '-', style: TextStyle(fontSize: 10, color: isSun ? Colors.grey[300] : Colors.black)),
+            );
+          }),
+          Container(
+            width: 70, height: 44, alignment: Alignment.center,
+            decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
+            child: Text(NumberFormat.compact().format(rowTotal), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen)),
+          ),
+        ],
+      ));
+    }
+    
     // Grand Total Row
     double totalTrips = 0;
     double totalCY = 0;

@@ -560,12 +560,42 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
           ),
           // Rows
           ...mList.map((m) {
+            final bool isPrimary = m['is_primary_mover'] as bool? ?? true;
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
+              decoration: BoxDecoration(
+                color: isPrimary ? Colors.white : AppTheme.slate50.withOpacity(0.5),
+                border: const Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))
+              ),
               child: Row(
                 children: [
-                  _colV(m['machine_name'] ?? '-', 2.5, bold: true),
+                  Expanded(
+                    flex: 25, // corresponds to 2.5 in _colH
+                    child: Padding(
+                      padding: EdgeInsets.only(left: isPrimary ? 0 : 24.0, right: 8.0),
+                      child: Row(
+                        children: [
+                          if (isPrimary)
+                            const Icon(Icons.star, size: 12, color: Color(0xFF11D411))
+                          else
+                            const Icon(Icons.build_circle, size: 12, color: AppTheme.slate500),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              m['machine_name'] ?? '-',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: isPrimary ? FontWeight.w800 : FontWeight.w600,
+                                color: isPrimary ? AppTheme.slate900 : AppTheme.slate700,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   _colV(_d(m, 'months_to_use').toStringAsFixed(0), 0.8),
                   _colV('\$${_fmt.format(_d(m, 'monthly_rent_cost'))}', 1),
                   _colV(_d(m, 'quantity').toStringAsFixed(0), 0.8),

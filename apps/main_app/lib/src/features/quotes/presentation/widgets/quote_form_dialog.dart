@@ -22,6 +22,8 @@ class MachineryEntry {
   double gallonsPerHour;
   double gallonCost;
   double deliveryCost;
+  bool isPrimaryMover;
+  String? parentMachineName;
 
   MachineryEntry({
     this.machineName = '',
@@ -31,6 +33,8 @@ class MachineryEntry {
     this.gallonsPerHour = 0,
     this.gallonCost = 0,
     this.deliveryCost = 0,
+    this.isPrimaryMover = true,
+    this.parentMachineName,
   });
 
   double get ratePerHour => monthlyRentCost / 160;
@@ -170,25 +174,42 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       svc.machineries.clear();
     }
 
+    final newMachineries = <MachineryEntry>[];
+    final oldMachineries = List<MachineryEntry>.from(svc.machineries);
+
     for (final res in resources) {
       final machineId = res['machine_id'];
       final machineName = res['machine_name'] ?? '';
+      final isPrimary = res['is_primary_mover'] as bool? ?? true;
       
-      // Try to find if this machine is already in the list to update it, 
-      // otherwise add it as new.
-      final existingIndex = svc.machineries.indexWhere((m) => m.machineName == machineName);
+      String? parentName;
+      if (res['parent_resource_id'] != null) {
+        final pRes = resources.firstWhere((r) => r['id'] == res['parent_resource_id'], orElse: () => <String, dynamic>{});
+        parentName = pRes['machine_name'];
+      }
       
-      if (existingIndex >= 0) {
-        svc.machineries[existingIndex].monthsToUse = months;
-        svc.machineries[existingIndex].quantity = (res['quantity'] as num).toDouble();
+      // Find in oldMachineries
+      int matchIdx = oldMachineries.indexWhere((m) => m.machineName == machineName && m.isPrimaryMover == isPrimary && m.parentMachineName == parentName);
+      if (matchIdx < 0) {
+        matchIdx = oldMachineries.indexWhere((m) => m.machineName == machineName);
+      }
+      
+      if (matchIdx >= 0) {
+        final m = oldMachineries[matchIdx];
+        oldMachineries.removeAt(matchIdx); // claim it
+        m.monthsToUse = months;
+        m.quantity = (res['quantity'] as num).toDouble();
+        m.isPrimaryMover = isPrimary;
+        m.parentMachineName = parentName;
+        newMachineries.add(m);
       } else {
         // Find in catalog for default costs
         final catalogItem = _catalogMachinery.firstWhere(
           (m) => m['id'] == machineId || m['description'] == machineName, 
-          orElse: () => {}
+          orElse: () => <String,dynamic>{}
         );
 
-        svc.machineries.add(MachineryEntry(
+        newMachineries.add(MachineryEntry(
           machineName: machineName,
           monthsToUse: months,
           quantity: (res['quantity'] as num).toDouble(),
@@ -197,9 +218,43 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           gallonsPerHour: (catalogItem['fuel_gallons'] as num?)?.toDouble() ?? 0,
           gallonCost: (catalogItem['gallon_cost'] as num?)?.toDouble() ?? 5.25,
           deliveryCost: (catalogItem['delivery_cost'] as num?)?.toDouble() ?? 0,
+          isPrimaryMover: isPrimary,
+          parentMachineName: parentName,
         ));
       }
     }
+    
+    // Replace current machineries with the new reconstructed list
+    svc.machineries.clear();
+    svc.machineries.addAll(newMachineries);
+    
+    // Sort to keep hierarchy: Primary followed by its supports
+    svc.machineries.sort((a, b) {
+      if (a.isPrimaryMover && b.isPrimaryMover) return 0; // maintain relative order
+      if (a.isPrimaryMover && !b.isPrimaryMover) {
+        if (b.parentMachineName == a.machineName) return -1;
+        return 0; // will be sorted by another primary
+      }
+      if (!a.isPrimaryMover && b.isPrimaryMover) {
+        if (a.parentMachineName == b.machineName) return 1;
+        return 0;
+      }
+      return 0;
+    });
+    
+    // A more solid sort for hierarchy: 
+    final sortedList = <MachineryEntry>[];
+    final primaries = svc.machineries.where((m) => m.isPrimaryMover).toList();
+    for (var p in primaries) {
+      sortedList.add(p);
+      sortedList.addAll(svc.machineries.where((m) => !m.isPrimaryMover && m.parentMachineName == p.machineName));
+    }
+    // Append any unassigned supports
+    sortedList.addAll(svc.machineries.where((m) => !m.isPrimaryMover && !primaries.any((p) => p.machineName == m.parentMachineName)));
+    
+    svc.machineries.clear();
+    svc.machineries.addAll(sortedList);
+    
     setState(() {});
   }
 
@@ -257,8 +312,13 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               .eq('estimation_id', estId);
 
           final resources = (responseRes as List).map((r) => {
+            'id': r['id'],
+            'is_primary_mover': r['is_primary_mover'] ?? true,
+            'parent_resource_id': r['parent_resource_id'],
             'machine_id': r['machine_id'],
             'machine_name': r['machinery']?['description'] ?? 'Unknown',
+            'photo_url': r['machinery']?['photo_url'],
+            'machinery_type': r['machinery']?['machinery_type'] ?? 'hauling',
             'quantity': (r['quantity'] as num).toDouble(),
             'trips_per_day': (r['trips_per_day'] as num).toDouble(),
             'capacity_per_trip': (r['capacity_per_trip'] as num).toDouble(),
@@ -292,6 +352,8 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           gallonsPerHour: (m['gallons_per_hour'] as num?)?.toDouble() ?? 0,
           gallonCost: (m['gallon_cost'] as num?)?.toDouble() ?? 0,
           deliveryCost: (m['delivery_cost'] as num?)?.toDouble() ?? 0,
+          isPrimaryMover: m['is_primary_mover'] as bool? ?? true,
+          parentMachineName: m['parent_machine_name'] as String?,
         )).toList();
 
         // Load labors for this service
@@ -422,6 +484,8 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             'gallons_per_hour': m.gallonsPerHour,
             'gallon_cost': m.gallonCost,
             'delivery_cost': m.deliveryCost,
+            'is_primary_mover': m.isPrimaryMover,
+            'parent_machine_name': m.parentMachineName,
           });
         }
 
@@ -452,15 +516,40 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
 
           final estId = estResult['id'];
           final resources = est['resources'] as List?;
-          if (resources != null) {
-            for (final r in resources) {
-              await supabase.from('quote_service_estimation_resources').insert({
+          if (resources != null && resources.isNotEmpty) {
+            // Phase 1: primaries
+            final primaries = resources.where((r) => (r['is_primary_mover'] as bool? ?? true) == true).toList();
+            final supports  = resources.where((r) => (r['is_primary_mover'] as bool? ?? true) == false).toList();
+            final Map<String, String> localToDbId = {};
+            for (final r in primaries) {
+              final localId = r['id']?.toString();
+              final inserted = await supabase.from('quote_service_estimation_resources').insert({
                 'estimation_id': estId,
                 'machine_id': r['machine_id'],
                 'quantity': r['quantity'] ?? 1,
                 'trips_per_day': r['trips_per_day'] ?? 60,
                 'capacity_per_trip': r['capacity_per_trip'] ?? 30,
-              });
+                'is_primary_mover': true,
+                'parent_resource_id': null,
+              }).select().single();
+              if (localId != null) localToDbId[localId] = inserted['id'] as String;
+            }
+            // Phase 2: supports
+            if (supports.isNotEmpty) {
+              await supabase.from('quote_service_estimation_resources').insert(
+                supports.map((r) {
+                  final lp = r['parent_resource_id']?.toString();
+                  return {
+                    'estimation_id': estId,
+                    'machine_id': r['machine_id'],
+                    'quantity': r['quantity'] ?? 1,
+                    'trips_per_day': 0,
+                    'capacity_per_trip': 0,
+                    'is_primary_mover': false,
+                    'parent_resource_id': lp != null ? localToDbId[lp] : null,
+                  };
+                }).toList(),
+              );
             }
           }
         }
@@ -916,18 +1005,24 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   Widget _buildMachineryCard(ServiceEntry svc, int index, MachineryEntry m) {
     return Container(
       key: ValueKey(m),
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: EdgeInsets.only(left: m.isPrimaryMover ? 0 : 40, bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white, borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        color: m.isPrimaryMover ? Colors.white : AppTheme.slate50.withOpacity(0.5), 
+        borderRadius: BorderRadius.circular(12),
+        border: Border(
+           left: BorderSide(color: m.isPrimaryMover ? const Color(0xFFE2E8F0) : AppTheme.slate200, width: m.isPrimaryMover ? 1 : 4),
+           top: const BorderSide(color: Color(0xFFE2E8F0)),
+           right: const BorderSide(color: Color(0xFFE2E8F0)),
+           bottom: const BorderSide(color: Color(0xFFE2E8F0)),
+        )
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              if (m.machineName != null && m.machineName.isNotEmpty && _catalogMachinery.any((mx) => mx['description'] == m.machineName)) ...[
+              if (m.machineName != '' && _catalogMachinery.any((mx) => mx['description'] == m.machineName)) ...[
                  Builder(builder: (context) {
                     final item = _catalogMachinery.firstWhere((mx) => mx['description'] == m.machineName);
                     final String? photoUrl = item['photo_url'];
@@ -972,6 +1067,27 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                  }),
               ],
               Text('Machine ${index + 1}', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+              const SizedBox(width: 8),
+              if (m.isPrimaryMover)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: const Color(0xFF11D411).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                  child: Row(children: [
+                    const Icon(Icons.star, size: 10, color: Color(0xFF11D411)),
+                    const SizedBox(width: 4),
+                    Text('PRIMARY', style: GoogleFonts.manrope(fontSize: 8, fontWeight: FontWeight.w800, color: const Color(0xFF11D411))),
+                  ]),
+                )
+              else
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: AppTheme.slate200.withOpacity(0.5), borderRadius: BorderRadius.circular(4)),
+                  child: Row(children: [
+                    const Icon(Icons.build_circle, size: 10, color: AppTheme.slate600),
+                    const SizedBox(width: 4),
+                    Text('SUPPORT', style: GoogleFonts.manrope(fontSize: 8, fontWeight: FontWeight.w800, color: AppTheme.slate600)),
+                  ]),
+                ),
               const Spacer(),
               MouseRegion(
                 cursor: SystemMouseCursors.click,

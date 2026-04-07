@@ -112,22 +112,63 @@ class QuotesService {
 
   // ── Estimation Resources ──
   Future<List<Map<String, dynamic>>> getResourcesForEstimation(String estimationId) async {
-    final response = await _supabase.from('quote_service_estimation_resources').select('*, machinery(*)').eq('estimation_id', estimationId);
+    final response = await _supabase
+        .from('quote_service_estimation_resources')
+        .select('*, machinery(*)')
+        .eq('estimation_id', estimationId)
+        .order('created_at');
     return List<Map<String, dynamic>>.from(response ?? []);
   }
 
   Future<void> saveResources(String estimationId, List<Map<String, dynamic>> resources) async {
     // Delete existing resources and insert new ones
     await _supabase.from('quote_service_estimation_resources').delete().eq('estimation_id', estimationId);
-    if (resources.isNotEmpty) {
+    if (resources.isEmpty) return;
+
+    // Phase 1: Insert primary movers first to get real DB IDs
+    // We need to map local temp IDs → real DB IDs for supports
+    final primaries = resources.where((r) => r['is_primary_mover'] == true).toList();
+    final supports  = resources.where((r) => r['is_primary_mover'] != true).toList();
+
+    // Map: localId → dbId
+    final Map<String, String> localToDbId = {};
+
+    for (final r in primaries) {
+      final localId = r['id'] as String?;
+      final inserted = await _supabase
+          .from('quote_service_estimation_resources')
+          .insert({
+            'estimation_id': estimationId,
+            'machine_id': r['machine_id'],
+            'quantity': r['quantity'],
+            'trips_per_day': r['trips_per_day'],
+            'capacity_per_trip': r['capacity_per_trip'],
+            'is_primary_mover': true,
+            'parent_resource_id': null,
+          })
+          .select()
+          .single();
+      if (localId != null) {
+        localToDbId[localId] = inserted['id'] as String;
+      }
+    }
+
+    // Phase 2: Insert supports, resolving parent_resource_id to real DB ID
+    if (supports.isNotEmpty) {
       await _supabase.from('quote_service_estimation_resources').insert(
-        resources.map((r) => {
-          'estimation_id': estimationId,
-          'machine_id': r['machine_id'],
-          'quantity': r['quantity'],
-          'trips_per_day': r['trips_per_day'],
-          'capacity_per_trip': r['capacity_per_trip'],
-        }).toList()
+        supports.map((r) {
+          final localParentId = r['parent_resource_id'] as String?;
+          final dbParentId = localParentId != null ? localToDbId[localParentId] : null;
+          return {
+            'estimation_id': estimationId,
+            'machine_id': r['machine_id'],
+            'quantity': r['quantity'],
+            'trips_per_day': r['trips_per_day'] ?? 0,
+            'capacity_per_trip': r['capacity_per_trip'] ?? 0,
+            'is_primary_mover': false,
+            'parent_resource_id': dbParentId,
+          };
+        }).toList(),
       );
     }
   }
