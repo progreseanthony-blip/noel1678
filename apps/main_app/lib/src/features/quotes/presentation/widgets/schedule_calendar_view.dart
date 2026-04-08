@@ -47,6 +47,8 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
   Widget build(BuildContext context) {
     if (widget.dailySchedule.isEmpty) return const SizedBox.shrink();
 
+    final bool isMobile = MediaQuery.of(context).size.width < 720;
+
     // 1. Calculate total initial volume to work with
     double initialTotal = 0;
     for (var day in widget.dailySchedule) {
@@ -95,20 +97,34 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
           ? (accumulatedProd / initialTotal) * 100 
           : 0;
       
-      monthWidgets.add(_buildMonthTable(
-        monthName, 
-        monthDays, 
-        monthProduction, 
-        currentBalance < 0.1 ? 0 : currentBalance,
-        theoNormalProd,
-        theoSatProd,
-        cumulativePct,
-      ));
+      if (isMobile) {
+        monthWidgets.add(_MobileMonthView(
+          monthName: monthName,
+          days: monthDays,
+          monthProd: monthProduction,
+          remainingBalance: currentBalance < 0.1 ? 0 : currentBalance,
+          theoNormalProd: theoNormalProd,
+          theoSatProd: theoSatProd,
+          cumulativePct: cumulativePct,
+          resources: widget.resources,
+        ));
+      } else {
+        monthWidgets.add(_buildMonthTable(
+          monthName, 
+          monthDays, 
+          monthProduction, 
+          currentBalance < 0.1 ? 0 : currentBalance,
+          theoNormalProd,
+          theoSatProd,
+          cumulativePct,
+        ));
+      }
     }
 
     return ScrollConfiguration(
       behavior: AppScrollBehavior(),
       child: SingleChildScrollView(
+        padding: isMobile ? const EdgeInsets.all(16) : EdgeInsets.zero,
         child: Column(
           children: monthWidgets,
         ),
@@ -374,7 +390,8 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
       final qty = (res['quantity'] as num?)?.toDouble() ?? 1;
       final trips = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
       final cap = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0;
-      double rowTotal = 0;
+      double rowTotalCY = 0;
+      double rowTotalTrips = 0;
       
       columnWidgets.add(Row(
         children: [
@@ -383,9 +400,12 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
             final isSat = day['isSaturday'] == true;
             final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
             
-            final val = trips * qty * cap * f;
+            final dTrips = trips * qty * f;
+            final dCY = trips * qty * cap * f;
             
-            rowTotal += val;
+            rowTotalTrips += dTrips;
+            rowTotalCY += dCY;
+            
             return Container(
               width: 40, height: 44, // Match Resource Row height
               alignment: Alignment.center,
@@ -393,13 +413,19 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
                 color: (isSun || isSat) ? const Color(0xFFF8FAFC) : null,
                 border: const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
               ),
-              child: Text(val > 0 ? NumberFormat.compact().format(val) : '-', style: TextStyle(fontSize: 10, color: isSun ? Colors.grey[300] : Colors.black)),
+              child: Text(dTrips > 0 ? dTrips.toStringAsFixed(0) : '-', style: TextStyle(fontSize: 10, color: isSun ? Colors.grey[300] : Colors.black)),
             );
           }),
           Container(
             width: 70, height: 44, alignment: Alignment.center,
             decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
-            child: Text(NumberFormat.compact().format(rowTotal), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen)),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(rowTotalTrips.toStringAsFixed(0), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
+                Text(NumberFormat.compact().format(rowTotalCY), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen)),
+              ],
+            ),
           ),
         ],
       ));
@@ -432,7 +458,7 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(dTrips > 0 ? dTrips.toStringAsFixed(0) : '-', style: const TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: AppTheme.slate500)),
+                Text(dTrips > 0 ? dTrips.toStringAsFixed(0) : '-', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppTheme.slate500)),
                 Text(dCY > 0 ? NumberFormat.compact().format(dCY) : '-', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.slate900)),
               ],
             ),
@@ -523,6 +549,398 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
           _buildSubLabel(label),
           const SizedBox(width: 8),
           _buildSubValue(value, color),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileMonthView extends StatelessWidget {
+  final String monthName;
+  final List<Map<String, dynamic>> days;
+  final double monthProd;
+  final double remainingBalance;
+  final double theoNormalProd;
+  final double theoSatProd;
+  final double cumulativePct;
+  final List<Map<String, dynamic>> resources;
+
+  const _MobileMonthView({
+    required this.monthName,
+    required this.days,
+    required this.monthProd,
+    required this.remainingBalance,
+    required this.theoNormalProd,
+    required this.theoSatProd,
+    required this.cumulativePct,
+    required this.resources,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Month Selector card
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0F0F3), // surface-container-low
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Icon(Icons.chevron_left, color: AppTheme.slate500),
+              Column(
+                children: [
+                  Text(
+                    monthName.toUpperCase(),
+                    style: GoogleFonts.manrope(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 18,
+                      letterSpacing: -0.5,
+                      color: AppTheme.slate900,
+                    ),
+                  ),
+                  Text(
+                    'PRODUCTION PERIOD',
+                    style: GoogleFonts.manrope(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.5,
+                      color: AppTheme.slate500,
+                    ),
+                  ),
+                ],
+              ),
+              const Icon(Icons.chevron_right, color: AppTheme.slate500),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Metrics Bar
+        Row(
+          children: [
+            Expanded(
+              child: _MetricsCard(
+                label: 'AVG DAILY PROD',
+                value: NumberFormat.compact().format(theoNormalProd),
+                unit: 'CY',
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _MetricsCard(
+                label: 'MONTHLY PROD',
+                value: NumberFormat.compact().format(monthProd),
+                unit: 'CY',
+                highlightColor: AppTheme.primaryGreen,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _MetricsCard(
+                label: 'END BALANCE',
+                value: NumberFormat.compact().format(remainingBalance),
+                unit: 'TON',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        // Active Resources Header
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'ACTIVE RESOURCES',
+              style: GoogleFonts.manrope(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.5,
+                color: AppTheme.slate500,
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFF3FFF8B).withOpacity(0.2), // tertiary-container
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${resources.length} MACHINES',
+                style: GoogleFonts.manrope(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF005D2C),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // Resource List
+        ...resources.map((res) => _MobileResourceItem(
+          resource: res,
+          days: days,
+        )),
+        const SizedBox(height: 32),
+      ],
+    );
+  }
+}
+
+class _MetricsCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final String unit;
+  final Color? highlightColor;
+
+  const _MetricsCard({
+    required this.label,
+    required this.value,
+    required this.unit,
+    this.highlightColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: highlightColor != null ? Border(bottom: BorderSide(color: highlightColor!, width: 4)) : null,
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 4, offset: const Offset(0, 2)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.manrope(
+              fontSize: 8,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.slate500,
+              letterSpacing: 0.5,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            textBaseline: TextBaseline.alphabetic,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            children: [
+              Text(
+                value,
+                style: GoogleFonts.manrope(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.slate900,
+                ),
+              ),
+              const SizedBox(width: 2),
+              Text(
+                unit,
+                style: GoogleFonts.manrope(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.slate500,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MobileResourceItem extends StatefulWidget {
+  final Map<String, dynamic> resource;
+  final List<Map<String, dynamic>> days;
+
+  const _MobileResourceItem({
+    required this.resource,
+    required this.days,
+  });
+
+  @override
+  State<_MobileResourceItem> createState() => _MobileResourceItemState();
+}
+
+class _MobileResourceItemState extends State<_MobileResourceItem> {
+  bool _isExpanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = widget.resource['machine_name'] ?? '';
+    final qty = (widget.resource['quantity'] as num?)?.toDouble() ?? 1;
+    final trips = (widget.resource['trips_per_day'] as num?)?.toDouble() ?? 0;
+    final cap = (widget.resource['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+    
+    double weeklyTotalCY = 0;
+    double weeklyTotalTrips = 0;
+    for (var i = 0; i < widget.days.length && i < 7; i++) {
+      final day = widget.days[i];
+      final isSun = day['isSunday'] == true;
+      final isSat = day['isSaturday'] == true;
+      final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
+      weeklyTotalTrips += (trips * qty * f);
+      weeklyTotalCY += (trips * qty * cap * f);
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 2)),
+        ],
+        border: Border.all(color: Colors.black.withOpacity(0.03)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          InkWell(
+            onTap: () => setState(() => _isExpanded = !_isExpanded),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE7E8EB), // surface-container
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.precision_manufacturing, color: AppTheme.primaryGreen, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '$name (x${qty.toInt()})',
+                          style: GoogleFonts.manrope(
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.slate900,
+                          ),
+                        ),
+                        Text(
+                          'Excavator • Bulk Earthwork', // Placeholder or use category if available
+                          style: GoogleFonts.manrope(
+                            fontSize: 11,
+                            color: AppTheme.slate500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    _isExpanded ? Icons.expand_less : Icons.expand_more,
+                    color: AppTheme.slate400,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_isExpanded)
+            Container(
+              color: const Color(0xFFF0F0F3), // surface-container-low
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: widget.days.map((day) {
+                        final date = day['date'] as DateTime;
+                        final isSun = day['isSunday'] == true;
+                        final isSat = day['isSaturday'] == true;
+                        final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
+                        final dailyTrips = trips * qty * f;
+
+                        return Container(
+                          width: 64,
+                          margin: const EdgeInsets.only(right: 8),
+                          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: (date.day == DateTime.now().day && date.month == DateTime.now().month) 
+                              ? Border.all(color: AppTheme.primaryGreen, width: 1.5) 
+                              : null,
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                DateFormat('E d').format(date).toUpperCase(),
+                                style: GoogleFonts.manrope(
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.slate500,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                dailyTrips > 0 ? dailyTrips.toStringAsFixed(0) : '-',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppTheme.slate900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'WEEKLY TOTAL',
+                        style: GoogleFonts.manrope(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.slate500,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '${weeklyTotalTrips.toStringAsFixed(0)} TRIPS',
+                            style: GoogleFonts.manrope(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.slate500,
+                            ),
+                          ),
+                          Text(
+                            '${NumberFormat('#,###').format(weeklyTotalCY)} CY',
+                            style: GoogleFonts.manrope(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                              color: AppTheme.primaryGreen,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );

@@ -842,6 +842,8 @@ class _Sidebar extends StatelessWidget {
                   _NavItem(icon: Icons.request_quote_rounded, label: 'Quotes', isActive: true, onTap: () => context.go('/quotes')),
                   const SizedBox(height: 4),
                   _NavItem(icon: Icons.folder_copy_outlined, label: 'Catalogs', isActive: false, onTap: () => context.go('/catalogs')),
+                  const SizedBox(height: 4),
+                  _NavItem(icon: Icons.engineering_outlined, label: 'Workers', isActive: false, onTap: () => context.go('/workers')),
                 ],
               ),
             ),

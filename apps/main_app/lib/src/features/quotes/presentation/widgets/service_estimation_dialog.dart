@@ -923,7 +923,7 @@ class _ServiceEstimationDialogState
         children: [
           _footerButton('Cancel', Colors.white, AppTheme.slate500, () => Navigator.pop(context), border: true),
           const SizedBox(width: 12),
-          _footerButton(_isSaving ? 'Saving...' : 'Save Estimation', AppTheme.primaryGreen, Colors.white, _save),
+          _footerButton(_isSaving ? 'Saving...' : 'Save Estimation', AppTheme.primaryGreen, Colors.white, _showCalendar ? null : _save),
         ],
       ),
     );
@@ -1004,12 +1004,13 @@ class _ServiceEstimationDialogState
     );
   }
 
-  Widget _footerButton(String label, Color bg, Color text, VoidCallback onTap, {bool border = false}) {
+  Widget _footerButton(String label, Color bg, Color text, VoidCallback? onTap, {bool border = false}) {
+    final bool isDisabled = onTap == null;
     return ElevatedButton(
       onPressed: onTap,
       style: ElevatedButton.styleFrom(
-        backgroundColor: bg,
-        foregroundColor: text,
+        backgroundColor: isDisabled ? AppTheme.slate200 : bg,
+        foregroundColor: isDisabled ? AppTheme.slate400 : text,
         elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         shape: RoundedRectangleBorder(

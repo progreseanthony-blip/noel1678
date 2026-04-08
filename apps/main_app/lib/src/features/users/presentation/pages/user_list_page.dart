@@ -1126,6 +1126,13 @@ class _Sidebar extends StatelessWidget {
                     isActive: false,
                     onTap: () => context.go('/catalogs'),
                   ),
+                  const SizedBox(height: 4),
+                  _NavItem(
+                    icon: Icons.engineering_outlined,
+                    label: 'Workers',
+                    isActive: false,
+                    onTap: () => context.go('/workers'),
+                  ),
                 ],
               ),
             ),

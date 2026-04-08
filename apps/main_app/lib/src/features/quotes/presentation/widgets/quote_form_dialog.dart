@@ -1644,19 +1644,33 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   }
 
   Widget _miniField(String label, String value, double width, Function(String) onChange, {Key? key, VoidCallback? onTap}) {
+    final controller = TextEditingController(text: value);
+    final focusNode = FocusNode();
+    focusNode.addListener(() {
+      if (focusNode.hasFocus) {
+        controller.selection = TextSelection(baseOffset: 0, extentOffset: controller.text.length);
+      }
+    });
+
     return SizedBox(
       key: key,
       width: width,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w700, color: AppTheme.slate400)),
+          Text(label, style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
           SizedBox(
             height: 28,
             child: TextFormField(
-              initialValue: value,
+              controller: controller,
+              focusNode: focusNode,
               style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate900),
-              decoration: InputDecoration(isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFFE2E8F0)))),
+              decoration: InputDecoration(
+                isDense: true, 
+                contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), 
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 1.5)),
+              ),
               onChanged: onChange,
               onTap: onTap,
             ),
@@ -1667,21 +1681,35 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   }
 
   Widget _miniNumField(String label, double value, double width, Function(double) onChange, {Key? key, VoidCallback? onTap}) {
+    final controller = TextEditingController(text: value != 0 ? value.toString() : '');
+    final focusNode = FocusNode();
+    focusNode.addListener(() {
+      if (focusNode.hasFocus) {
+        controller.selection = TextSelection(baseOffset: 0, extentOffset: controller.text.length);
+      }
+    });
+
     return SizedBox(
       key: key,
       width: width,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w700, color: AppTheme.slate400)),
+          Text(label, style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
           SizedBox(
             height: 28,
             child: TextFormField(
-              initialValue: value != 0 ? value.toString() : '',
+              controller: controller,
+              focusNode: focusNode,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
               style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate900),
-              decoration: InputDecoration(isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFFE2E8F0)))),
+              decoration: InputDecoration(
+                isDense: true, 
+                contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), 
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 1.5)),
+              ),
               onChanged: (v) => onChange(double.tryParse(v) ?? 0),
               onTap: onTap,
             ),
@@ -1750,7 +1778,7 @@ class _SearchableCatalogDropdown extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
+          Text(label, style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
           const SizedBox(height: 4),
           Autocomplete<Map<String, dynamic>>(
             initialValue: TextEditingValue(text: initialValue),
