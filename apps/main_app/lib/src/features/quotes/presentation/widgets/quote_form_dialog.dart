@@ -1644,14 +1644,6 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   }
 
   Widget _miniField(String label, String value, double width, Function(String) onChange, {Key? key, VoidCallback? onTap}) {
-    final controller = TextEditingController(text: value);
-    final focusNode = FocusNode();
-    focusNode.addListener(() {
-      if (focusNode.hasFocus) {
-        controller.selection = TextSelection(baseOffset: 0, extentOffset: controller.text.length);
-      }
-    });
-
     return SizedBox(
       key: key,
       width: width,
@@ -1661,16 +1653,8 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           Text(label, style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
           SizedBox(
             height: 28,
-            child: TextFormField(
-              controller: controller,
-              focusNode: focusNode,
-              style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate900),
-              decoration: InputDecoration(
-                isDense: true, 
-                contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), 
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 1.5)),
-              ),
+            child: _MiniAutoSelectField(
+              initialValue: value,
               onChanged: onChange,
               onTap: onTap,
             ),
@@ -1681,14 +1665,6 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   }
 
   Widget _miniNumField(String label, double value, double width, Function(double) onChange, {Key? key, VoidCallback? onTap}) {
-    final controller = TextEditingController(text: value != 0 ? value.toString() : '');
-    final focusNode = FocusNode();
-    focusNode.addListener(() {
-      if (focusNode.hasFocus) {
-        controller.selection = TextSelection(baseOffset: 0, extentOffset: controller.text.length);
-      }
-    });
-
     return SizedBox(
       key: key,
       width: width,
@@ -1698,18 +1674,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           Text(label, style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
           SizedBox(
             height: 28,
-            child: TextFormField(
-              controller: controller,
-              focusNode: focusNode,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
-              style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate900),
-              decoration: InputDecoration(
-                isDense: true, 
-                contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6), 
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 1.5)),
-              ),
+            child: _MiniAutoSelectField(
+              initialValue: value != 0 ? value.toString() : '',
+              isNumeric: true,
               onChanged: (v) => onChange(double.tryParse(v) ?? 0),
               onTap: onTap,
             ),
@@ -1913,6 +1880,74 @@ class _SearchableCatalogDropdown extends StatelessWidget {
             },
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MiniAutoSelectField extends StatefulWidget {
+  final String initialValue;
+  final Function(String) onChanged;
+  final VoidCallback? onTap;
+  final bool isNumeric;
+
+  const _MiniAutoSelectField({
+    required this.initialValue,
+    required this.onChanged,
+    this.onTap,
+    this.isNumeric = false,
+  });
+
+  @override
+  State<_MiniAutoSelectField> createState() => _MiniAutoSelectFieldState();
+}
+
+class _MiniAutoSelectFieldState extends State<_MiniAutoSelectField> {
+  late TextEditingController _controller;
+  late FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+    _focusNode = FocusNode();
+    _focusNode.addListener(() {
+      if (_focusNode.hasFocus) {
+        _controller.selection = TextSelection(baseOffset: 0, extentOffset: _controller.text.length);
+      }
+    });
+  }
+
+  @override
+  void didUpdateWidget(_MiniAutoSelectField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focusNode.hasFocus && widget.initialValue != _controller.text) {
+      _controller.text = widget.initialValue;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: _controller,
+      focusNode: _focusNode,
+      onChanged: widget.onChanged,
+      onTap: widget.onTap,
+      keyboardType: widget.isNumeric ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+      inputFormatters: widget.isNumeric ? [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))] : null,
+      style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate900),
+      decoration: InputDecoration(
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 1.5)),
       ),
     );
   }
