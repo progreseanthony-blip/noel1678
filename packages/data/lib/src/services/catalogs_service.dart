@@ -71,24 +71,6 @@ class CatalogsService {
     await _supabase.from('services').delete().eq('id', id);
   }
 
-  // ── Machinery Applications ──
-  Future<List<Map<String, dynamic>>> getMachineryApplications() async {
-    final response = await _supabase.from('machinery_applications').select().order('name');
-    return List<Map<String, dynamic>>.from(response ?? []);
-  }
-
-  Future<Map<String, dynamic>> createMachineryApplication(String name) async {
-    final response = await _supabase.from('machinery_applications').insert({'name': name}).select().single();
-    return response;
-  }
-
-  Future<void> updateMachineryApplication(String id, String name) async {
-    await _supabase.from('machinery_applications').update({'name': name}).eq('id', id);
-  }
-
-  Future<void> deleteMachineryApplication(String id) async {
-    await _supabase.from('machinery_applications').delete().eq('id', id);
-  }
 
   // ── Logistics Equipment ──
   Future<List<Map<String, dynamic>>> getLogisticsEquipment() async {
@@ -125,5 +107,23 @@ class CatalogsService {
 
   Future<void> deleteLogisticsApplication(String id) async {
     await _supabase.from('logistics_applications').delete().eq('id', id);
+  }
+
+  // ── Materials ──
+  Future<List<Map<String, dynamic>>> getMaterials() async {
+    final response = await _supabase.from('materials').select().order('description');
+    return List<Map<String, dynamic>>.from(response ?? []);
+  }
+
+  Future<void> createMaterial(Map<String, dynamic> data) async {
+    await _supabase.from('materials').insert(data);
+  }
+
+  Future<void> updateMaterial(String id, Map<String, dynamic> data) async {
+    await _supabase.from('materials').update(data).eq('id', id);
+  }
+
+  Future<void> deleteMaterial(String id) async {
+    await _supabase.from('materials').delete().eq('id', id);
   }
 }

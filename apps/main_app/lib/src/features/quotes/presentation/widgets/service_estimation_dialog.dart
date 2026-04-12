@@ -26,10 +26,12 @@ class _ServiceEstimationDialogState
   final _topsoilCtrl = TextEditingController(text: '0');
   final _compactedCtrl = TextEditingController(text: '0');
   final _swellFactorCtrl = TextEditingController(text: '0.15');
+  final _thicknessCtrl = TextEditingController(text: '0');
   DateTime _startDate = DateTime.now();
 
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isAreaBased = false;
   String? _estimationId;
 
   List<Map<String, dynamic>> _machineryCatalog = [];
@@ -69,6 +71,7 @@ class _ServiceEstimationDialogState
     if (res['tripsCtrl'] is TextEditingController) (res['tripsCtrl'] as TextEditingController).dispose();
     if (res['capCtrl'] is TextEditingController) (res['capCtrl'] as TextEditingController).dispose();
     if (res['perDayCtrl'] is TextEditingController) (res['perDayCtrl'] as TextEditingController).dispose();
+    if (res['perfCtrl'] is TextEditingController) (res['perfCtrl'] as TextEditingController).dispose();
   }
 
   Future<void> _loadInitialData() async {
@@ -76,15 +79,25 @@ class _ServiceEstimationDialogState
     try {
       final catalog = await ref.read(catalogsServiceProvider).getMachinery();
       _machineryCatalog = catalog;
-
       final serviceId = widget.service['id'];
       final persistentData = widget.service['estimationData'] as Map<String, dynamic>?;
 
+      // Check unit
+      final unitRaw = (widget.service['unit_of_measure'] ?? widget.service['unit'] ?? 'und').toString().toLowerCase().trim();
+      debugPrint('ESTIMATION_DEBUG: Detected Unit: "$unitRaw"');
+      _isAreaBased = unitRaw == 'ft' || 
+                     unitRaw == 'sqft' || 
+                     unitRaw == 'sq.ft' || 
+                     unitRaw == 'sf' ||
+                     unitRaw.contains('pies cuadrado') || 
+                     unitRaw.contains('pie cuadrado') ||
+                     unitRaw.contains('pies2');
+
       if (persistentData != null) {
-        // Load from temporary local data (unsaved wizard state)
         _topsoilCtrl.text = persistentData['topsoil_volume']?.toString() ?? '0';
         _compactedCtrl.text = persistentData['compacted_volume']?.toString() ?? '0';
         _swellFactorCtrl.text = persistentData['swell_factor']?.toString() ?? '0.15';
+        _thicknessCtrl.text = persistentData['thickness_inches']?.toString() ?? '0';
         _startDate = persistentData['start_date'] ?? DateTime.now();
 
         final resList = persistentData['resources'] as List?;
@@ -93,6 +106,7 @@ class _ServiceEstimationDialogState
             final qty = (r['quantity'] as num?)?.toDouble() ?? 1.0;
             final trips = (r['trips_per_day'] as num?)?.toDouble() ?? 60.0;
             final cap = (r['capacity_per_trip'] as num?)?.toDouble() ?? 30.0;
+            final perf = (r['performance_per_day'] as num?)?.toDouble() ?? 0.0;
             final isPrimary = r['is_primary_mover'] as bool? ?? true;
             return {
               ...Map<String, dynamic>.from(r),
@@ -102,6 +116,7 @@ class _ServiceEstimationDialogState
               'qtyCtrl': TextEditingController(text: qty.toString()),
               'tripsCtrl': TextEditingController(text: trips.toString()),
               'capCtrl': TextEditingController(text: cap.toString()),
+              'perfCtrl': TextEditingController(text: perf.toString()),
               'perDayCtrl': TextEditingController(text: isPrimary ? (trips * cap).toStringAsFixed(0) : ''),
             };
           }).toList();
@@ -114,21 +129,21 @@ class _ServiceEstimationDialogState
           _topsoilCtrl.text = estimation['topsoil_volume']?.toString() ?? '0';
           _compactedCtrl.text = estimation['compacted_volume']?.toString() ?? '0';
           _swellFactorCtrl.text = estimation['swell_factor']?.toString() ?? '0.15';
+          _thicknessCtrl.text = estimation['thickness_inches']?.toString() ?? '0';
           _startDate = DateTime.parse(estimation['start_date']);
 
           final resources = await ref.read(quotesServiceProvider).getResourcesForEstimation(_estimationId!);
 
-          // Build local ID map: DB id → local UUID
-          // Keep DB id as local id so parent_resource_id matching works
           _selectedResources = resources.map((r) {
             final qty = (r['quantity'] as num).toDouble();
             final trips = (r['trips_per_day'] as num).toDouble();
             final cap = (r['capacity_per_trip'] as num).toDouble();
+            final perf = (r['performance_per_day'] as num?)?.toDouble() ?? 0.0;
             final isPrimary = r['is_primary_mover'] as bool? ?? true;
             return {
-              'id': r['id'] as String,                      // use real DB id as local id
+              'id': r['id'] as String,
               'is_primary_mover': isPrimary,
-              'parent_resource_id': r['parent_resource_id'], // real DB id of parent
+              'parent_resource_id': r['parent_resource_id'],
               'machine_id': r['machine_id'],
               'machine_name': r['machinery']?['description'] ?? 'Unknown',
               'photo_url': r['machinery']?['photo_url'],
@@ -136,16 +151,18 @@ class _ServiceEstimationDialogState
               'quantity': qty,
               'trips_per_day': trips,
               'capacity_per_trip': cap,
+              'performance_per_day': perf,
               'qtyCtrl': TextEditingController(text: qty.toString()),
               'tripsCtrl': TextEditingController(text: trips.toString()),
               'capCtrl': TextEditingController(text: cap.toString()),
+              'perfCtrl': TextEditingController(text: perf.toString()),
               'perDayCtrl': TextEditingController(text: isPrimary ? (trips * cap).toStringAsFixed(0) : ''),
             };
           }).toList();
-        } else {
-          // New estimation for existing DB service
-          _compactedCtrl.text = widget.service['quantity']?.toString() ?? '0';
         }
+      } else if (widget.service['id'] != null) {
+        // New estimation for existing DB service
+        _compactedCtrl.text = widget.service['quantity']?.toString() ?? '0';
       } else {
         // Entirely new service in wizard
         _compactedCtrl.text = widget.service['quantity']?.toString() ?? '0';
@@ -172,12 +189,15 @@ class _ServiceEstimationDialogState
         'machine_name': machine['description'],
         'photo_url': machine['photo_url'],
         'machinery_type': machine['machinery_type'] ?? 'hauling',
+        'operator_role_id': machine['operator_role_id'],
         'quantity': qty,
         'trips_per_day': trips,
         'capacity_per_trip': capacity,
+        'performance_per_day': 0.0, // Initial
         'qtyCtrl': TextEditingController(text: qty.toString()),
         'tripsCtrl': TextEditingController(text: trips.toString()),
         'capCtrl': TextEditingController(text: capacity.toString()),
+        'perfCtrl': TextEditingController(text: '0'),
         'perDayCtrl': TextEditingController(text: (trips * capacity).toStringAsFixed(0)),
       });
       _runCalculation();
@@ -195,12 +215,15 @@ class _ServiceEstimationDialogState
         'machine_name': machine['description'],
         'photo_url': machine['photo_url'],
         'machinery_type': machine['machinery_type'] ?? 'support',
+        'operator_role_id': machine['operator_role_id'],
         'quantity': 1.0,
         'trips_per_day': 0.0,
         'capacity_per_trip': 0.0,
+        'performance_per_day': 0.0,
         'qtyCtrl': TextEditingController(text: '1'),
         'tripsCtrl': TextEditingController(text: '0'),
         'capCtrl': TextEditingController(text: '0'),
+        'perfCtrl': TextEditingController(text: '0'),
         'perDayCtrl': TextEditingController(text: ''),
       });
       // No recalculate — supports don't affect calculation
@@ -236,10 +259,14 @@ class _ServiceEstimationDialogState
                 'quantity': r['quantity'],
                 'trips_per_day': r['trips_per_day'],
                 'capacity_per_trip': r['capacity_per_trip'],
+                'performance_per_day': r['performance_per_day'],
                 'machine_name': r['machine_name'],
                 'machinery_type': r['machinery_type'],
               })
           .toList(),
+      isAreaBased: _isAreaBased,
+      totalArea: double.tryParse(_compactedCtrl.text) ?? 0,
+      thicknessInches: double.tryParse(_thicknessCtrl.text) ?? 0,
     );
 
     setState(() {
@@ -253,6 +280,7 @@ class _ServiceEstimationDialogState
     final topVal = double.tryParse(_topsoilCtrl.text) ?? 0;
     final compVal = double.tryParse(_compactedCtrl.text) ?? 0;
     final swellVal = double.tryParse(_swellFactorCtrl.text) ?? 0.15;
+    final thickVal = double.tryParse(_thicknessCtrl.text) ?? 0;
 
     // Build serializable resources (strip controllers)
     List<Map<String, dynamic>> serializableResources() {
@@ -264,9 +292,11 @@ class _ServiceEstimationDialogState
         'machine_name': r['machine_name'],
         'photo_url': r['photo_url'],
         'machinery_type': r['machinery_type'],
+        'operator_role_id': r['operator_role_id'],
         'quantity': r['quantity'],
         'trips_per_day': r['trips_per_day'],
         'capacity_per_trip': r['capacity_per_trip'],
+        'performance_per_day': r['performance_per_day'],
       }).toList();
     }
 
@@ -283,6 +313,7 @@ class _ServiceEstimationDialogState
           'topsoil_volume': topVal,
           'compacted_volume': compVal,
           'swell_factor': swellVal,
+          'thickness_inches': thickVal,
           'start_date': _startDate,
         });
       }
@@ -297,6 +328,7 @@ class _ServiceEstimationDialogState
         'topsoil_volume': topVal,
         'compacted_volume': compVal,
         'swell_factor': swellVal,
+        'thickness_inches': thickVal,
         'total_cy_loose': _calculationResult?['totalCYLoose'] ?? 0,
         'start_date': _startDate.toIso8601String(),
         'end_date': (_calculationResult?['endDate'] as DateTime?)?.toIso8601String(),
@@ -435,9 +467,15 @@ class _ServiceEstimationDialogState
                   children: [
                     _inputLabel('Factors'),
                     const SizedBox(height: 12),
-                    _textField(_topsoilCtrl, 'Topsoil', Icons.layers_outlined),
-                    const SizedBox(height: 8),
-                    _textField(_compactedCtrl, 'Compacted', Icons.compress_outlined),
+                    if (!_isAreaBased) ...[
+                      _textField(_topsoilCtrl, 'Topsoil (CY)', Icons.layers_outlined),
+                      const SizedBox(height: 8),
+                      _textField(_compactedCtrl, 'Compacted (CY)', Icons.compress_outlined),
+                    ] else ...[
+                      _textField(_compactedCtrl, 'Total Area (SQFT)', Icons.square_foot),
+                      const SizedBox(height: 8),
+                      _textField(_thicknessCtrl, 'Thickness (IN)', Icons.height),
+                    ],
                     const SizedBox(height: 8),
                     _textField(_swellFactorCtrl, 'Swell %', Icons.expand_outlined),
                     const Divider(height: 32),
@@ -697,6 +735,21 @@ class _ServiceEstimationDialogState
   }
 
   Widget _primaryInputs(Map<String, dynamic> res) {
+    if (_isAreaBased) {
+      return Row(
+        children: [
+          _miniInput('QTY', (val) {
+            res['quantity'] = double.tryParse(val) ?? 1.0;
+            _runCalculation();
+          }, res['qtyCtrl'] as TextEditingController),
+          const SizedBox(width: 8),
+          _miniInput('PERFORMANCE (FT/D)', (val) {
+            res['performance_per_day'] = double.tryParse(val) ?? 0.0;
+            _runCalculation();
+          }, res['perfCtrl'] as TextEditingController),
+        ],
+      );
+    }
     return Row(
       children: [
         _miniInput('QTY', (val) {
@@ -829,7 +882,7 @@ class _ServiceEstimationDialogState
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(child: _resultCard('Total Loose', totalCY.toStringAsFixed(0), 'CY with swell', Icons.dashboard_customize_outlined, AppTheme.primaryGreen)),
+            Expanded(child: _resultCard('Total Loose', totalCY.toStringAsFixed(0), _isAreaBased ? 'Generated CY (Loose)' : 'CY with swell', Icons.dashboard_customize_outlined, AppTheme.primaryGreen)),
             const SizedBox(width: 10),
             Expanded(child: _resultCard('Completion', DateFormat('MMM dd').format(endDate), 'Estimated end', Icons.event_available_outlined, Colors.blue)),
           ],

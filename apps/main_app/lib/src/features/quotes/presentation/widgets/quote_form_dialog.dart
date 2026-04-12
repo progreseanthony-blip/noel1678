@@ -229,20 +229,6 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     svc.machineries.addAll(newMachineries);
     
     // Sort to keep hierarchy: Primary followed by its supports
-    svc.machineries.sort((a, b) {
-      if (a.isPrimaryMover && b.isPrimaryMover) return 0; // maintain relative order
-      if (a.isPrimaryMover && !b.isPrimaryMover) {
-        if (b.parentMachineName == a.machineName) return -1;
-        return 0; // will be sorted by another primary
-      }
-      if (!a.isPrimaryMover && b.isPrimaryMover) {
-        if (a.parentMachineName == b.machineName) return 1;
-        return 0;
-      }
-      return 0;
-    });
-    
-    // A more solid sort for hierarchy: 
     final sortedList = <MachineryEntry>[];
     final primaries = svc.machineries.where((m) => m.isPrimaryMover).toList();
     for (var p in primaries) {
@@ -254,6 +240,54 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     
     svc.machineries.clear();
     svc.machineries.addAll(sortedList);
+
+    // --- 4. Sync Labor (Operators) ---
+    final List<LaborEntry> autoLabors = [];
+    for (final res in resources) {
+      final roleId = res['operator_role_id'];
+      if (roleId != null) {
+         // Look up the role in catalog
+         final role = _catalogLaborRoles.firstWhere(
+           (r) => r['id'].toString() == roleId.toString(), 
+           orElse: () => <String, dynamic>{}
+         );
+         
+         if (role.isNotEmpty) {
+           final roleName = role['description'] ?? '';
+           final qty = (res['quantity'] as num).toDouble();
+           
+           int existingIdx = autoLabors.indexWhere((l) => l.roleName == roleName);
+           if (existingIdx >= 0) {
+              autoLabors[existingIdx].employeesQuantity += qty;
+              if (months > autoLabors[existingIdx].monthsToWork) {
+                 autoLabors[existingIdx].monthsToWork = months;
+              }
+           } else {
+              autoLabors.add(LaborEntry(
+                roleName: roleName,
+                monthsToWork: months,
+                employeesQuantity: qty,
+                hourlyRate: (role['hourly_rate'] as num?)?.toDouble() ?? 0,
+                perDiem: (role['per_diem'] as num?)?.toDouble() ?? 0,
+              ));
+           }
+         }
+      }
+    }
+
+    // Merge with manual labors (keeping roles that are NOT auto-generated to avoid deleting manual entries like 'Helper')
+    final finalLabors = <LaborEntry>[];
+    finalLabors.addAll(autoLabors);
+
+    for (final existing in svc.labors) {
+       // If this manual labor role is NOT one of the machine operators, preserve it
+       if (!autoLabors.any((l) => l.roleName == existing.roleName)) {
+          finalLabors.add(existing);
+       }
+    }
+
+    svc.labors.clear();
+    svc.labors.addAll(finalLabors);
     
     setState(() {});
   }
@@ -508,9 +542,10 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             'topsoil_volume': est['topsoil_volume'] ?? 0,
             'compacted_volume': est['compacted_volume'] ?? 0,
             'swell_factor': est['swell_factor'] ?? 0.15,
+            'thickness_inches': est['thickness_inches'] ?? 0,
             'total_cy_loose': est['total_cy_loose'] ?? 0,
-            'start_date': (est['start_date'] as DateTime).toIso8601String(),
-            'end_date': est['end_date'] != null ? (est['end_date'] as DateTime).toIso8601String() : null,
+            'start_date': (est['start_date'] is String) ? est['start_date'] : (est['start_date'] as DateTime).toIso8601String(),
+            'end_date': est['end_date'] != null ? ((est['end_date'] is String) ? est['end_date'] : (est['end_date'] as DateTime).toIso8601String()) : null,
             'total_working_days': est['working_days'] ?? 0,
           }).select().single();
 
@@ -529,6 +564,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 'quantity': r['quantity'] ?? 1,
                 'trips_per_day': r['trips_per_day'] ?? 60,
                 'capacity_per_trip': r['capacity_per_trip'] ?? 30,
+                'performance_per_day': r['performance_per_day'] ?? 0,
                 'is_primary_mover': true,
                 'parent_resource_id': null,
               }).select().single();
@@ -545,6 +581,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                     'quantity': r['quantity'] ?? 1,
                     'trips_per_day': 0,
                     'capacity_per_trip': 0,
+                    'performance_per_day': r['performance_per_day'] ?? 0,
                     'is_primary_mover': false,
                     'parent_resource_id': lp != null ? localToDbId[lp] : null,
                   };
@@ -896,10 +933,11 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                               context: context,
                               builder: (_) => ServiceEstimationDialog(
                                 service: {
-                                  'id': null, // New service in wizard
+                                  'id': null,
                                   'catalog_service_id': svc.catalogId,
                                   'name': svc.name,
                                   'quantity': svc.quantity,
+                                  'unit': svc.unitOfMeasure,
                                   'estimationData': svc.estimationData,
                                 },
                               ),
@@ -1219,7 +1257,16 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             ...svc.labors.asMap().entries.map((e) => _buildLaborCard(svc, e.key, e.value)),
           const SizedBox(height: 16),
           _addButton('Add Labor', () {
-            setState(() => svc.labors.add(LaborEntry()));
+            double initialMonths = 0;
+            if (svc.estimationData != null) {
+              final start = svc.estimationData!['start_date'] as DateTime?;
+              final end = svc.estimationData!['end_date'] as DateTime?;
+              if (start != null && end != null) {
+                final diff = end.difference(start).inDays;
+                initialMonths = double.parse((diff / 30.44).toStringAsFixed(1));
+              }
+            }
+            setState(() => svc.labors.add(LaborEntry(monthsToWork: initialMonths)));
           }),
           const SizedBox(height: 20),
           _buildLaborSummary(svc),

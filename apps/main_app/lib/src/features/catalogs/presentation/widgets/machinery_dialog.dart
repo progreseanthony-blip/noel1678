@@ -23,15 +23,13 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
   final _capacityYardsController = TextEditingController(); // Numeric for calculation
   final _tripsController = TextEditingController(text: '60');
   final _fuelController = TextEditingController();
-  final _appController = TextEditingController(); // For adding new apps
   String _machineryType = 'hauling'; // hauling, production, support
-  
   Set<String> _selectedServiceIds = {};
-  List<String> _applications = [];
+  String? _selectedOperatorRoleId;
   List<Map<String, dynamic>> _allServices = [];
-  List<Map<String, dynamic>> _globalApplications = [];
+  List<Map<String, dynamic>> _laborRoles = [];
   bool _isLoadingServices = false;
-  bool _isLoadingApps = false;
+  bool _isLoadingRoles = false;
   bool _isSaving = false;
   Uint8List? _pickedFileBytes;
   String? _pickedFileName;
@@ -42,7 +40,7 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
   void initState() {
     super.initState();
     _fetchServices();
-    _fetchGlobalApps();
+    _fetchLaborRoles();
     if (widget.machineryToEdit != null) {
       final m = widget.machineryToEdit!;
       _descriptionController.text = m['description'] ?? '';
@@ -57,8 +55,7 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
       final ids = m['associated_service_ids'] as List?;
       if (ids != null) _selectedServiceIds = Set<String>.from(ids.map((id) => id.toString()));
       
-      final apps = m['applications'] as List?;
-      if (apps != null) _applications = List<String>.from(apps.map((a) => a.toString()));
+      _selectedOperatorRoleId = m['operator_role_id']?.toString();
     }
   }
 
@@ -74,15 +71,15 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
     }
   }
 
-  Future<void> _fetchGlobalApps() async {
-    setState(() => _isLoadingApps = true);
+  Future<void> _fetchLaborRoles() async {
+    setState(() => _isLoadingRoles = true);
     try {
-      final apps = await ref.read(catalogsServiceProvider).getMachineryApplications();
-      setState(() => _globalApplications = apps);
+      final roles = await ref.read(catalogsServiceProvider).getLaborRoles();
+      setState(() => _laborRoles = roles);
     } catch (e) {
-      debugPrint('***** Error fetching applications: $e');
+      debugPrint('***** Error fetching labor roles: $e');
     } finally {
-      if (mounted) setState(() => _isLoadingApps = false);
+      if (mounted) setState(() => _isLoadingRoles = false);
     }
   }
 
@@ -93,7 +90,6 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
     _capacityYardsController.dispose();
     _tripsController.dispose();
     _fuelController.dispose();
-    _appController.dispose();
     super.dispose();
   }
 
@@ -163,7 +159,7 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
         'yards_per_day': capYards * trips,
         'machinery_type': _machineryType,
         'associated_service_ids': _selectedServiceIds.toList(),
-        'applications': _applications,
+        'operator_role_id': _selectedOperatorRoleId,
       };
       
       if (_isEditing) {
@@ -286,7 +282,7 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
                         const SizedBox(height: 32),
                         _buildServiceSelector(),
                         const SizedBox(height: 32),
-                        _buildApplicationTags(),
+                        _buildOperatorRoleSelector(),
                         const SizedBox(height: 32),
                         _buildImagePicker(),
                       ],
@@ -462,105 +458,58 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
     );
   }
 
-  Widget _buildApplicationTags() {
+  Widget _buildOperatorRoleSelector() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Applications', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
-            if (_applications.isNotEmpty)
-              Text('${_applications.length} active', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+            Text('Default Operator Role', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+            if (_isLoadingRoles)
+              const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
           ],
         ),
         const SizedBox(height: 12),
-        Container(
-          height: 220,
-          decoration: BoxDecoration(
-            color: AppTheme.slate50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.slate200),
+        DropdownButtonFormField<String>(
+          value: _selectedOperatorRoleId,
+          isExpanded: true,
+          style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
+          decoration: InputDecoration(
+            hintText: 'Select an operator role...',
+            hintStyle: GoogleFonts.manrope(color: AppTheme.slate400),
+            prefixIcon: const Icon(Icons.person_outline, color: AppTheme.slate400, size: 20),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppTheme.primaryGreen, width: 2)),
           ),
-          child: Column(
+          items: _laborRoles.map((role) {
+            return DropdownMenuItem<String>(
+              value: role['id'].toString(),
+              child: Text(role['description'] ?? 'No description'),
+            );
+          }).toList(),
+          onChanged: (val) => setState(() => _selectedOperatorRoleId = val),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.blue.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.blue.withOpacity(0.1)),
+          ),
+          child: Row(
             children: [
+              const Icon(Icons.info_outline, size: 16, color: Colors.blue),
+              const SizedBox(width: 8),
               Expanded(
-                child: _isLoadingApps 
-                  ? const Center(child: CircularProgressIndicator())
-                  : _globalApplications.isEmpty && _applications.isEmpty
-                    ? Center(child: Text('No applications yet', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate400)))
-                    : ListView(
-                        padding: const EdgeInsets.symmetric(vertical: 4),
-                        children: [
-                           ..._globalApplications.map((app) {
-                              final id = app['id'].toString();
-                              final name = app['name'] ?? '';
-                              final isSelected = _applications.contains(name);
-                              return CheckboxListTile(
-                                value: isSelected,
-                                dense: true,
-                                visualDensity: VisualDensity.compact,
-                                secondary: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.edit_outlined, size: 16, color: AppTheme.slate400),
-                                      onPressed: () => _editApp(app),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    IconButton(
-                                      icon: const Icon(Icons.delete_outline, size: 16, color: AppTheme.errorRed),
-                                      onPressed: () => _deleteApp(id, name),
-                                      padding: EdgeInsets.zero,
-                                      constraints: const BoxConstraints(),
-                                    ),
-                                  ],
-                                ),
-                                title: Text(name, style: GoogleFonts.manrope(fontSize: 13, fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500, color: isSelected ? AppTheme.slate900 : AppTheme.slate500)),
-                                activeColor: AppTheme.primaryGreen,
-                                checkboxShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                                onChanged: (val) {
-                                  setState(() {
-                                    if (val == true) _applications.add(name);
-                                    else _applications.remove(name);
-                                  });
-                                },
-                              );
-                           }),
-                        ],
-                      ),
-              ),
-              const Divider(height: 1),
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _appController,
-                        style: GoogleFonts.manrope(fontSize: 13),
-                        decoration: InputDecoration(
-                          hintText: 'New application...',
-                          isDense: true,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppTheme.slate200)),
-                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppTheme.slate200)),
-                        ),
-                        onSubmitted: (v) => _addNewApp(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      decoration: BoxDecoration(color: AppTheme.primaryGreen, borderRadius: BorderRadius.circular(8)),
-                      child: IconButton(
-                        icon: const Icon(Icons.add, color: Colors.white),
-                        onPressed: _addNewApp,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'This role will be automatically suggested as the operator for this machine during estimations.',
+                  style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate600, fontWeight: FontWeight.w500),
                 ),
               ),
             ],
@@ -569,110 +518,6 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
       ],
     );
   }
-
-  Future<void> _addNewApp() async {
-    final val = _appController.text.trim();
-    if (val.isEmpty) return;
-    
-    // Check if already in applications for THIS machine
-    if (_applications.contains(val)) {
-       _appController.clear();
-       return;
-    }
-
-    try {
-      // Check if already exists in GLOBAL
-      final existing = _globalApplications.any((a) => a['name'].toString().toLowerCase() == val.toLowerCase());
-      if (!existing) {
-        await ref.read(catalogsServiceProvider).createMachineryApplication(val);
-        await _fetchGlobalApps(); // Refresh global list
-      }
-      
-      setState(() {
-        _applications.add(val);
-        _appController.clear();
-      });
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error adding application: $e'), backgroundColor: AppTheme.errorRed));
-      }
-    }
-  }
-
-  Future<void> _editApp(Map<String, dynamic> app) async {
-    final curName = app['name'] ?? '';
-    final curId = app['id'].toString();
-    final ctrl = TextEditingController(text: curName);
-    
-    final newName = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Edit Application', style: GoogleFonts.manrope(fontWeight: FontWeight.bold)),
-        content: TextField(
-          controller: ctrl,
-          decoration: InputDecoration(hintText: 'Application name'),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, ctrl.text.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-
-    if (newName != null && newName.isNotEmpty && newName != curName) {
-      try {
-        await ref.read(catalogsServiceProvider).updateMachineryApplication(curId, newName);
-        
-        // Sync the machine's selection if the old name was selected
-        if (_applications.remove(curName)) {
-           _applications.add(newName);
-        }
-        
-        await _fetchGlobalApps();
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating: $e'), backgroundColor: AppTheme.errorRed));
-        }
-      }
-    }
-  }
-
-  Future<void> _deleteApp(String id, String name) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Delete Application', style: GoogleFonts.manrope(fontWeight: FontWeight.bold)),
-        content: Text('Are you sure you want to delete "$name" globally? This will affect all machines.', style: GoogleFonts.manrope()),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('No')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
-            child: const Text('Yes, delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      try {
-        await ref.read(catalogsServiceProvider).deleteMachineryApplication(id);
-        setState(() {
-          _applications.remove(name);
-        });
-        await _fetchGlobalApps();
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting: $e'), backgroundColor: AppTheme.errorRed));
-        }
-      }
-    }
-  }
-
   Widget _buildImagePicker() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

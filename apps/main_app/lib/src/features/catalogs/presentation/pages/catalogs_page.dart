@@ -8,6 +8,7 @@ import '../widgets/labor_roles_tab.dart';
 import '../widgets/machinery_tab.dart';
 import '../widgets/services_tab.dart';
 import '../widgets/logistics_tab.dart';
+import '../widgets/materials_tab.dart';
 
 class CatalogsPage extends ConsumerStatefulWidget {
   const CatalogsPage({super.key});
@@ -23,7 +24,7 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -104,6 +105,7 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
                           children: const [
                             LaborRolesTab(),
                             MachineryTab(),
+                            MaterialsTab(),
                             LogisticsTab(),
                             ServicesTab(),
                           ],
@@ -137,6 +139,7 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
         tabs: const [
           Tab(text: 'LABOR ROLES'),
           Tab(text: 'MACHINERY'),
+          Tab(text: 'MATERIALS'),
           Tab(text: 'INSTRUMENTS'),
           Tab(text: 'SERVICES'),
         ],
@@ -188,6 +191,7 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
                     children: const [
                       LaborRolesTab(),
                       MachineryTab(),
+                      MaterialsTab(),
                       LogisticsTab(),
                       ServicesTab(),
                     ],

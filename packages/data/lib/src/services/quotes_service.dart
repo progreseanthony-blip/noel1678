@@ -143,6 +143,7 @@ class QuotesService {
             'quantity': r['quantity'],
             'trips_per_day': r['trips_per_day'],
             'capacity_per_trip': r['capacity_per_trip'],
+            'performance_per_day': r['performance_per_day'] ?? 0,
             'is_primary_mover': true,
             'parent_resource_id': null,
           })
@@ -165,6 +166,7 @@ class QuotesService {
             'quantity': r['quantity'],
             'trips_per_day': r['trips_per_day'] ?? 0,
             'capacity_per_trip': r['capacity_per_trip'] ?? 0,
+            'performance_per_day': r['performance_per_day'] ?? 0,
             'is_primary_mover': false,
             'parent_resource_id': dbParentId,
           };
