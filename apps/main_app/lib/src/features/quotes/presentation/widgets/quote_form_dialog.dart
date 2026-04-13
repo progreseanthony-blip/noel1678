@@ -1496,8 +1496,10 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   //  STEP 3: MATERIALS
   // ══════════════════════════════════════════════════════════════
   Widget _buildStep3Materials() {
-    final svc = _services[_activeServiceIndex];
-    return Padding(
+    if (_services.isEmpty) return Center(child: Text('Add a service first', style: GoogleFonts.manrope(color: AppTheme.slate500)));
+    final svc = _services[_activeServiceIndex.clamp(0, _services.length - 1)];
+
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1513,12 +1515,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               child: Center(child: Text('No materials added yet. Estimation values will appear here or click below to manually add.', textAlign: TextAlign.center, style: GoogleFonts.manrope(color: AppTheme.slate500))),
             )
           else
-            Expanded(
-              child: ListView.builder(
-                itemCount: svc.materials.length,
-                itemBuilder: (ctx, idx) => _buildMaterialCard(svc, idx, svc.materials[idx]),
-              ),
-            ),
+            ...svc.materials.asMap().entries.map((e) => _buildMaterialCard(svc, e.key, e.value)),
           const SizedBox(height: 16),
           _addButton('Add Material', () {
             setState(() => svc.materials.add(MaterialEntry()));
@@ -1532,6 +1529,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
 
   Widget _buildMaterialCard(ServiceEntry svc, int index, MaterialEntry m) {
     return Container(
+      key: ValueKey(m),
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
