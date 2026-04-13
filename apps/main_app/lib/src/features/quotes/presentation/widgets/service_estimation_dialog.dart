@@ -45,6 +45,9 @@ class _ServiceEstimationDialogState
   ///   'quantity', 'trips_per_day', 'capacity_per_trip'
   ///   'qtyCtrl', 'tripsCtrl', 'capCtrl', 'perDayCtrl' (TextEditingControllers)
   List<Map<String, dynamic>> _selectedResources = [];
+  List<Map<String, dynamic>> _selectedMaterials = [];
+  List<Map<String, dynamic>> _materialsCatalog = [];
+  int _currentStep = 0; // 0: Planning, 1: Resources, 2: Materials
 
   Map<String, dynamic>? _calculationResult;
   bool _showCalendar = false;
@@ -63,6 +66,9 @@ class _ServiceEstimationDialogState
     for (final res in _selectedResources) {
       _disposeControllers(res);
     }
+    for (final mat in _selectedMaterials) {
+      if (mat['qtyCtrl'] is TextEditingController) (mat['qtyCtrl'] as TextEditingController).dispose();
+    }
     super.dispose();
   }
 
@@ -79,6 +85,9 @@ class _ServiceEstimationDialogState
     try {
       final catalog = await ref.read(catalogsServiceProvider).getMachinery();
       _machineryCatalog = catalog;
+      
+      final matCatalog = await ref.read(catalogsServiceProvider).getMaterials();
+      _materialsCatalog = matCatalog;
       final serviceId = widget.service['id'];
       final persistentData = widget.service['estimationData'] as Map<String, dynamic>?;
 
@@ -94,18 +103,25 @@ class _ServiceEstimationDialogState
                      unitRaw.contains('pies2');
 
       if (persistentData != null) {
+        _estimationId = persistentData['id']; // Preserve DB ID if it came from DB initially
         _topsoilCtrl.text = persistentData['topsoil_volume']?.toString() ?? '0';
         _compactedCtrl.text = persistentData['compacted_volume']?.toString() ?? '0';
         _swellFactorCtrl.text = persistentData['swell_factor']?.toString() ?? '0.15';
         _thicknessCtrl.text = persistentData['thickness_inches']?.toString() ?? '0';
-        _startDate = persistentData['start_date'] ?? DateTime.now();
+        
+        final sd = persistentData['start_date'];
+        if (sd is DateTime) {
+          _startDate = sd;
+        } else if (sd is String) {
+          _startDate = DateTime.tryParse(sd) ?? DateTime.now();
+        }
 
         final resList = persistentData['resources'] as List?;
         if (resList != null) {
           _selectedResources = resList.map((r) {
             final qty = (r['quantity'] as num?)?.toDouble() ?? 1.0;
-            final trips = (r['trips_per_day'] as num?)?.toDouble() ?? 60.0;
-            final cap = (r['capacity_per_trip'] as num?)?.toDouble() ?? 30.0;
+            final trips = (r['trips_per_day'] as num?)?.toDouble() ?? 0.0;
+            final cap = (r['capacity_per_trip'] as num?)?.toDouble() ?? 0.0;
             final perf = (r['performance_per_day'] as num?)?.toDouble() ?? 0.0;
             final isPrimary = r['is_primary_mover'] as bool? ?? true;
             return {
@@ -118,6 +134,22 @@ class _ServiceEstimationDialogState
               'capCtrl': TextEditingController(text: cap.toString()),
               'perfCtrl': TextEditingController(text: perf.toString()),
               'perDayCtrl': TextEditingController(text: isPrimary ? (trips * cap).toStringAsFixed(0) : ''),
+            };
+          }).toList();
+        }
+
+        final matList = persistentData['materials'] as List?;
+        if (matList != null) {
+          _selectedMaterials = matList.map((m) {
+            final qty = (m['quantity'] as num?)?.toDouble() ?? 0.0;
+            return {
+              ...Map<String, dynamic>.from(m),
+              'material_id': m['material_id'],
+              'material_name': m['material_name'] ?? 'Unknown',
+              'unit': m['unit'] ?? 'und',
+              'quantity': qty,
+              'unit_price': (m['unit_price'] as num?)?.toDouble() ?? 0.0,
+              'qtyCtrl': TextEditingController(text: qty.toString()),
             };
           }).toList();
         }
@@ -158,6 +190,23 @@ class _ServiceEstimationDialogState
               'perfCtrl': TextEditingController(text: perf.toString()),
               'perDayCtrl': TextEditingController(text: isPrimary ? (trips * cap).toStringAsFixed(0) : ''),
             };
+          }).toList();
+
+          // Load Materials from DB
+          final quoteMats = await ref.read(quotesServiceProvider).getMaterialsForService(serviceId);
+          _selectedMaterials = quoteMats.map((m) {
+             final qty = (m['quantity'] as num).toDouble();
+             return {
+                ...m,
+                'id': m['id'],
+                'material_id': m['material_id'],
+                'material_name': m['materials']?['description'] ?? 'Unknown',
+                'unit': m['materials']?['unit'] ?? 'und',
+                'yield_factor': (m['materials']?['yield_factor'] as num?)?.toDouble() ?? 1.0,
+                'quantity': qty,
+                'unit_price': (m['unit_price'] as num).toDouble(),
+                'qtyCtrl': TextEditingController(text: qty.toString()),
+             };
           }).toList();
         }
       } else if (widget.service['id'] != null) {
@@ -275,7 +324,21 @@ class _ServiceEstimationDialogState
   }
 
   Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
+    // Attempt validation
+    bool isValid = _formKey.currentState?.validate() ?? true;
+
+    if (!isValid) {
+      if (mounted) {
+        setState(() => _currentStep = 0);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please correct the validation errors in the Planning phase'),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
+      }
+      return;
+    }
 
     final topVal = double.tryParse(_topsoilCtrl.text) ?? 0;
     final compVal = double.tryParse(_compactedCtrl.text) ?? 0;
@@ -300,6 +363,18 @@ class _ServiceEstimationDialogState
       }).toList();
     }
 
+    // Build serializable materials
+    List<Map<String, dynamic>> serializableMaterials() {
+      return _selectedMaterials.map((m) => {
+        'material_id': m['material_id'],
+        'material_name': m['material_name'],
+        'quantity': m['quantity'],
+        'unit_price': m['unit_price'],
+        'unit': m['unit'],
+        'notes': m['notes'],
+      }).toList();
+    }
+
     if (widget.service['id'] == null) {
       // Local application for unsaved wizard services
       if (mounted) {
@@ -310,6 +385,7 @@ class _ServiceEstimationDialogState
           'working_days': _calculationResult?['workingDays'] ?? 0,
           'end_date': _calculationResult?['endDate'],
           'resources': serializableResources(),
+          'materials': serializableMaterials(),
           'topsoil_volume': topVal,
           'compacted_volume': compVal,
           'swell_factor': swellVal,
@@ -337,6 +413,7 @@ class _ServiceEstimationDialogState
 
       final savedEstimation = await ref.read(quotesServiceProvider).upsertEstimation(estimationData);
       await ref.read(quotesServiceProvider).saveResources(savedEstimation['id'], serializableResources());
+      await ref.read(quotesServiceProvider).saveMaterials(widget.service['id'], serializableMaterials());
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -346,6 +423,15 @@ class _ServiceEstimationDialogState
           'applied': true,
           'total_cy_loose': compVal,
           'calculated_loose': _calculationResult?['totalCYLoose'] ?? 0,
+          'working_days': _calculationResult?['workingDays'] ?? 0,
+          'end_date': _calculationResult?['endDate'],
+          'resources': serializableResources(),
+          'materials': serializableMaterials(),
+          'topsoil_volume': topVal,
+          'compacted_volume': compVal,
+          'swell_factor': swellVal,
+          'thickness_inches': thickVal,
+          'start_date': _startDate,
         });
       }
     } catch (e) {
@@ -369,7 +455,7 @@ class _ServiceEstimationDialogState
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       child: Container(
         width: 1600,
-        height: 850,
+        height: MediaQuery.of(context).size.height * 0.9,
         decoration: BoxDecoration(
           color: AppTheme.backgroundLight,
           borderRadius: BorderRadius.circular(24),
@@ -382,8 +468,10 @@ class _ServiceEstimationDialogState
             : Column(
                 children: [
                   _buildHeader(),
+                  _buildStepIndicator(),
+                  if (_currentStep > 0) _buildPlanningSummaryBanner(),
                   Expanded(
-                    child: _showCalendar ? _buildCalendarView() : _buildThreeColumnLayout(),
+                    child: _showCalendar ? _buildCalendarView() : _buildStepContent(),
                   ),
                   _buildFooter(),
                 ],
@@ -392,12 +480,123 @@ class _ServiceEstimationDialogState
     );
   }
 
+  Widget _buildPlanningSummaryBanner() {
+    final cy = _calculationResult?['totalCYLoose'] ?? 0.0;
+    final area = double.tryParse(_compactedCtrl.text) ?? 0.0;
+    final thick = double.tryParse(_thicknessCtrl.text) ?? 0.0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 40),
+      color: AppTheme.slate900,
+      child: Row(
+        children: [
+          _summaryItem(Icons.water_drop_outlined, 'VOLUME', '${NumberFormat('#,###.##').format(cy)} CY'),
+          _divider(),
+          if (_isAreaBased) ...[
+            _summaryItem(Icons.square_foot, 'AREA', '${NumberFormat('#,###').format(area)} SQFT'),
+            _divider(),
+            _summaryItem(Icons.height, 'THICKNESS', '${thick.toStringAsFixed(1)} IN'),
+            _divider(),
+          ],
+          _summaryItem(Icons.calendar_today, 'START', DateFormat('MMM dd, yyyy').format(_startDate)),
+          const Spacer(),
+          Text('CURRENT PLAN CONTEXT', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen.withOpacity(0.5), letterSpacing: 1)),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryItem(IconData icon, String label, String value) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: AppTheme.primaryGreen),
+        const SizedBox(width: 10),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: GoogleFonts.manrope(fontSize: 8, fontWeight: FontWeight.w800, color: AppTheme.slate400)),
+            Text(value, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white)),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _divider() => Container(height: 20, width: 1, margin: const EdgeInsets.symmetric(horizontal: 24), color: AppTheme.slate700);
+
+  Widget _buildStepIndicator() {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 40),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.5),
+        border: Border(bottom: BorderSide(color: AppTheme.slate200)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _stepIcon(0, 'Planning', Icons.tune),
+          _stepLine(0),
+          _stepIcon(1, 'Resources', Icons.construction),
+          _stepLine(1),
+          _stepIcon(2, 'Materials', Icons.inventory_2),
+        ],
+      ),
+    );
+  }
+
+  Widget _stepIcon(int step, String label, IconData icon) {
+    final isActive = _currentStep == step;
+    final isDone = _currentStep > step;
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: () => setState(() => _currentStep = step),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            width: 44, height: 44,
+            decoration: BoxDecoration(
+              color: isActive ? AppTheme.primaryGreen : (isDone ? AppTheme.primaryGreen.withOpacity(0.2) : Colors.white),
+              shape: BoxShape.circle,
+              border: Border.all(color: isActive ? AppTheme.primaryGreen : AppTheme.slate200, width: 2),
+            ),
+            child: Icon(isDone ? Icons.check : icon, color: isActive ? const Color(0xFF0F172A) : (isDone ? AppTheme.primaryGreen : AppTheme.slate400), size: 20),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(label, style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: isActive ? AppTheme.slate900 : AppTheme.slate400)),
+      ],
+    );
+  }
+
+  Widget _stepLine(int afterStep) {
+    final isDone = _currentStep > afterStep;
+    return Container(
+      width: 100,
+      height: 2,
+      margin: const EdgeInsets.only(left: 16, right: 16, bottom: 20),
+      color: isDone ? AppTheme.primaryGreen : AppTheme.slate200,
+    );
+  }
+
+  Widget _buildStepContent() {
+    return IndexedStack(
+      index: _currentStep,
+      children: [
+        _buildPlanningStep(),
+        _buildResourcesStep(),
+        _buildMaterialsStep(),
+      ],
+    );
+  }
+
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      decoration: const BoxDecoration(
-        color: Color(0xFF0F172A),
-        borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: const BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
       ),
       child: Row(
         children: [
@@ -450,73 +649,143 @@ class _ServiceEstimationDialogState
     );
   }
 
-  Widget _buildThreeColumnLayout() {
+  Widget _buildPlanningStep() {
     return Form(
       key: _formKey,
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+        padding: const EdgeInsets.fromLTRB(40, 30, 40, 30),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Column 1: Factors & Schedule
+            // Left: Factors
             Expanded(
-              flex: 5,
+              flex: 4,
               child: SingleChildScrollView(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _inputLabel('Factors'),
-                    const SizedBox(height: 12),
+                    _sectionHeader('Production Factors'),
+                    const SizedBox(height: 20),
                     if (!_isAreaBased) ...[
-                      _textField(_topsoilCtrl, 'Topsoil (CY)', Icons.layers_outlined),
-                      const SizedBox(height: 8),
-                      _textField(_compactedCtrl, 'Compacted (CY)', Icons.compress_outlined),
+                      _textField(_topsoilCtrl, 'Topsoil Volume (CY)', Icons.layers_outlined),
+                      const SizedBox(height: 16),
+                      _textField(_compactedCtrl, 'Compacted Volume (CY)', Icons.compress_outlined),
                     ] else ...[
                       _textField(_compactedCtrl, 'Total Area (SQFT)', Icons.square_foot),
-                      const SizedBox(height: 8),
-                      _textField(_thicknessCtrl, 'Thickness (IN)', Icons.height),
+                      const SizedBox(height: 16),
+                      _textField(_thicknessCtrl, 'Thickness (Inches)', Icons.height),
                     ],
-                    const SizedBox(height: 8),
-                    _textField(_swellFactorCtrl, 'Swell %', Icons.expand_outlined),
-                    const Divider(height: 32),
-                    _inputLabel('Schedule'),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 16),
+                    _textField(_swellFactorCtrl, 'Swell Factor %', Icons.expand_outlined),
+                    const SizedBox(height: 24),
+                    _sectionHeader('Schedule'),
+                    const SizedBox(height: 16),
                     _datePicker(),
                   ],
                 ),
               ),
             ),
-            const VerticalDivider(width: 32),
-            // Column 2: Resources (hierarchical)
+            const SizedBox(width: 40),
+            // Right: Explanation/Guide
             Expanded(
-              flex: 8,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _inputLabel('Resources'),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        children: [
-                          ..._buildHierarchicalResources(),
-                          const SizedBox(height: 8),
-                          _addPrimaryButton(),
-                        ],
-                      ),
-                    ),
+              flex: 6,
+              child: Container(
+                padding: const EdgeInsets.all(30),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: AppTheme.slate200)),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('How it works', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+                      const SizedBox(height: 16),
+                      _guideItem(Icons.info_outline, 'Calculations are based on the unit of measure of the service (${widget.service['unit']}).'),
+                      _guideItem(Icons.calculate_outlined, 'We convert Area to Volume automatically if thickness is provided.'),
+                      _guideItem(Icons.calendar_month_outlined, 'The production timeline will be generated after assigning machinery in the next step.'),
+                      const SizedBox(height: 48),
+                      _buildCalculationSummaryMini(),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-            const VerticalDivider(width: 32),
-            // Column 3: Summary
-            Expanded(
-              flex: 12,
-              child: _buildCalculationSummary(),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildResourcesStep() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(30, 20, 30, 20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            flex: 8,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _inputLabel('Assigned Machinery & Support'),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        ..._buildHierarchicalResources(),
+                        const SizedBox(height: 8),
+                        _addPrimaryButton(),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 30),
+          Expanded(
+            flex: 5,
+            child: _buildCalculationSummary(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Text(title, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: AppTheme.slate900));
+  }
+
+  Widget _guideItem(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: AppTheme.primaryGreen),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate600, height: 1.5))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalculationSummaryMini() {
+    if (_calculationResult == null) return const SizedBox();
+    final cy = _calculationResult?['totalCYLoose'] ?? 0;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2))),
+      child: Row(
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('TOTAL CALCULATED VOLUME', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
+              Text('${NumberFormat('#,###.##').format(cy)} CY', style: GoogleFonts.manrope(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.primaryGreen)),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -569,28 +838,23 @@ class _ServiceEstimationDialogState
             ...supports.map((sup) => _supportResourceRow(sup)),
           ],
 
-          // + Add Support button
+          // + Add Support button (HIGHLIGHTED)
           InkWell(
-            borderRadius: const BorderRadius.only(
-              bottomLeft: Radius.circular(14),
-              bottomRight: Radius.circular(14),
-            ),
+            borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(14), bottomRight: Radius.circular(14)),
             onTap: () => _showMachinerySelector(forPrimaryId: res['id'] as String),
             child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
               decoration: BoxDecoration(
-                color: AppTheme.slate50,
-                borderRadius: const BorderRadius.only(
-                  bottomLeft: Radius.circular(14),
-                  bottomRight: Radius.circular(14),
-                ),
+                color: AppTheme.primaryGreen.withOpacity(0.1),
+                borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(14), bottomRight: Radius.circular(14)),
+                border: Border(top: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.2))),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.add, size: 14, color: AppTheme.slate500),
-                  const SizedBox(width: 6),
-                  Text('Add Support Machine', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
+                  const Icon(Icons.add_circle_outline, size: 18, color: AppTheme.primaryGreen),
+                  const SizedBox(width: 8),
+                  Text('ADD SUPPORT MACHINE', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w900, color: AppTheme.primaryGreen, letterSpacing: 0.5)),
                 ],
               ),
             ),
@@ -875,32 +1139,34 @@ class _ServiceEstimationDialogState
     final calendarDays = endDate.difference(_startDate).inDays;
     final months = calendarDays / 30.44;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _inputLabel('Calculation Results'),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(child: _resultCard('Total Loose', totalCY.toStringAsFixed(0), _isAreaBased ? 'Generated CY (Loose)' : 'CY with swell', Icons.dashboard_customize_outlined, AppTheme.primaryGreen)),
-            const SizedBox(width: 10),
-            Expanded(child: _resultCard('Completion', DateFormat('MMM dd').format(endDate), 'Estimated end', Icons.event_available_outlined, Colors.blue)),
-          ],
-        ),
-        const SizedBox(height: 10),
-        _resultCardExtended('Project Duration', '$workingDays Working Days', 'Calendar: $calendarDays d | Months: ${months.toStringAsFixed(1)}', Icons.timer_outlined, Colors.orange),
-        const SizedBox(height: 16),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: AppTheme.primaryGreen.withOpacity(0.05),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.1)),
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _inputLabel('Calculation Results'),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(child: _resultCard('Total Loose', totalCY.toStringAsFixed(0), _isAreaBased ? 'Generated CY (Loose)' : 'CY with swell', Icons.dashboard_customize_outlined, AppTheme.primaryGreen)),
+              const SizedBox(width: 10),
+              Expanded(child: _resultCard('Completion', DateFormat('MMM dd').format(endDate), 'Estimated end', Icons.event_available_outlined, Colors.blue)),
+            ],
           ),
-          child: Text('Sat: 50% production | Sun/Hol: Non-working', textAlign: TextAlign.center, style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate700, fontWeight: FontWeight.w700)),
-        ),
-      ],
+          const SizedBox(height: 10),
+          _resultCardExtended('Project Duration', '$workingDays Working Days', 'Calendar: $calendarDays d | Months: ${months.toStringAsFixed(1)}', Icons.timer_outlined, Colors.orange),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppTheme.primaryGreen.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.1)),
+            ),
+            child: Text('Sat: 50% production | Sun/Hol: Non-working', textAlign: TextAlign.center, style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate700, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
     );
   }
 
@@ -964,19 +1230,272 @@ class _ServiceEstimationDialogState
   }
 
   // ══════════════════════════════════════════════════════════════
+  //  MATERIALS STEP
+  // ══════════════════════════════════════════════════════════════
+
+  Widget _buildMaterialsStep() {
+    final calculatedCY = _calculationResult?['totalCYLoose'] ?? 0.0;
+
+    return Padding(
+      padding: const EdgeInsets.all(30),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _sectionHeader('Project Materials & Supplies'),
+              ElevatedButton.icon(
+                onPressed: _showMaterialSelector,
+                icon: const Icon(Icons.add_shopping_cart, size: 18),
+                label: const Text('Add Material'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryGreen,
+                  foregroundColor: const Color(0xFF0F172A),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text('Quantities are suggested based on the calculated volume: ${NumberFormat('#,###.##').format(calculatedCY)} CY', 
+               style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500)),
+          const SizedBox(height: 20),
+          Expanded(
+            child: _selectedMaterials.isEmpty
+                ? _emptyMaterialsPlaceholder()
+                : ListView.builder(
+                    itemCount: _selectedMaterials.length,
+                    itemBuilder: (ctx, idx) => _materialItemRow(_selectedMaterials[idx], calculatedCY),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyMaterialsPlaceholder() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.inventory_2_outlined, size: 64, color: AppTheme.slate200),
+          const SizedBox(height: 16),
+          Text('No materials added yet', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.slate400)),
+          const SizedBox(height: 8),
+          Text('Click "Add Material" to select supplies from the catalog', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400)),
+        ],
+      ),
+    );
+  }
+
+  Widget _materialItemRow(Map<String, dynamic> mat, double calculatedCY) {
+    final yield = (mat['yield_factor'] as num?)?.toDouble() ?? 1.0;
+    final suggested = calculatedCY * yield;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppTheme.slate200)),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: AppTheme.slate50, borderRadius: BorderRadius.circular(10)),
+            child: const Icon(Icons.category_outlined, color: AppTheme.slate600),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(mat['material_name'] ?? 'Material', style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+                Text('Unit: ${mat['unit']} | Yield: ${yield.toStringAsFixed(2)} per CY', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 20),
+          SizedBox(
+            width: 150,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text('QUANTITY', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () => setState(() {
+                        mat['quantity'] = suggested;
+                        (mat['qtyCtrl'] as TextEditingController).text = suggested.toStringAsFixed(2);
+                      }),
+                      child: Text('AUTO', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                TextFormField(
+                  controller: mat['qtyCtrl'] as TextEditingController,
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) => mat['quantity'] = double.tryParse(v) ?? 0,
+                  decoration: InputDecoration(
+                    suffixText: mat['unit'],
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          // Unit Price Field
+          SizedBox(
+            width: 130,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('UNIT PRICE (\$)', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
+                const SizedBox(height: 6),
+                TextFormField(
+                  initialValue: mat['unit_price']?.toString() ?? '0',
+                  keyboardType: TextInputType.number,
+                  onChanged: (v) => setState(() => mat['unit_price'] = double.tryParse(v) ?? 0),
+                  style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    prefixText: '\$ ',
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    fillColor: Colors.white,
+                    filled: true,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 20),
+          // Subtotal Display
+          SizedBox(
+            width: 120,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('SUBTOTAL', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
+                const SizedBox(height: 6),
+                Text('\$${NumberFormat('#,###.00').format((mat['quantity'] ?? 0) * (mat['unit_price'] ?? 0))}', 
+                     style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 20),
+          IconButton(
+            onPressed: () => setState(() => _selectedMaterials.remove(mat)),
+            icon: const Icon(Icons.delete_outline, color: AppTheme.errorRed),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showMaterialSelector() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Select Material', style: GoogleFonts.manrope(fontWeight: FontWeight.w800)),
+        content: SizedBox(
+          width: 400,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: _materialsCatalog.length,
+            itemBuilder: (c, i) {
+              final m = _materialsCatalog[i];
+              return ListTile(
+                title: Text(m['description'] ?? ''),
+                subtitle: Text('Unit: ${m['unit'] ?? 'und'}'),
+                onTap: () {
+                  _addMaterial(m);
+                  Navigator.pop(ctx);
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _addMaterial(Map<String, dynamic> catalogItem) {
+    setState(() {
+      final yield = (catalogItem['yield_factor'] as num?)?.toDouble() ?? 1.0;
+      final calculatedCY = _calculationResult?['totalCYLoose'] ?? 0.0;
+      final suggested = calculatedCY * yield;
+      
+      _selectedMaterials.add({
+        'material_id': catalogItem['id'],
+        'material_name': catalogItem['description'],
+        'unit': catalogItem['unit'] ?? 'und',
+        'yield_factor': yield,
+        'quantity': suggested,
+        'unit_price': 0.0,
+        'notes': '',
+        'qtyCtrl': TextEditingController(text: suggested.toStringAsFixed(2)),
+      });
+    });
+  }
+
+  // ══════════════════════════════════════════════════════════════
   //  FOOTER
   // ══════════════════════════════════════════════════════════════
 
   Widget _buildFooter() {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       decoration: BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: AppTheme.slate200))),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          _footerButton('Cancel', Colors.white, AppTheme.slate500, () => Navigator.pop(context), border: true),
-          const SizedBox(width: 12),
-          _footerButton(_isSaving ? 'Saving...' : 'Save Estimation', AppTheme.primaryGreen, Colors.white, _showCalendar ? null : _save),
+          if (_currentStep > 0)
+            OutlinedButton(
+              onPressed: () => setState(() => _currentStep--),
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: Text('Previous', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+            )
+          else
+             OutlinedButton(
+              onPressed: () => Navigator.pop(context),
+              style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
+              child: Text('Cancel', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+            ),
+          const Spacer(),
+          if (_currentStep < 2)
+            ElevatedButton(
+              onPressed: () => setState(() => _currentStep++),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F172A),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: Row(
+                children: [
+                  Text('Next Step', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+                  const SizedBox(width: 10),
+                  const Icon(Icons.arrow_forward, size: 18),
+                ],
+              ),
+            )
+          else
+            _isSaving
+                ? const CircularProgressIndicator(color: AppTheme.primaryGreen)
+                : ElevatedButton(
+                    onPressed: _save,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryGreen,
+                      foregroundColor: const Color(0xFF0F172A),
+                      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    child: Text('Finish & Save Estimation', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+                  ),
         ],
       ),
     );

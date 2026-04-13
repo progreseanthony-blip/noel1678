@@ -174,4 +174,29 @@ class QuotesService {
       );
     }
   }
+
+  // ── Quote Service Materials ──
+  Future<List<Map<String, dynamic>>> getMaterialsForService(String quoteServiceId) async {
+    final response = await _supabase.from('quote_service_materials')
+      .select('*, materials(*)')
+      .eq('quote_service_id', quoteServiceId)
+      .order('created_at');
+    return List<Map<String, dynamic>>.from(response ?? []);
+  }
+
+  Future<void> saveMaterials(String quoteServiceId, List<Map<String, dynamic>> materials) async {
+    // Delete existing and insert new
+    await _supabase.from('quote_service_materials').delete().eq('quote_service_id', quoteServiceId);
+    if (materials.isEmpty) return;
+
+    await _supabase.from('quote_service_materials').insert(
+      materials.map((m) => {
+        'quote_service_id': quoteServiceId,
+        'material_id': m['material_id'],
+        'quantity': m['quantity'] ?? 0,
+        'unit_price': m['unit_price'] ?? 0,
+        'notes': m['notes'],
+      }).toList()
+    );
+  }
 }

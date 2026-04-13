@@ -67,6 +67,24 @@ class LaborEntry {
   double get totalFinal => totalPay + totalPerDiem;
 }
 
+class MaterialEntry {
+  String materialName;
+  String unit;
+  double quantity;
+  double unitPrice;
+  String? catalogId;
+
+  MaterialEntry({
+    this.materialName = '',
+    this.unit = 'und',
+    this.quantity = 0,
+    this.unitPrice = 0,
+    this.catalogId,
+  });
+
+  double get total => quantity * unitPrice;
+}
+
 class ServiceEntry {
   String name;
   String unitOfMeasure;
@@ -75,6 +93,7 @@ class ServiceEntry {
   double profitPercentage;
   List<MachineryEntry> machineries;
   List<LaborEntry> labors;
+  List<MaterialEntry> materials;
 
   Map<String, dynamic>? estimationData;
   String? catalogId;
@@ -87,17 +106,20 @@ class ServiceEntry {
     this.profitPercentage = 0,
     List<MachineryEntry>? machineries,
     List<LaborEntry>? labors,
+    List<MaterialEntry>? materials,
     this.estimationData,
     this.catalogId,
   })  : machineries = machineries ?? [],
-        labors = labors ?? [];
+        labors = labors ?? [],
+        materials = materials ?? [];
 
   double get totalMachinery => machineries.fold(0.0, (s, m) => s + m.totalRent);
   double get totalGasoline => machineries.fold(0.0, (s, m) => s + m.totalGallonsCost);
   double get totalDelivery => machineries.fold(0.0, (s, m) => s + m.deliveryTotal);
   double get totalLabor => labors.fold(0.0, (s, l) => s + l.totalPay);
   double get totalPerDiem => labors.fold(0.0, (s, l) => s + l.totalPerDiem);
-  double get subTotal => totalMachinery + totalGasoline + totalDelivery + totalLabor + totalPerDiem;
+  double get totalMaterials => materials.fold(0.0, (s, m) => s + m.total);
+  double get subTotal => totalMachinery + totalGasoline + totalDelivery + totalLabor + totalPerDiem + totalMaterials;
   double get overheadAmount => subTotal * (overheadPercentage / 100);
   double get totalPlusOverhead => subTotal + overheadAmount;
   double get profitAmount => totalPlusOverhead * (profitPercentage / 100);
@@ -131,6 +153,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   List<Map<String, dynamic>> _catalogServices = [];
   List<Map<String, dynamic>> _catalogMachinery = [];
   List<Map<String, dynamic>> _catalogLaborRoles = [];
+  List<Map<String, dynamic>> _catalogMaterials = [];
 
   // Step 1+ - Services
   List<ServiceEntry> _services = [];
@@ -292,18 +315,53 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     setState(() {});
   }
 
+  void _syncMaterialsFromEstimation(ServiceEntry svc, Map<String, dynamic> result) {
+    final estMaterials = result['materials'] as List?;
+    if (estMaterials == null || estMaterials.isEmpty) return;
+
+    // Clear if it's the default empty state
+    if (svc.materials.isEmpty || (svc.materials.length == 1 && svc.materials[0].materialName.isEmpty)) {
+      svc.materials.clear();
+    }
+
+    for (final em in estMaterials) {
+      final String? catId = em['material_id']?.toString();
+      final String name = em['material_name'] ?? '';
+      
+      // Look for existing to update or add new
+      final existingIdx = svc.materials.indexWhere((m) => m.catalogId == catId || m.materialName == name);
+      
+      if (existingIdx != -1) {
+        svc.materials[existingIdx].quantity = (em['quantity'] as num).toDouble();
+        svc.materials[existingIdx].unitPrice = (em['unit_price'] as num).toDouble();
+        svc.materials[existingIdx].unit = em['unit'] ?? 'und';
+      } else {
+        svc.materials.add(MaterialEntry(
+          catalogId: catId,
+          materialName: name,
+          quantity: (em['quantity'] as num).toDouble(),
+          unitPrice: (em['unit_price'] as num).toDouble(),
+          unit: em['unit'] ?? 'und',
+        ));
+      }
+    }
+    setState(() {});
+  }
+
   Future<void> _loadCatalogs() async {
     try {
       final supabase = Supabase.instance.client;
       final svcs = await supabase.from('services').select().order('description');
       final mach = await supabase.from('machinery').select().order('description');
       final labr = await supabase.from('labor_roles').select().order('description');
+      final matr = await supabase.from('materials').select().order('description');
       
       if (mounted) {
         setState(() {
           _catalogServices = List<Map<String, dynamic>>.from(svcs ?? []);
           _catalogMachinery = List<Map<String, dynamic>>.from(mach ?? []);
           _catalogLaborRoles = List<Map<String, dynamic>>.from(labr ?? []);
+          _catalogMaterials = List<Map<String, dynamic>>.from(matr ?? []);
         });
       }
     } catch (e) {
@@ -342,7 +400,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           final estId = responseEst['id'];
           final responseRes = await supabase
               .from('quote_service_estimation_resources')
-              .select('*, machinery(description, capacity, default_trips_per_day)')
+              .select('*, machinery(description, capacity, default_trips_per_day, photo_url, machinery_type)')
               .eq('estimation_id', estId);
 
           final resources = (responseRes as List).map((r) => {
@@ -356,17 +414,35 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             'quantity': (r['quantity'] as num).toDouble(),
             'trips_per_day': (r['trips_per_day'] as num).toDouble(),
             'capacity_per_trip': (r['capacity_per_trip'] as num).toDouble(),
+            'performance_per_day': (r['performance_per_day'] as num?)?.toDouble() ?? 0.0,
+          }).toList();
+
+          // Load materials for this service specifically for the estimation context if any
+          final responseEstMat = await supabase
+              .from('quote_service_materials')
+              .select('*, materials(description, unit, yield_factor)')
+              .eq('quote_service_id', svcId);
+          
+          final estMaterials = (responseEstMat as List).map((m) => {
+            'material_id': m['material_id'],
+            'material_name': m['material_name'],
+            'quantity': (m['quantity'] as num).toDouble(),
+            'unit_price': (m['unit_price'] as num).toDouble(),
+            'unit': m['unit_name'],
           }).toList();
 
           estimationData = {
+            'id': estId,
             'topsoil_volume': (responseEst['topsoil_volume'] as num).toDouble(),
             'compacted_volume': (responseEst['compacted_volume'] as num).toDouble(),
             'swell_factor': (responseEst['swell_factor'] as num).toDouble(),
+            'thickness_inches': (responseEst['thickness_inches'] as num?)?.toDouble() ?? 0.0,
             'total_cy_loose': (responseEst['total_cy_loose'] as num).toDouble(),
             'working_days': (responseEst['total_working_days'] as num).toInt(),
             'start_date': DateTime.parse(responseEst['start_date']),
             'end_date': responseEst['end_date'] != null ? DateTime.parse(responseEst['end_date']) : null,
             'resources': resources,
+            'materials': estMaterials,
           };
         }
 
@@ -406,6 +482,21 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           perDiem: (l['per_diem'] as num?)?.toDouble() ?? 0,
         )).toList();
 
+        // Load materials for this service
+        final responseMat = await supabase
+            .from('quote_service_materials')
+            .select()
+            .eq('quote_service_id', svcId);
+        
+        final matData = List<Map<String, dynamic>>.from(responseMat ?? []);
+        final materials = matData.map<MaterialEntry>((m) => MaterialEntry(
+          materialName: m['material_name'] ?? '',
+          quantity: (m['quantity'] as num?)?.toDouble() ?? 0,
+          unitPrice: (m['unit_price'] as num?)?.toDouble() ?? 0,
+          unit: m['unit_name'] ?? 'und', // Or unit_measure if that's the col
+          catalogId: m['material_id']?.toString(),
+        )).toList();
+
 
         loadedServices.add(ServiceEntry(
           name: svcData['name'] ?? '',
@@ -415,6 +506,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           profitPercentage: (svcData['profit_percentage'] as num?)?.toDouble() ?? 0,
           machineries: machineries,
           labors: labors,
+          materials: materials,
           estimationData: estimationData,
           catalogId: svcData['service_id']?.toString(), // Map it if it exists in DB, otherwise we match by name below
         ));
@@ -534,6 +626,17 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           });
         }
 
+        for (final m in svc.materials) {
+          await supabase.from('quote_service_materials').insert({
+            'quote_service_id': svcId,
+            'material_id': m.catalogId,
+            'material_name': m.materialName,
+            'quantity': m.quantity,
+            'unit_price': m.unitPrice,
+            'unit_name': m.unit,
+          });
+        }
+
         // Save estimation data if exists
         if (svc.estimationData != null) {
           final est = svc.estimationData!;
@@ -587,6 +690,23 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                   };
                 }).toList(),
               );
+            }
+          }
+
+          // Save materials from estimation to service materials if needed
+          final estimationMaterials = est['materials'] as List?;
+          if (estimationMaterials != null && estimationMaterials.isNotEmpty) {
+            for (final em in estimationMaterials) {
+              // Only add if not already in svc.materials by catalogId
+              if (!svc.materials.any((m) => m.catalogId?.toString() == em['material_id']?.toString())) {
+                svc.materials.add(MaterialEntry(
+                  catalogId: em['material_id']?.toString(),
+                  materialName: em['material_name'] ?? '',
+                  quantity: (em['quantity'] as num?)?.toDouble() ?? 0,
+                  unitPrice: (em['unit_price'] as num?)?.toDouble() ?? 0,
+                  unit: em['unit'] ?? 'und',
+                ));
+              }
             }
           }
         }
@@ -684,17 +804,18 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
 
   String _stepSubtitle() {
     switch (_currentStep) {
-      case 0: return 'Step 1 of 4 — Basic Information';
-      case 1: return 'Step 2 of 4 — Services & Machinery';
-      case 2: return 'Step 3 of 4 — Labor & Workforce';
-      case 3: return 'Step 4 of 4 — Summary & Profit';
+      case 0: return 'Step 1 of 5 — Basic Information';
+      case 1: return 'Step 2 of 5 — Services & Machinery';
+      case 2: return 'Step 3 of 5 — Labor & Workforce';
+      case 3: return 'Step 4 of 5 — Project Materials';
+      case 4: return 'Step 5 de 5 — Summary & Profit';
       default: return '';
     }
   }
 
   // ── Step Indicator ──
   Widget _buildStepIndicator() {
-    final steps = ['Info', 'Machinery', 'Labor', 'Summary'];
+    final steps = ['Info', 'Machinery', 'Labor', 'Materials', 'Summary'];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
       color: const Color(0xFFF8FAFC),
@@ -736,7 +857,8 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       case 0: return _buildStep0Info();
       case 1: return _buildStep1Machinery();
       case 2: return _buildStep2Labor();
-      case 3: return _buildStep3Summary();
+      case 3: return _buildStep3Materials();
+      case 4: return _buildStep4Summary();
       default: return const SizedBox.shrink();
     }
   }
@@ -914,7 +1036,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                                 }
                               });
                             },
-                            onAddNew: () => _openServiceCatalogAdd(serviceIndex),
+                            onAddNew: () => _openCatalogItemAdd('services'),
                           ),
                         ),
                       ),
@@ -948,6 +1070,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                                 svc.quantity = (result['total_cy_loose'] as num).toDouble();
                                 svc.estimationData = Map<String, dynamic>.from(result as Map); 
                                 _syncMachineryFromEstimation(svc, result as Map<String, dynamic>);
+                                _syncMaterialsFromEstimation(svc, result as Map<String, dynamic>);
                               });
                             }
                           },
@@ -1167,7 +1290,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                     }
                   });
                 },
-                onAddNew: () => _openMachineryCatalogAdd(svc, index),
+                onAddNew: () => _openCatalogItemAdd('machinery'),
               ),
               _fieldCard('Months', m.monthsToUse, 70, onNum: (v) => setState(() => m.monthsToUse = v)),
               _fieldCard('Monthly Rent \$', m.monthlyRentCost, 100, onNum: (v) => setState(() => m.monthlyRentCost = v)),
@@ -1317,7 +1440,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                     }
                   });
                 },
-                onAddNew: () => _openLaborCatalogAdd(svc, index),
+                onAddNew: () => _openCatalogItemAdd('labor'),
               ),
               _fieldCard('Months', l.monthsToWork, 80, onNum: (v) => setState(() => l.monthsToWork = v)),
               _fieldCard('Employees', l.employeesQuantity, 80, onNum: (v) => setState(() => l.employeesQuantity = v)),
@@ -1370,9 +1493,120 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   }
 
   // ══════════════════════════════════════════════════════════════
-  //  STEP 3: SUMMARY
+  //  STEP 3: MATERIALS
   // ══════════════════════════════════════════════════════════════
-  Widget _buildStep3Summary() {
+  Widget _buildStep3Materials() {
+    final svc = _services[_activeServiceIndex];
+    return Padding(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildServiceTabs(),
+          const SizedBox(height: 20),
+          _sectionTitle('Materials & Project Supplies'),
+          const SizedBox(height: 16),
+          if (svc.materials.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFFE2E8F0))),
+              child: Center(child: Text('No materials added yet. Estimation values will appear here or click below to manually add.', textAlign: TextAlign.center, style: GoogleFonts.manrope(color: AppTheme.slate500))),
+            )
+          else
+            Expanded(
+              child: ListView.builder(
+                itemCount: svc.materials.length,
+                itemBuilder: (ctx, idx) => _buildMaterialCard(svc, idx, svc.materials[idx]),
+              ),
+            ),
+          const SizedBox(height: 16),
+          _addButton('Add Material', () {
+            setState(() => svc.materials.add(MaterialEntry()));
+          }),
+          const SizedBox(height: 20),
+          _buildMaterialSummary(svc),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMaterialCard(ServiceEntry svc, int index, MaterialEntry m) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFE2E8F0))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('Material ${index + 1}', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => setState(() => svc.materials.removeAt(index)),
+                child: const Icon(Icons.close, color: AppTheme.slate400, size: 18),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12, runSpacing: 12,
+            children: [
+              _SearchableCatalogDropdown(
+                label: 'Name / Description', width: 200,
+                items: _catalogMaterials,
+                initialValue: m.materialName,
+                onSelected: (val, item) {
+                  setState(() {
+                    m.materialName = val;
+                    if (item != null) {
+                      m.unit = item['unit'] ?? 'und';
+                      m.catalogId = item['id']?.toString();
+                    }
+                  });
+                },
+                onAddNew: () => _openCatalogItemAdd('materials'),
+              ),
+              _fieldCard('Quantity', m.quantity, 80, onNum: (v) => setState(() => m.quantity = v)),
+              _fieldCard('Unit', 0, 80, initialText: m.unit, onText: (v) => setState(() => m.unit = v)),
+              _fieldCard('Unit Price \$', m.unitPrice, 100, onNum: (v) => setState(() => m.unitPrice = v)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: const Color(0xFFF8FAFC), borderRadius: BorderRadius.circular(8)),
+            child: Row(
+              children: [
+                const Spacer(),
+                Text('TOTAL: ', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
+                Text('\$${_currencyFormat.format(m.total)}', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMaterialSummary(ServiceEntry svc) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.05), borderRadius: BorderRadius.circular(10), border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2))),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('Materials Summary', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+          Text('Total: \$${_currencyFormat.format(svc.totalMaterials)}', style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.primaryGreen, fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════
+  //  STEP 4: SUMMARY
+  // ══════════════════════════════════════════════════════════════
+  Widget _buildStep4Summary() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
       child: Column(
@@ -1406,6 +1640,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           _summaryRow('Total Gasoline', svc.totalGasoline),
           _summaryRow('Total Labor', svc.totalLabor),
           _summaryRow('Total PerDiem', svc.totalPerDiem),
+          _summaryRow('Total Materials', svc.totalMaterials, highlight: svc.totalMaterials > 0),
           const Divider(height: 24),
           _summaryRow('Sub Total', svc.subTotal, bold: true),
           _summaryRow('Overhead (${svc.overheadPercentage}%)', svc.overheadAmount),
@@ -1507,7 +1742,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             children: [
               _footerBtn('Cancel', null, false, () => Navigator.of(context).pop()),
               const SizedBox(width: 12),
-              if (_currentStep < 3)
+              if (_currentStep < 4)
                 _footerBtn('Next', Icons.arrow_forward, true, () => setState(() => _currentStep++))
               else
                 _footerBtn(_isSaving ? 'Saving...' : 'Save Quote', Icons.check, true, _isSaving ? null : _saveQuote),
@@ -1748,17 +1983,17 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   // ═══════════════════════════════
   // QUICK ADD METHODS
   // ═══════════════════════════════
-  void _openServiceCatalogAdd(int index) {
-    showDialog(context: context, builder: (context) => ServiceDialog())
-      .then((success) { if (success == true) _loadCatalogs(); });
-  }
-  void _openMachineryCatalogAdd(ServiceEntry svc, int mIndex) {
-    showDialog(context: context, builder: (context) => MachineryDialog())
-      .then((success) { if (success == true) _loadCatalogs(); });
-  }
-  void _openLaborCatalogAdd(ServiceEntry svc, int lIndex) {
-    showDialog(context: context, builder: (context) => LaborRoleDialog())
-      .then((success) { if (success == true) _loadCatalogs(); });
+  void _openCatalogItemAdd(String type) {
+    Widget? dialog;
+    if (type == 'services') dialog = ServiceDialog();
+    if (type == 'machinery') dialog = MachineryDialog();
+    if (type == 'labor') dialog = LaborRoleDialog();
+    // if (type == 'materials') dialog = MaterialDialog(); // Assume we might add later or use generic
+    
+    if (dialog != null) {
+      showDialog(context: context, builder: (context) => dialog!)
+        .then((success) { if (success == true) _loadCatalogs(); });
+    }
   }
 }
 
