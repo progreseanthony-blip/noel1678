@@ -911,6 +911,7 @@ class _ServiceEstimationDialogState
                     keyboardType: TextInputType.number,
                     onTap: () {
                       final ctrl = res['qtyCtrl'] as TextEditingController;
+                      if (ctrl.text == '0') ctrl.text = ''; // Clear if zero for easier typing
                       ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length);
                     },
                     onChanged: (val) {
@@ -1339,6 +1340,10 @@ class _ServiceEstimationDialogState
                   controller: mat['qtyCtrl'] as TextEditingController,
                   keyboardType: TextInputType.number,
                   onChanged: (v) => mat['quantity'] = double.tryParse(v) ?? 0,
+                  onTap: () {
+                    final ctrl = mat['qtyCtrl'] as TextEditingController;
+                    ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length);
+                  },
                   decoration: InputDecoration(
                     suffixText: mat['unit'],
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1361,6 +1366,10 @@ class _ServiceEstimationDialogState
                   initialValue: mat['unit_price']?.toString() ?? '0',
                   keyboardType: TextInputType.number,
                   onChanged: (v) => setState(() => mat['unit_price'] = double.tryParse(v) ?? 0),
+                  onTap: () {
+                     // Since this uses initialValue, we need to handle it differently or better use a controller.
+                     // But for now, we can use the default selection behavior if we can't get the controller easily.
+                  },
                   style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.bold),
                   decoration: InputDecoration(
                     prefixText: '\$ ',
@@ -1510,7 +1519,9 @@ class _ServiceEstimationDialogState
   Widget _textField(TextEditingController ctrl, String label, IconData icon) {
     return TextFormField(
       controller: ctrl,
-      onTap: () => ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length),
+      onTap: () {
+        ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length);
+      },
       onChanged: (_) => _runCalculation(),
       keyboardType: TextInputType.number,
       style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600),

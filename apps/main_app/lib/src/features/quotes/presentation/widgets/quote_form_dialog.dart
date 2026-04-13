@@ -2246,7 +2246,6 @@ class _MiniAutoSelectFieldState extends State<_MiniAutoSelectField> {
       controller: _controller,
       focusNode: _focusNode,
       onChanged: widget.onChanged,
-      onTap: widget.onTap,
       keyboardType: widget.isNumeric ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
       inputFormatters: widget.isNumeric ? [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))] : null,
       style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate900),
@@ -2256,9 +2255,12 @@ class _MiniAutoSelectFieldState extends State<_MiniAutoSelectField> {
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(4), borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 1.5)),
       ),
+      onTap: () {
+        if (widget.onTap != null) widget.onTap!();
+        _controller.selection = TextSelection(baseOffset: 0, extentOffset: _controller.text.length);
+      },
     );
   }
-}
 
 class _AutoSelectField extends StatefulWidget {
   final String initialValue;
@@ -2323,6 +2325,9 @@ class _AutoSelectFieldState extends State<_AutoSelectField> {
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 1.5)),
       ),
+      onTap: () {
+        _controller.selection = TextSelection(baseOffset: 0, extentOffset: _controller.text.length);
+      },
       onChanged: widget.onChanged,
     );
   }
