@@ -2261,6 +2261,7 @@ class _MiniAutoSelectFieldState extends State<_MiniAutoSelectField> {
       },
     );
   }
+}
 
 class _AutoSelectField extends StatefulWidget {
   final String initialValue;

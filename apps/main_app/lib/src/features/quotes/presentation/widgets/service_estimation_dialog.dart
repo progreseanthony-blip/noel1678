@@ -150,6 +150,7 @@ class _ServiceEstimationDialogState
               'quantity': qty,
               'unit_price': (m['unit_price'] as num?)?.toDouble() ?? 0.0,
               'qtyCtrl': TextEditingController(text: qty.toString()),
+              'priceCtrl': TextEditingController(text: ((m['unit_price'] as num?)?.toDouble() ?? 0.0).toString()),
             };
           }).toList();
         }
@@ -206,6 +207,7 @@ class _ServiceEstimationDialogState
                 'quantity': qty,
                 'unit_price': (m['unit_price'] as num).toDouble(),
                 'qtyCtrl': TextEditingController(text: qty.toString()),
+                'priceCtrl': TextEditingController(text: (m['unit_price'] as num).toString()),
              };
           }).toList();
         }
@@ -1363,12 +1365,12 @@ class _ServiceEstimationDialogState
                 Text('UNIT PRICE (\$)', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
                 const SizedBox(height: 6),
                 TextFormField(
-                  initialValue: mat['unit_price']?.toString() ?? '0',
+                  controller: mat['priceCtrl'] as TextEditingController,
                   keyboardType: TextInputType.number,
                   onChanged: (v) => setState(() => mat['unit_price'] = double.tryParse(v) ?? 0),
                   onTap: () {
-                     // Since this uses initialValue, we need to handle it differently or better use a controller.
-                     // But for now, we can use the default selection behavior if we can't get the controller easily.
+                    final ctrl = mat['priceCtrl'] as TextEditingController;
+                    ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length);
                   },
                   style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.bold),
                   decoration: InputDecoration(
@@ -1448,6 +1450,7 @@ class _ServiceEstimationDialogState
         'unit_price': 0.0,
         'notes': '',
         'qtyCtrl': TextEditingController(text: suggested.toStringAsFixed(2)),
+        'priceCtrl': TextEditingController(text: '0'),
       });
     });
   }
