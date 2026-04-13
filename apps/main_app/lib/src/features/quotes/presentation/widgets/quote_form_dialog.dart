@@ -1563,23 +1563,28 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                       
                       // Smart Auto-calculation based on estimation data
                       if (svc.estimationData != null) {
-                        final yield = (item['yield_factor'] as num?)?.toDouble() ?? 1.0;
+                        final data = svc.estimationData!;
+                        final yieldFactor = (item['yield_factor'] as num?)?.toDouble() ?? 1.0;
                         
-                        // Detect metric to use (Volume vs Area)
-                        final vol = (svc.estimationData!['calculated_volume'] as num?)?.toDouble();
-                        final area = (svc.estimationData!['calculated_area'] as num?)?.toDouble();
+                        // Keys from ServiceEstimationDialog:
+                        // 'calculated_loose' -> CY Loose
+                        // 'compacted_volume' -> CY Compacted or SQFT Area
+                        final volLoose = (data['calculated_loose'] as num?)?.toDouble();
+                        final volComp = (data['compacted_volume'] as num?)?.toDouble();
                         
                         double? metric;
                         final unitL = m.unit.toLowerCase();
                         
                         if (unitL.contains('ft') || unitL.contains('sq')) {
-                          metric = area ?? vol;
+                          // For Area (SQFT), use compacted_volume (which stores Area if the service is area-based)
+                          metric = volComp;
                         } else {
-                          metric = vol ?? area;
+                          // For Volume (CY/TON), prefer Loose Volume as it's what's typically bought
+                          metric = volLoose ?? volComp;
                         }
 
-                        if (metric != null) {
-                           m.quantity = double.parse((metric * yield).toStringAsFixed(2));
+                        if (metric != null && metric > 0) {
+                           m.quantity = double.parse((metric * yieldFactor).toStringAsFixed(2));
                         }
                       }
                     }
