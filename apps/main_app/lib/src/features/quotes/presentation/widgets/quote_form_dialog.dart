@@ -1560,6 +1560,28 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                     if (item != null) {
                       m.unit = item['unit'] ?? 'und';
                       m.catalogId = item['id']?.toString();
+                      
+                      // Smart Auto-calculation based on estimation data
+                      if (svc.estimationData != null) {
+                        final yield = (item['yield_factor'] as num?)?.toDouble() ?? 1.0;
+                        
+                        // Detect metric to use (Volume vs Area)
+                        final vol = (svc.estimationData!['calculated_volume'] as num?)?.toDouble();
+                        final area = (svc.estimationData!['calculated_area'] as num?)?.toDouble();
+                        
+                        double? metric;
+                        final unitL = m.unit.toLowerCase();
+                        
+                        if (unitL.contains('ft') || unitL.contains('sq')) {
+                          metric = area ?? vol;
+                        } else {
+                          metric = vol ?? area;
+                        }
+
+                        if (metric != null) {
+                           m.quantity = double.parse((metric * yield).toStringAsFixed(2));
+                        }
+                      }
                     }
                   });
                 },
