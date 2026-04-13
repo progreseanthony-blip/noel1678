@@ -17,6 +17,7 @@ class _MaterialDialogState extends ConsumerState<MaterialDialog> {
   final _formKey = GlobalKey<FormState>();
   final _descriptionController = TextEditingController();
   final _unitController = TextEditingController();
+  final _yieldFactorController = TextEditingController(text: '1.0');
   Set<String> _selectedServiceIds = {};
   List<Map<String, dynamic>> _allServices = [];
   bool _isLoadingServices = false;
@@ -30,6 +31,7 @@ class _MaterialDialogState extends ConsumerState<MaterialDialog> {
       final m = widget.materialToEdit!;
       _descriptionController.text = m['description'] ?? '';
       _unitController.text = m['unit'] ?? '';
+      _yieldFactorController.text = (m['yield_factor'] ?? 1.0).toString();
       final ids = m['associated_service_ids'] as List?;
       if (ids != null) _selectedServiceIds = Set<String>.from(ids.map((id) => id.toString()));
     }
@@ -51,6 +53,7 @@ class _MaterialDialogState extends ConsumerState<MaterialDialog> {
   void dispose() {
     _descriptionController.dispose();
     _unitController.dispose();
+    _yieldFactorController.dispose();
     super.dispose();
   }
 
@@ -64,6 +67,7 @@ class _MaterialDialogState extends ConsumerState<MaterialDialog> {
       final data = {
         'description': _descriptionController.text.trim(),
         'unit': _unitController.text.trim(),
+        'yield_factor': double.tryParse(_yieldFactorController.text) ?? 1.0,
         'associated_service_ids': _selectedServiceIds.toList(),
       };
 
@@ -133,6 +137,15 @@ class _MaterialDialogState extends ConsumerState<MaterialDialog> {
                           controller: _unitController,
                         ),
                         const SizedBox(height: 24),
+                        _buildTextInput(
+                          label: 'Yield Factor (Proportion)',
+                          hint: 'e.g. 1.0 for exact, 1.15 for +15%',
+                          icon: Icons.unfold_more_outlined,
+                          controller: _yieldFactorController,
+                          keyboardType: TextInputType.number,
+                          helper: 'How much of this material is needed per 1 unit of measurement (CY/FT).',
+                        ),
+                        const SizedBox(height: 24),
                         _buildServiceSelector(),
                       ],
                     ),
@@ -177,7 +190,14 @@ class _MaterialDialogState extends ConsumerState<MaterialDialog> {
     );
   }
 
-  Widget _buildTextInput({required String label, required String hint, required IconData icon, required TextEditingController controller}) {
+  Widget _buildTextInput({
+    required String label, 
+    required String hint, 
+    required IconData icon, 
+    required TextEditingController controller,
+    TextInputType keyboardType = TextInputType.text,
+    String? helper,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -185,9 +205,12 @@ class _MaterialDialogState extends ConsumerState<MaterialDialog> {
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
+          keyboardType: keyboardType,
           style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
           decoration: InputDecoration(
             hintText: hint,
+            helperText: helper,
+            helperStyle: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate400),
             hintStyle: GoogleFonts.manrope(color: AppTheme.slate400),
             prefixIcon: Icon(icon, color: AppTheme.slate400, size: 20),
             filled: true, fillColor: Colors.white,
