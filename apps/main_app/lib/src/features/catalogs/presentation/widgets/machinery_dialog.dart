@@ -474,6 +474,7 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
         DropdownButtonFormField<String>(
           value: _selectedOperatorRoleId,
           isExpanded: true,
+          validator: (value) => value == null ? 'Required field' : null,
           style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
           decoration: InputDecoration(
             hintText: 'Select an operator role...',
