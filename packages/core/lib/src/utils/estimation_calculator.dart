@@ -10,24 +10,36 @@ class EstimationCalculator {
     bool isAreaBased = false,
     double totalArea = 0,
     double thicknessInches = 0,
+    double gravelThicknessInches = 0,
   }) {
     double totalTarget;
     double totalCYLoose;
+    double earthCY = 0;
+    double gravelCY = 0;
 
     if (isAreaBased) {
       totalTarget = totalArea;
-      // Formula from Excel: ((SQFT * thickness/12) / 27) * (1 + swell)
-      totalCYLoose = ((totalArea * (thicknessInches / 12)) / 27) * (1 + swellFactor);
+      // Earth layer: ((SQFT * earthThickness/12) / 27) * (1 + swell)
+      earthCY = thicknessInches > 0
+          ? ((totalArea * (thicknessInches / 12)) / 27) * (1 + swellFactor)
+          : 0;
+      // Gravel layer: ((SQFT * gravelThickness/12) / 27) * (1 + swell)
+      gravelCY = gravelThicknessInches > 0
+          ? ((totalArea * (gravelThicknessInches / 12)) / 27) * (1 + swellFactor)
+          : 0;
+      totalCYLoose = earthCY + gravelCY;
     } else {
       totalCYLoose = (topsoilVolume + compactedVolume) * (1 + swellFactor);
       totalTarget = totalCYLoose;
     }
 
-    double remainingTarget = totalTarget;
+    double remainingTarget = isAreaBased ? totalArea : totalCYLoose;
     
     if (remainingTarget <= 0) {
       return {
         'totalCYLoose': totalCYLoose,
+        'earthCY': earthCY,
+        'gravelCY': gravelCY,
         'endDate': startDate,
         'workingDays': 0,
         'dailySchedule': [],
@@ -127,6 +139,8 @@ class EstimationCalculator {
 
     return {
       'totalCYLoose': totalCYLoose,
+      'earthCY': earthCY,
+      'gravelCY': gravelCY,
       'endDate': currentDate,
       'workingDays': workingDays,
       'dailySchedule': dailySchedule,

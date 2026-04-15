@@ -27,6 +27,7 @@ class _ServiceEstimationDialogState
   final _compactedCtrl = TextEditingController(text: '0');
   final _swellFactorCtrl = TextEditingController(text: '0.15');
   final _thicknessCtrl = TextEditingController(text: '0');
+  final _gravelThicknessCtrl = TextEditingController(text: '0');
   DateTime _startDate = DateTime.now();
 
   bool _isLoading = true;
@@ -63,6 +64,7 @@ class _ServiceEstimationDialogState
     _topsoilCtrl.dispose();
     _compactedCtrl.dispose();
     _swellFactorCtrl.dispose();
+    _gravelThicknessCtrl.dispose();
     for (final res in _selectedResources) {
       _disposeControllers(res);
     }
@@ -108,6 +110,7 @@ class _ServiceEstimationDialogState
         _compactedCtrl.text = persistentData['compacted_volume']?.toString() ?? '0';
         _swellFactorCtrl.text = persistentData['swell_factor']?.toString() ?? '0.15';
         _thicknessCtrl.text = persistentData['thickness_inches']?.toString() ?? '0';
+        _gravelThicknessCtrl.text = persistentData['gravel_thickness_inches']?.toString() ?? '0';
         
         final sd = persistentData['start_date'];
         if (sd is DateTime) {
@@ -149,6 +152,7 @@ class _ServiceEstimationDialogState
               'unit': m['unit'] ?? 'und',
               'quantity': qty,
               'unit_price': (m['unit_price'] as num?)?.toDouble() ?? 0.0,
+              'layer_type': m['layer_type'] ?? 'earth',
               'qtyCtrl': TextEditingController(text: qty.toString()),
               'priceCtrl': TextEditingController(text: ((m['unit_price'] as num?)?.toDouble() ?? 0.0).toString()),
             };
@@ -162,6 +166,7 @@ class _ServiceEstimationDialogState
           _topsoilCtrl.text = estimation['topsoil_volume']?.toString() ?? '0';
           _compactedCtrl.text = estimation['compacted_volume']?.toString() ?? '0';
           _swellFactorCtrl.text = estimation['swell_factor']?.toString() ?? '0.15';
+          _gravelThicknessCtrl.text = estimation['gravel_thickness_inches']?.toString() ?? '0';
           _thicknessCtrl.text = estimation['thickness_inches']?.toString() ?? '0';
           _startDate = DateTime.parse(estimation['start_date']);
 
@@ -206,6 +211,7 @@ class _ServiceEstimationDialogState
                 'yield_factor': (m['materials']?['yield_factor'] as num?)?.toDouble() ?? 1.0,
                 'quantity': qty,
                 'unit_price': (m['unit_price'] as num).toDouble(),
+                'layer_type': m['layer_type'] ?? 'earth',
                 'qtyCtrl': TextEditingController(text: qty.toString()),
                 'priceCtrl': TextEditingController(text: (m['unit_price'] as num).toString()),
              };
@@ -318,6 +324,7 @@ class _ServiceEstimationDialogState
       isAreaBased: _isAreaBased,
       totalArea: double.tryParse(_compactedCtrl.text) ?? 0,
       thicknessInches: double.tryParse(_thicknessCtrl.text) ?? 0,
+      gravelThicknessInches: double.tryParse(_gravelThicknessCtrl.text) ?? 0,
     );
 
     setState(() {
@@ -346,6 +353,7 @@ class _ServiceEstimationDialogState
     final compVal = double.tryParse(_compactedCtrl.text) ?? 0;
     final swellVal = double.tryParse(_swellFactorCtrl.text) ?? 0.15;
     final thickVal = double.tryParse(_thicknessCtrl.text) ?? 0;
+    final gravelThickVal = double.tryParse(_gravelThicknessCtrl.text) ?? 0;
 
     // Build serializable resources (strip controllers)
     List<Map<String, dynamic>> serializableResources() {
@@ -374,6 +382,7 @@ class _ServiceEstimationDialogState
         'unit_price': m['unit_price'],
         'unit': m['unit'],
         'notes': m['notes'],
+        'layer_type': m['layer_type'] ?? 'earth',
       }).toList();
     }
 
@@ -392,6 +401,7 @@ class _ServiceEstimationDialogState
           'compacted_volume': compVal,
           'swell_factor': swellVal,
           'thickness_inches': thickVal,
+          'gravel_thickness_inches': gravelThickVal,
           'start_date': _startDate,
         });
       }
@@ -407,6 +417,7 @@ class _ServiceEstimationDialogState
         'compacted_volume': compVal,
         'swell_factor': swellVal,
         'thickness_inches': thickVal,
+        'gravel_thickness_inches': gravelThickVal,
         'total_cy_loose': _calculationResult?['totalCYLoose'] ?? 0,
         'start_date': _startDate.toIso8601String(),
         'end_date': (_calculationResult?['endDate'] as DateTime?)?.toIso8601String(),
@@ -433,6 +444,7 @@ class _ServiceEstimationDialogState
           'compacted_volume': compVal,
           'swell_factor': swellVal,
           'thickness_inches': thickVal,
+          'gravel_thickness_inches': gravelThickVal,
           'start_date': _startDate,
         });
       }
@@ -484,8 +496,11 @@ class _ServiceEstimationDialogState
 
   Widget _buildPlanningSummaryBanner() {
     final cy = _calculationResult?['totalCYLoose'] ?? 0.0;
+    final earthCY = _calculationResult?['earthCY'] ?? 0.0;
+    final gravelCY = _calculationResult?['gravelCY'] ?? 0.0;
     final area = double.tryParse(_compactedCtrl.text) ?? 0.0;
     final thick = double.tryParse(_thicknessCtrl.text) ?? 0.0;
+    final gravelThick = double.tryParse(_gravelThicknessCtrl.text) ?? 0.0;
 
     return Container(
       width: double.infinity,
@@ -498,8 +513,12 @@ class _ServiceEstimationDialogState
           if (_isAreaBased) ...[
             _summaryItem(Icons.square_foot, 'AREA', '${NumberFormat('#,###').format(area)} SQFT'),
             _divider(),
-            _summaryItem(Icons.height, 'THICKNESS', '${thick.toStringAsFixed(1)} IN'),
+            _summaryItem(Icons.layers_outlined, 'EARTH', '${thick.toStringAsFixed(1)}" → ${NumberFormat('#,###').format(earthCY)} CY'),
             _divider(),
+            if (gravelThick > 0) ...[
+              _summaryItem(Icons.grain, 'GRAVEL', '${gravelThick.toStringAsFixed(1)}" → ${NumberFormat('#,###').format(gravelCY)} CY'),
+              _divider(),
+            ],
           ],
           _summaryItem(Icons.calendar_today, 'START', DateFormat('MMM dd, yyyy').format(_startDate)),
           const Spacer(),
@@ -674,8 +693,24 @@ class _ServiceEstimationDialogState
                       _textField(_compactedCtrl, 'Compacted Volume (CY)', Icons.compress_outlined),
                     ] else ...[
                       _textField(_compactedCtrl, 'Total Area (SQFT)', Icons.square_foot),
-                      const SizedBox(height: 16),
-                      _textField(_thicknessCtrl, 'Thickness (Inches)', Icons.height),
+                      const SizedBox(height: 20),
+                      _layerCard(
+                        label: 'Layer 1: Earth (Tierra)',
+                        icon: Icons.layers_outlined,
+                        color: const Color(0xFF8B6914),
+                        controller: _thicknessCtrl,
+                        fieldLabel: 'Thickness (Inches)',
+                        volumeKey: 'earthCY',
+                      ),
+                      const SizedBox(height: 12),
+                      _layerCard(
+                        label: 'Layer 2: Gravel (Grava)',
+                        icon: Icons.grain,
+                        color: const Color(0xFF607D8B),
+                        controller: _gravelThicknessCtrl,
+                        fieldLabel: 'Thickness (Inches)',
+                        volumeKey: 'gravelCY',
+                      ),
                     ],
                     const SizedBox(height: 16),
                     _textField(_swellFactorCtrl, 'Swell Factor %', Icons.expand_outlined),
@@ -775,18 +810,77 @@ class _ServiceEstimationDialogState
   Widget _buildCalculationSummaryMini() {
     if (_calculationResult == null) return const SizedBox();
     final cy = _calculationResult?['totalCYLoose'] ?? 0;
+    final earthCY = _calculationResult?['earthCY'] ?? 0.0;
+    final gravelCY = _calculationResult?['gravelCY'] ?? 0.0;
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2))),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Text('TOTAL CALCULATED VOLUME', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
+          Text('${NumberFormat('#,###.##').format(cy)} CY', style: GoogleFonts.manrope(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.primaryGreen)),
+          if (_isAreaBased && (earthCY > 0 || gravelCY > 0)) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                if (earthCY > 0)
+                  _miniVolumeBadge('Earth', earthCY, const Color(0xFF8B6914)),
+                if (earthCY > 0 && gravelCY > 0)
+                  const SizedBox(width: 12),
+                if (gravelCY > 0)
+                  _miniVolumeBadge('Gravel', gravelCY, const Color(0xFF607D8B)),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _miniVolumeBadge(String label, double cy, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+      child: Text('$label: ${NumberFormat('#,###').format(cy)} CY', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: color)),
+    );
+  }
+
+  Widget _layerCard({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required TextEditingController controller,
+    required String fieldLabel,
+    required String volumeKey,
+  }) {
+    final volume = _calculationResult?[volumeKey] ?? 0.0;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Text('TOTAL CALCULATED VOLUME', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
-              Text('${NumberFormat('#,###.##').format(cy)} CY', style: GoogleFonts.manrope(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.primaryGreen)),
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 8),
+              Text(label, style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w800, color: color)),
+              const Spacer(),
+              if (volume > 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: color.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
+                  child: Text('${NumberFormat('#,###').format(volume)} CY', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w800, color: color)),
+                ),
             ],
           ),
+          const SizedBox(height: 10),
+          _textField(controller, fieldLabel, Icons.height),
         ],
       ),
     );
@@ -840,23 +934,24 @@ class _ServiceEstimationDialogState
             ...supports.map((sup) => _supportResourceRow(sup)),
           ],
 
-          // + Add Support button (HIGHLIGHTED)
+          // + Add Support button (Subtle)
           InkWell(
             borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(14), bottomRight: Radius.circular(14)),
             onTap: () => _showMachinerySelector(forPrimaryId: res['id'] as String),
             child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+              alignment: Alignment.centerLeft,
               decoration: BoxDecoration(
-                color: AppTheme.primaryGreen.withOpacity(0.1),
+                color: Colors.transparent,
                 borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(14), bottomRight: Radius.circular(14)),
-                border: Border(top: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.2))),
+                border: Border(top: BorderSide(color: AppTheme.slate100)),
               ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.add_circle_outline, size: 18, color: AppTheme.primaryGreen),
+                  const Icon(Icons.add, size: 16, color: AppTheme.primaryGreen),
                   const SizedBox(width: 8),
-                  Text('ADD SUPPORT MACHINE', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w900, color: AppTheme.primaryGreen, letterSpacing: 0.5)),
+                  Text('Add support machine', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
                 ],
               ),
             ),
@@ -1090,19 +1185,25 @@ class _ServiceEstimationDialogState
     return InkWell(
       onTap: () => _showMachinerySelector(forPrimaryId: null),
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
+        padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          color: AppTheme.primaryGreen.withOpacity(0.06),
+          color: AppTheme.primaryGreen,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2)),
+          boxShadow: [
+            BoxShadow(
+              color: AppTheme.primaryGreen.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Center(
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.add, size: 16, color: AppTheme.primaryGreen),
+              const Icon(Icons.add_circle, size: 18, color: Colors.white),
               const SizedBox(width: 8),
-              Text('ADD PRIMARY MACHINE', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+              Text('ADD PRIMARY MACHINE', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 0.5)),
             ],
           ),
         ),
@@ -1293,9 +1394,53 @@ class _ServiceEstimationDialogState
     );
   }
 
+  Widget _buildLayerSelector(Map<String, dynamic> mat) {
+    final earthCY = _calculationResult?['earthCY'] ?? 0.0;
+    final gravelCY = _calculationResult?['gravelCY'] ?? 0.0;
+    return Row(
+      children: [
+        Text('LAYER:', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
+        const SizedBox(width: 8),
+        Container(
+          height: 28,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+             color: AppTheme.slate50,
+             border: Border.all(color: AppTheme.slate200),
+             borderRadius: BorderRadius.circular(6)
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: mat['layer_type'] ?? 'earth',
+              icon: const Icon(Icons.arrow_drop_down, size: 16),
+              isDense: true,
+              style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate800),
+              onChanged: (v) {
+                setState(() => mat['layer_type'] = v);
+              },
+              items: [
+                DropdownMenuItem(value: 'earth', child: Text('Earth (${NumberFormat('#,###').format(earthCY)} CY)')),
+                if (gravelCY > 0)
+                  DropdownMenuItem(value: 'gravel', child: Text('Gravel (${NumberFormat('#,###').format(gravelCY)} CY)')),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _materialItemRow(Map<String, dynamic> mat, double calculatedCY) {
     final yield = (mat['yield_factor'] as num?)?.toDouble() ?? 1.0;
-    final suggested = calculatedCY * yield;
+    
+    double baseCY = calculatedCY;
+    if (_isAreaBased) {
+      final lType = mat['layer_type'] ?? 'earth';
+      if (lType == 'gravel') baseCY = _calculationResult?['gravelCY'] ?? 0.0;
+      else baseCY = _calculationResult?['earthCY'] ?? (_calculationResult?['totalCYLoose'] ?? 0.0);
+    }
+    
+    final suggested = baseCY * yield;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1315,6 +1460,10 @@ class _ServiceEstimationDialogState
               children: [
                 Text(mat['material_name'] ?? 'Material', style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
                 Text('Unit: ${mat['unit']} | Yield: ${yield.toStringAsFixed(2)} per CY', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500)),
+                if (_isAreaBased) ...[
+                  const SizedBox(height: 8),
+                  _buildLayerSelector(mat),
+                ],
               ],
             ),
           ),

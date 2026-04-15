@@ -3099,10 +3099,14 @@ class _SearchableCatalogDropdown extends StatelessWidget {
                           width: 1.5,
                         ),
                       ),
-                      suffixIcon: const Icon(
-                        Icons.search,
-                        size: 16,
-                        color: AppTheme.slate400,
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.arrow_drop_down, color: AppTheme.slate400),
+                        onPressed: () {
+                          final current = controller.text;
+                          controller.text = '';
+                          controller.text = current;
+                          focusNode.requestFocus();
+                        },
                       ),
                     ),
                     onChanged: (v) => onSelected(v, null),
@@ -3113,6 +3117,14 @@ class _SearchableCatalogDropdown extends StatelessWidget {
                           t.startsWith('role')) {
                         controller.clear();
                         onSelected('', null);
+                      } else {
+                        final current = controller.text;
+                        controller.text = '';
+                        controller.text = current;
+                        controller.selection = TextSelection(
+                          baseOffset: 0,
+                          extentOffset: current.length,
+                        );
                       }
                     },
                   );
