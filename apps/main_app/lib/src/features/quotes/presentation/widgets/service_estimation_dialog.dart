@@ -944,7 +944,7 @@ class _ServiceEstimationDialogState
               decoration: BoxDecoration(
                 color: Colors.transparent,
                 borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(14), bottomRight: Radius.circular(14)),
-                border: Border(top: BorderSide(color: AppTheme.slate100)),
+                border: Border(top: BorderSide(color: AppTheme.slate200)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -1414,7 +1414,7 @@ class _ServiceEstimationDialogState
               value: mat['layer_type'] ?? 'earth',
               icon: const Icon(Icons.arrow_drop_down, size: 16),
               isDense: true,
-              style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate800),
+              style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate700),
               onChanged: (v) {
                 setState(() => mat['layer_type'] = v);
               },
