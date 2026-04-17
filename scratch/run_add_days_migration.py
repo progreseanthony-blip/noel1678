@@ -4,18 +4,12 @@ import os
 
 def run():
     try:
+        # Use the connection string from the existing run_migration.py
         conn = psycopg2.connect('postgresql://supabase_admin:postgres@127.0.0.1:56422/postgres')
         conn.autocommit = True
         cur = conn.cursor()
         
-        cur.execute("SHOW search_path")
-        print(f"Search path: {cur.fetchone()}")
-        
-        cur.execute("SELECT table_schema, table_name FROM information_schema.tables WHERE table_schema NOT IN ('information_schema', 'pg_catalog')")
-        all_tables = cur.fetchall()
-        print(f"All tables: {all_tables}")
-        
-        migration_file = 'supabase/migrations/20260415170000_add_instruments_support.sql'
+        migration_file = 'supabase/migrations/20260415173000_add_days_to_instruments.sql'
         if not os.path.exists(migration_file):
             print(f"File not found: {migration_file}")
             sys.exit(1)

@@ -17,11 +17,13 @@ class AppScrollBehavior extends MaterialScrollBehavior {
 class ScheduleCalendarView extends StatefulWidget {
   final List<Map<String, dynamic>> dailySchedule;
   final List<Map<String, dynamic>> resources;
+  final String unit;
 
   const ScheduleCalendarView({
     super.key,
     required this.dailySchedule,
     required this.resources,
+    this.unit = 'CY',
   });
 
   @override
@@ -69,9 +71,14 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
     double theoNormalProd = 0;
     for (var res in widget.resources) {
       final qty = (res['quantity'] as num?)?.toDouble() ?? 0;
-      final trips = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
-      final cap = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0;
-      theoNormalProd += (qty * trips * cap);
+      final perf = (res['performance_per_day'] as num?)?.toDouble() ?? 0;
+      if (perf > 0) {
+        theoNormalProd += (qty * perf);
+      } else {
+        final trips = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
+        final cap = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+        theoNormalProd += (qty * trips * cap);
+      }
     }
     double theoSatProd = theoNormalProd * 0.5;
 
@@ -102,6 +109,7 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
           monthName: monthName,
           days: monthDays,
           monthProd: monthProduction,
+          unit: widget.unit,
           remainingBalance: currentBalance < 0.1 ? 0 : currentBalance,
           theoNormalProd: theoNormalProd,
           theoSatProd: theoSatProd,
@@ -500,13 +508,13 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
         children: [
           _buildSubLabel('MONTHLY PROD'),
           const SizedBox(width: 8),
-          _buildSubValue('${NumberFormat('#,###').format(monthlyProd)} CY (${cumulativePct.toStringAsFixed(1)}%)', const Color(0xFF11D411)),
+          _buildSubValue('${NumberFormat('#,###').format(monthlyProd)} ${widget.unit} (${cumulativePct.toStringAsFixed(1)}%)', const Color(0xFF11D411)),
           const SizedBox(width: 12),
           Container(width: 1, height: 14, color: Colors.white10),
           const SizedBox(width: 12),
           _buildSubLabel('ENDING BALANCE'),
           const SizedBox(width: 8),
-          _buildSubValue('${NumberFormat('#,###').format(balance)} CY', Colors.orange),
+          _buildSubValue('${NumberFormat('#,###').format(balance)} ${widget.unit}', Colors.orange),
         ],
       ),
     );
@@ -564,11 +572,13 @@ class _MobileMonthView extends StatelessWidget {
   final double theoSatProd;
   final double cumulativePct;
   final List<Map<String, dynamic>> resources;
+  final String unit;
 
   const _MobileMonthView({
     required this.monthName,
     required this.days,
     required this.monthProd,
+    required this.unit,
     required this.remainingBalance,
     required this.theoNormalProd,
     required this.theoSatProd,
@@ -626,7 +636,7 @@ class _MobileMonthView extends StatelessWidget {
               child: _MetricsCard(
                 label: 'AVG DAILY PROD',
                 value: NumberFormat.compact().format(theoNormalProd),
-                unit: 'CY',
+                unit: unit,
               ),
             ),
             const SizedBox(width: 8),
@@ -634,7 +644,7 @@ class _MobileMonthView extends StatelessWidget {
               child: _MetricsCard(
                 label: 'MONTHLY PROD',
                 value: NumberFormat.compact().format(monthProd),
-                unit: 'CY',
+                unit: unit,
                 highlightColor: AppTheme.primaryGreen,
               ),
             ),

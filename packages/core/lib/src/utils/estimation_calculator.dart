@@ -8,16 +8,39 @@ class EstimationCalculator {
     required DateTime startDate,
     required List<Map<String, dynamic>> resources, // { quantity, trips_per_day, capacity_per_trip, performance_per_day }
     bool isAreaBased = false,
+    bool isLinearBased = false,
+    bool isAcresBased = false,
     double totalArea = 0,
+    double totalLength = 0,
+    double totalAcres = 0,
     double thicknessInches = 0,
     double gravelThicknessInches = 0,
+    double trenchWidthInches = 0,
+    double trenchDepthInches = 0,
   }) {
     double totalTarget;
     double totalCYLoose;
     double earthCY = 0;
     double gravelCY = 0;
+    double trenchFillCY = 0;
 
-    if (isAreaBased) {
+    if (isAcresBased) {
+      totalTarget = totalAcres;
+      totalCYLoose = 0;
+    } else if (isLinearBased) {
+      totalTarget = totalLength;
+      // Formula for trench excavation: (Length * Width * TotalDepth) / 27
+      earthCY = thicknessInches > 0
+          ? ((totalLength * (trenchWidthInches / 12) * (thicknessInches / 12)) / 27) * (1 + swellFactor)
+          : 0;
+      // Formula for trench bedding: (Length * Width * BeddingDepth) / 27
+      gravelCY = trenchDepthInches > 0
+          ? ((totalLength * (trenchWidthInches / 12) * (trenchDepthInches / 12)) / 27) * (1 + swellFactor)
+          : 0;
+      
+      totalCYLoose = earthCY + gravelCY;
+      trenchFillCY = totalCYLoose;
+    } else if (isAreaBased) {
       totalTarget = totalArea;
       // Earth layer: ((SQFT * earthThickness/12) / 27) * (1 + swell)
       earthCY = thicknessInches > 0
@@ -33,13 +56,16 @@ class EstimationCalculator {
       totalTarget = totalCYLoose;
     }
 
-    double remainingTarget = isAreaBased ? totalArea : totalCYLoose;
+    double remainingTarget = isAcresBased
+        ? totalAcres
+        : (isLinearBased ? totalLength : (isAreaBased ? totalArea : totalCYLoose));
     
     if (remainingTarget <= 0) {
       return {
         'totalCYLoose': totalCYLoose,
         'earthCY': earthCY,
         'gravelCY': gravelCY,
+        'trenchFillCY': trenchFillCY,
         'endDate': startDate,
         'workingDays': 0,
         'dailySchedule': [],
@@ -68,8 +94,8 @@ class EstimationCalculator {
 
           final qty = (res['quantity'] as num?)?.toDouble() ?? 0;
           
-          if (isAreaBased) {
-            // In Area mode, we use performance_per_day (SQFT/Day)
+          if (isAreaBased || isLinearBased || isAcresBased) {
+            // In Area/Linear/Acre mode, we use performance_per_day (SQFT/Day, LF/Day, or AC/Day)
             final performance = (res['performance_per_day'] as num?)?.toDouble() ?? 0;
             dayProduction += (qty * performance * factor);
           } else {
@@ -100,11 +126,12 @@ class EstimationCalculator {
               double dailyOutput;
               double calculatedVolume;
 
-              if (isAreaBased) {
+              if (isAreaBased || isLinearBased || isAcresBased) {
                 final performance = (res['performance_per_day'] as num?)?.toDouble() ?? 0.0;
                 dailyOutput = performance * factor * qty;
                 // Proportional volume for this machine's production
-                calculatedVolume = totalArea > 0 ? (dailyOutput / totalArea) * totalCYLoose : 0;
+                final divisor = isAcresBased ? totalAcres : (isAreaBased ? totalArea : totalLength);
+                calculatedVolume = divisor > 0 ? (dailyOutput / divisor) * totalCYLoose : 0;
               } else {
                 final trips = (res['trips_per_day'] as num?)?.toDouble() ?? 0.0;
                 final capacity = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0.0;
@@ -115,9 +142,11 @@ class EstimationCalculator {
               return {
                 'name': res['machine_name'] ?? 'Machine',
                 'type': type,
-                'loads': isAreaBased ? 0 : dailyOutput, // "loads" only makes sense for hauling
-                'production': calculatedVolume,
+                'loads': (isAreaBased || isLinearBased || isAcresBased) ? 0 : dailyOutput, // "loads" only makes sense for hauling
+                'production': (isAreaBased || isLinearBased || isAcresBased) ? dailyOutput : calculatedVolume,
                 'area_production': isAreaBased ? dailyOutput : 0,
+                'linear_production': isLinearBased ? dailyOutput : 0,
+                'acre_production': isAcresBased ? dailyOutput : 0,
               };
             }).toList(),
           });

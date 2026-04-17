@@ -28,11 +28,15 @@ class _ServiceEstimationDialogState
   final _swellFactorCtrl = TextEditingController(text: '0.15');
   final _thicknessCtrl = TextEditingController(text: '0');
   final _gravelThicknessCtrl = TextEditingController(text: '0');
+  final _trenchWidthCtrl = TextEditingController(text: '0');
+  final _trenchDepthCtrl = TextEditingController(text: '0');
   DateTime _startDate = DateTime.now();
 
   bool _isLoading = true;
   bool _isSaving = false;
   bool _isAreaBased = false;
+  bool _isLinearBased = false;
+  bool _isAcresBased = false;
   String? _estimationId;
 
   List<Map<String, dynamic>> _machineryCatalog = [];
@@ -51,6 +55,9 @@ class _ServiceEstimationDialogState
   int _currentStep = 0; // 0: Planning, 1: Resources, 2: Materials
 
   Map<String, dynamic>? _calculationResult;
+
+  final _nFmt = NumberFormat('#,###.##');
+  String? _error;
   bool _showCalendar = false;
 
   @override
@@ -64,12 +71,16 @@ class _ServiceEstimationDialogState
     _topsoilCtrl.dispose();
     _compactedCtrl.dispose();
     _swellFactorCtrl.dispose();
+    _thicknessCtrl.dispose();
     _gravelThicknessCtrl.dispose();
+    _trenchWidthCtrl.dispose();
+    _trenchDepthCtrl.dispose();
     for (final res in _selectedResources) {
       _disposeControllers(res);
     }
     for (final mat in _selectedMaterials) {
       if (mat['qtyCtrl'] is TextEditingController) (mat['qtyCtrl'] as TextEditingController).dispose();
+      if (mat['priceCtrl'] is TextEditingController) (mat['priceCtrl'] as TextEditingController).dispose();
     }
     super.dispose();
   }
@@ -85,24 +96,37 @@ class _ServiceEstimationDialogState
   Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
     try {
-      final catalog = await ref.read(catalogsServiceProvider).getMachinery();
+      final catalogsSvc = ref.read(catalogsServiceProvider);
+      final quotesSvc = ref.read(quotesServiceProvider);
+
+      final catalog = await catalogsSvc.getMachinery();
       _machineryCatalog = catalog;
       
-      final matCatalog = await ref.read(catalogsServiceProvider).getMaterials();
+      final matCatalog = await catalogsSvc.getMaterials();
       _materialsCatalog = matCatalog;
+
       final serviceId = widget.service['id'];
       final persistentData = widget.service['estimationData'] as Map<String, dynamic>?;
 
       // Check unit
       final unitRaw = (widget.service['unit_of_measure'] ?? widget.service['unit'] ?? 'und').toString().toLowerCase().trim();
       debugPrint('ESTIMATION_DEBUG: Detected Unit: "$unitRaw"');
-      _isAreaBased = unitRaw == 'ft' || 
+      _isAreaBased = unitRaw == 'ft2' || 
                      unitRaw == 'sqft' || 
                      unitRaw == 'sq.ft' || 
                      unitRaw == 'sf' ||
                      unitRaw.contains('pies cuadrado') || 
                      unitRaw.contains('pie cuadrado') ||
                      unitRaw.contains('pies2');
+
+      _isLinearBased = unitRaw == 'lf' ||
+                       unitRaw == 'ft' ||
+                       unitRaw == 'linear ft' ||
+                       unitRaw.contains('lineal');
+
+      _isAcresBased = unitRaw == 'ac' ||
+                      unitRaw == 'acre' ||
+                      unitRaw == 'acres';
 
       if (persistentData != null) {
         _estimationId = persistentData['id']; // Preserve DB ID if it came from DB initially
@@ -111,6 +135,8 @@ class _ServiceEstimationDialogState
         _swellFactorCtrl.text = persistentData['swell_factor']?.toString() ?? '0.15';
         _thicknessCtrl.text = persistentData['thickness_inches']?.toString() ?? '0';
         _gravelThicknessCtrl.text = persistentData['gravel_thickness_inches']?.toString() ?? '0';
+        _trenchWidthCtrl.text = persistentData['trench_width_inches']?.toString() ?? '0';
+        _trenchDepthCtrl.text = persistentData['trench_depth_inches']?.toString() ?? '0';
         
         final sd = persistentData['start_date'];
         if (sd is DateTime) {
@@ -168,6 +194,8 @@ class _ServiceEstimationDialogState
           _swellFactorCtrl.text = estimation['swell_factor']?.toString() ?? '0.15';
           _gravelThicknessCtrl.text = estimation['gravel_thickness_inches']?.toString() ?? '0';
           _thicknessCtrl.text = estimation['thickness_inches']?.toString() ?? '0';
+          _trenchWidthCtrl.text = estimation['trench_width_inches']?.toString() ?? '0';
+          _trenchDepthCtrl.text = estimation['trench_depth_inches']?.toString() ?? '0';
           _startDate = DateTime.parse(estimation['start_date']);
 
           final resources = await ref.read(quotesServiceProvider).getResourcesForEstimation(_estimationId!);
@@ -322,9 +350,15 @@ class _ServiceEstimationDialogState
               })
           .toList(),
       isAreaBased: _isAreaBased,
-      totalArea: double.tryParse(_compactedCtrl.text) ?? 0,
+      isLinearBased: _isLinearBased,
+      isAcresBased: _isAcresBased,
+      totalArea: _isAreaBased ? (double.tryParse(_compactedCtrl.text) ?? 0) : 0,
+      totalLength: _isLinearBased ? (double.tryParse(_compactedCtrl.text) ?? 0) : 0,
+      totalAcres: _isAcresBased ? (double.tryParse(_compactedCtrl.text) ?? 0) : 0,
       thicknessInches: double.tryParse(_thicknessCtrl.text) ?? 0,
       gravelThicknessInches: double.tryParse(_gravelThicknessCtrl.text) ?? 0,
+      trenchWidthInches: double.tryParse(_trenchWidthCtrl.text) ?? 0,
+      trenchDepthInches: double.tryParse(_trenchDepthCtrl.text) ?? 0,
     );
 
     setState(() {
@@ -394,6 +428,8 @@ class _ServiceEstimationDialogState
           'total_cy_loose': compVal,
           'calculated_loose': _calculationResult?['totalCYLoose'] ?? 0,
           'working_days': _calculationResult?['workingDays'] ?? 0,
+          'workingDays': _calculationResult?['workingDays'] ?? 0,
+          'total_working_days': _calculationResult?['workingDays'] ?? 0,
           'end_date': _calculationResult?['endDate'],
           'resources': serializableResources(),
           'materials': serializableMaterials(),
@@ -402,6 +438,8 @@ class _ServiceEstimationDialogState
           'swell_factor': swellVal,
           'thickness_inches': thickVal,
           'gravel_thickness_inches': gravelThickVal,
+          'trench_width_inches': double.tryParse(_trenchWidthCtrl.text) ?? 0,
+          'trench_depth_inches': double.tryParse(_trenchDepthCtrl.text) ?? 0,
           'start_date': _startDate,
         });
       }
@@ -418,6 +456,8 @@ class _ServiceEstimationDialogState
         'swell_factor': swellVal,
         'thickness_inches': thickVal,
         'gravel_thickness_inches': gravelThickVal,
+        'trench_width_inches': double.tryParse(_trenchWidthCtrl.text) ?? 0,
+        'trench_depth_inches': double.tryParse(_trenchDepthCtrl.text) ?? 0,
         'total_cy_loose': _calculationResult?['totalCYLoose'] ?? 0,
         'start_date': _startDate.toIso8601String(),
         'end_date': (_calculationResult?['endDate'] as DateTime?)?.toIso8601String(),
@@ -437,6 +477,8 @@ class _ServiceEstimationDialogState
           'total_cy_loose': compVal,
           'calculated_loose': _calculationResult?['totalCYLoose'] ?? 0,
           'working_days': _calculationResult?['workingDays'] ?? 0,
+          'workingDays': _calculationResult?['workingDays'] ?? 0,
+          'total_working_days': _calculationResult?['workingDays'] ?? 0,
           'end_date': _calculationResult?['endDate'],
           'resources': serializableResources(),
           'materials': serializableMaterials(),
@@ -445,6 +487,8 @@ class _ServiceEstimationDialogState
           'swell_factor': swellVal,
           'thickness_inches': thickVal,
           'gravel_thickness_inches': gravelThickVal,
+          'trench_width_inches': double.tryParse(_trenchWidthCtrl.text) ?? 0,
+          'trench_depth_inches': double.tryParse(_trenchDepthCtrl.text) ?? 0,
           'start_date': _startDate,
         });
       }
@@ -510,13 +554,25 @@ class _ServiceEstimationDialogState
         children: [
           _summaryItem(Icons.water_drop_outlined, 'VOLUME', '${NumberFormat('#,###.##').format(cy)} CY'),
           _divider(),
-          if (_isAreaBased) ...[
+          if (_isAcresBased) ...[
+            _summaryItem(Icons.landscape, 'ACRES', '${NumberFormat('#,###.##').format(area)} AC'),
+            _divider(),
+          ] else if (_isLinearBased) ...[
+            _summaryItem(Icons.straighten, 'LENGTH', '${NumberFormat('#,###').format(area)} LF'),
+            _divider(),
+            _summaryItem(Icons.unfold_more, 'WIDTH', '${_trenchWidthCtrl.text}"'),
+            _divider(),
+            _summaryItem(Icons.height, 'T. DEPTH', '${_thicknessCtrl.text}"'),
+            _divider(),
+            _summaryItem(Icons.layers_outlined, 'B. DEPTH', '${_trenchDepthCtrl.text}"'),
+            _divider(),
+          ] else if (_isAreaBased) ...[
             _summaryItem(Icons.square_foot, 'AREA', '${NumberFormat('#,###').format(area)} SQFT'),
             _divider(),
-            _summaryItem(Icons.layers_outlined, 'EARTH', '${thick.toStringAsFixed(1)}" → ${NumberFormat('#,###').format(earthCY)} CY'),
+            _summaryItem(Icons.layers_outlined, 'SAND (ARENA)', '${thick.toStringAsFixed(1)}" → ${NumberFormat('#,###').format(earthCY)} CY'),
             _divider(),
             if (gravelThick > 0) ...[
-              _summaryItem(Icons.grain, 'GRAVEL', '${gravelThick.toStringAsFixed(1)}" → ${NumberFormat('#,###').format(gravelCY)} CY'),
+              _summaryItem(Icons.grain, 'GRAVEL (GRAVA)', '${gravelThick.toStringAsFixed(1)}" → ${NumberFormat('#,###').format(gravelCY)} CY'),
               _divider(),
             ],
           ],
@@ -687,17 +743,29 @@ class _ServiceEstimationDialogState
                   children: [
                     _sectionHeader('Production Factors'),
                     const SizedBox(height: 20),
-                    if (!_isAreaBased) ...[
-                      _textField(_topsoilCtrl, 'Topsoil Volume (CY)', Icons.layers_outlined),
-                      const SizedBox(height: 16),
-                      _textField(_compactedCtrl, 'Compacted Volume (CY)', Icons.compress_outlined),
-                    ] else ...[
+                    if (_isAcresBased) ...[
+                      _textField(_compactedCtrl, 'Total Acres (AC)', Icons.landscape),
+                    ] else if (_isLinearBased) ...[
+                      _textField(_compactedCtrl, 'Total Length (LF)', Icons.straighten),
+                      const SizedBox(height: 20),
+                      _sectionHeader('Trench dimensions for bedding volume'),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(child: _textField(_trenchWidthCtrl, 'Trench Width (In)', Icons.straighten_outlined)),
+                          const SizedBox(width: 16),
+                          Expanded(child: _textField(_thicknessCtrl, 'Trench Depth (In)', Icons.height)),
+                          const SizedBox(width: 16),
+                          Expanded(child: _textField(_trenchDepthCtrl, 'Bedding Depth (In)', Icons.layers_outlined)),
+                        ],
+                      ),
+                    ] else if (_isAreaBased) ...[
                       _textField(_compactedCtrl, 'Total Area (SQFT)', Icons.square_foot),
                       const SizedBox(height: 20),
                       _layerCard(
-                        label: 'Layer 1: Earth (Tierra)',
+                        label: 'Layer 1: Sand (Arena)',
                         icon: Icons.layers_outlined,
-                        color: const Color(0xFF8B6914),
+                        color: const Color(0xFFD4AF37),
                         controller: _thicknessCtrl,
                         fieldLabel: 'Thickness (Inches)',
                         volumeKey: 'earthCY',
@@ -711,6 +779,10 @@ class _ServiceEstimationDialogState
                         fieldLabel: 'Thickness (Inches)',
                         volumeKey: 'gravelCY',
                       ),
+                    ] else ...[
+                      _textField(_topsoilCtrl, 'Topsoil Volume (CY)', Icons.layers_outlined),
+                      const SizedBox(height: 16),
+                      _textField(_compactedCtrl, 'Compacted Volume (CY)', Icons.compress_outlined),
                     ],
                     const SizedBox(height: 16),
                     _textField(_swellFactorCtrl, 'Swell Factor %', Icons.expand_outlined),
@@ -737,7 +809,12 @@ class _ServiceEstimationDialogState
                       Text('How it works', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
                       const SizedBox(height: 16),
                       _guideItem(Icons.info_outline, 'Calculations are based on the unit of measure of the service (${widget.service['unit']}).'),
-                      _guideItem(Icons.calculate_outlined, 'We convert Area to Volume automatically if thickness is provided.'),
+                      if (_isAcresBased)
+                         _guideItem(Icons.calculate_outlined, 'Total duration is calculated based on the production rate of Acres per Day (AC/D).')
+                      else if (_isLinearBased)
+                         _guideItem(Icons.calculate_outlined, 'We calculate the Required Bedding Volume (CY) based on trench cross-section.')
+                      else if (_isAreaBased)
+                         _guideItem(Icons.calculate_outlined, 'We convert Area to Volume automatically if thickness is provided.'),
                       _guideItem(Icons.calendar_month_outlined, 'The production timeline will be generated after assigning machinery in the next step.'),
                       const SizedBox(height: 48),
                       _buildCalculationSummaryMini(),
@@ -809,23 +886,39 @@ class _ServiceEstimationDialogState
 
   Widget _buildCalculationSummaryMini() {
     if (_calculationResult == null) return const SizedBox();
-    final cy = _calculationResult?['totalCYLoose'] ?? 0;
+    final cy = _calculationResult?['totalCYLoose'] ?? 0.0;
     final earthCY = _calculationResult?['earthCY'] ?? 0.0;
     final gravelCY = _calculationResult?['gravelCY'] ?? 0.0;
+    final totalLen = _isLinearBased ? (double.tryParse(_compactedCtrl.text) ?? 0.0) : 0.0;
+    final totalAcres = _isAcresBased ? (double.tryParse(_compactedCtrl.text) ?? 0.0) : 0.0;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2))),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('TOTAL CALCULATED VOLUME', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
-          Text('${NumberFormat('#,###.##').format(cy)} CY', style: GoogleFonts.manrope(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.primaryGreen)),
-          if (_isAreaBased && (earthCY > 0 || gravelCY > 0)) ...[
+          Text(
+            _isAcresBased 
+              ? 'TOTAL ACRES' 
+              : (_isLinearBased ? 'TOTAL ESTIMATED LENGTH' : 'TOTAL CALCULATED VOLUME'), 
+            style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500)
+          ),
+          Text(
+            _isAcresBased 
+              ? '${NumberFormat('#,###.##').format(totalAcres)} AC' 
+              : (_isLinearBased ? '${NumberFormat('#,###').format(totalLen)} LF' : '${NumberFormat('#,###.##').format(cy)} CY'), 
+            style: GoogleFonts.manrope(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.primaryGreen)
+          ),
+          if (_isLinearBased && cy > 0) ...[
+             const SizedBox(height: 8),
+             _miniVolumeBadge('Trench Fill', cy, AppTheme.primaryGreen),
+          ] else if (_isAreaBased && (earthCY > 0 || gravelCY > 0)) ...[
             const SizedBox(height: 8),
             Row(
               children: [
                 if (earthCY > 0)
-                  _miniVolumeBadge('Earth', earthCY, const Color(0xFF8B6914)),
+                  _miniVolumeBadge('Sand', earthCY, const Color(0xFFD4AF37)),
                 if (earthCY > 0 && gravelCY > 0)
                   const SizedBox(width: 12),
                 if (gravelCY > 0)
@@ -1097,7 +1190,8 @@ class _ServiceEstimationDialogState
   }
 
   Widget _primaryInputs(Map<String, dynamic> res) {
-    if (_isAreaBased) {
+    if (_isAreaBased || _isLinearBased || _isAcresBased) {
+      final perfLabel = _isAcresBased ? 'PERFORMANCE (AC/D)' : (_isLinearBased ? 'PERFORMANCE (LF/D)' : 'PERFORMANCE (SQFT/D)');
       return Row(
         children: [
           _miniInput('QTY', (val) {
@@ -1105,7 +1199,7 @@ class _ServiceEstimationDialogState
             _runCalculation();
           }, res['qtyCtrl'] as TextEditingController),
           const SizedBox(width: 8),
-          _miniInput('PERFORMANCE (FT/D)', (val) {
+          _miniInput(perfLabel, (val) {
             res['performance_per_day'] = double.tryParse(val) ?? 0.0;
             _runCalculation();
           }, res['perfCtrl'] as TextEditingController),
@@ -1238,10 +1332,21 @@ class _ServiceEstimationDialogState
     if (_calculationResult == null) return Center(child: Text('Enter data to calculate', style: GoogleFonts.manrope(color: AppTheme.slate400)));
 
     final totalCY = (_calculationResult!['totalCYLoose'] as num).toDouble();
+    final totalLinear = _isLinearBased ? (double.tryParse(_compactedCtrl.text) ?? 0.0) : 0.0;
+    final totalAcres = _isAcresBased ? (double.tryParse(_compactedCtrl.text) ?? 0.0) : 0.0;
     final workingDays = _calculationResult!['workingDays'] as int;
     final endDate = _calculationResult!['endDate'] as DateTime;
     final calendarDays = endDate.difference(_startDate).inDays;
     final months = calendarDays / 30.44;
+
+    Widget looseCard;
+    if (_isAcresBased) {
+      looseCard = _resultCard('Total Acres', totalAcres.toStringAsFixed(2), 'AC', Icons.landscape, AppTheme.primaryGreen);
+    } else if (_isLinearBased) {
+      looseCard = _resultCard('Total Length', '${totalLinear.toStringAsFixed(0)} LF', 'Service length', Icons.straighten, AppTheme.primaryGreen);
+    } else {
+      looseCard = _resultCard('Total Loose', totalCY.toStringAsFixed(0), _isAreaBased ? 'Generated CY (Loose)' : 'CY with swell', Icons.dashboard_customize_outlined, AppTheme.primaryGreen);
+    }
 
     return SingleChildScrollView(
       child: Column(
@@ -1251,7 +1356,7 @@ class _ServiceEstimationDialogState
           const SizedBox(height: 12),
           Row(
             children: [
-              Expanded(child: _resultCard('Total Loose', totalCY.toStringAsFixed(0), _isAreaBased ? 'Generated CY (Loose)' : 'CY with swell', Icons.dashboard_customize_outlined, AppTheme.primaryGreen)),
+              Expanded(child: looseCard),
               const SizedBox(width: 10),
               Expanded(child: _resultCard('Completion', DateFormat('MMM dd').format(endDate), 'Estimated end', Icons.event_available_outlined, Colors.blue)),
             ],
@@ -1329,6 +1434,7 @@ class _ServiceEstimationDialogState
         dailySchedule: List<Map<String, dynamic>>.from(_calculationResult?['dailySchedule'] ?? []),
         // Only pass primary movers to the calendar
         resources: _selectedResources.where((r) => r['is_primary_mover'] == true).toList(),
+        unit: _isAcresBased ? 'AC' : (_isLinearBased ? 'LF' : (_isAreaBased ? 'SQFT' : 'CY')),
       ),
     );
   }
@@ -1397,6 +1503,21 @@ class _ServiceEstimationDialogState
   Widget _buildLayerSelector(Map<String, dynamic> mat) {
     final earthCY = _calculationResult?['earthCY'] ?? 0.0;
     final gravelCY = _calculationResult?['gravelCY'] ?? 0.0;
+    
+    // Safety check for value mismatch across modes
+    String currentType = mat['layer_type'] ?? 'earth';
+    if (_isLinearBased) {
+       if (currentType != 'linear' && currentType != 'earth' && currentType != 'gravel') {
+         currentType = 'linear';
+         mat['layer_type'] = 'linear';
+       }
+    } else {
+       if (currentType == 'linear' || currentType == 'earth' || currentType == 'gravel') {
+         currentType = 'earth';
+         mat['layer_type'] = 'earth';
+       }
+    }
+
     return Row(
       children: [
         Text('LAYER:', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
@@ -1411,18 +1532,25 @@ class _ServiceEstimationDialogState
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
-              value: mat['layer_type'] ?? 'earth',
+              value: currentType,
               icon: const Icon(Icons.arrow_drop_down, size: 16),
               isDense: true,
               style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate700),
               onChanged: (v) {
                 setState(() => mat['layer_type'] = v);
               },
-              items: [
-                DropdownMenuItem(value: 'earth', child: Text('Earth (${NumberFormat('#,###').format(earthCY)} CY)')),
-                if (gravelCY > 0)
-                  DropdownMenuItem(value: 'gravel', child: Text('Gravel (${NumberFormat('#,###').format(gravelCY)} CY)')),
-              ],
+              items: _isLinearBased
+                  ? [
+                      DropdownMenuItem(value: 'linear', child: Text('Linear Measure (${NumberFormat('#,###').format(double.tryParse(_compactedCtrl.text) ?? 0)} LF)')),
+                      DropdownMenuItem(value: 'earth', child: Text('Trench (${NumberFormat('#,###').format(earthCY)} CY)')),
+                      DropdownMenuItem(value: 'gravel', child: Text('Bedding (${NumberFormat('#,###').format(gravelCY)} CY)')),
+                    ]
+                  : [
+                      DropdownMenuItem(value: 'earth', child: Text(_isAreaBased ? 'Sand (${NumberFormat('#,###').format(earthCY)} CY)' : 'Earth (${NumberFormat('#,###').format(earthCY)} CY)')),
+                      if (gravelCY > 0)
+                        DropdownMenuItem(value: 'gravel', child: Text('Gravel (${NumberFormat('#,###').format(gravelCY)} CY)')),
+                      DropdownMenuItem(value: 'total', child: Text('Total (${NumberFormat('#,###').format(earthCY + gravelCY)} CY)')),
+                    ],
             ),
           ),
         ),
@@ -1433,14 +1561,20 @@ class _ServiceEstimationDialogState
   Widget _materialItemRow(Map<String, dynamic> mat, double calculatedCY) {
     final yield = (mat['yield_factor'] as num?)?.toDouble() ?? 1.0;
     
-    double baseCY = calculatedCY;
-    if (_isAreaBased) {
+    double baseVal = calculatedCY;
+    if (_isLinearBased) {
+        final lType = mat['layer_type'] ?? 'linear';
+        if (lType == 'earth') baseVal = _calculationResult?['earthCY'] ?? 0.0;
+        else if (lType == 'gravel') baseVal = _calculationResult?['gravelCY'] ?? 0.0;
+        else baseVal = double.tryParse(_compactedCtrl.text) ?? 0.0; // The LF length
+    } else if (_isAreaBased) {
       final lType = mat['layer_type'] ?? 'earth';
-      if (lType == 'gravel') baseCY = _calculationResult?['gravelCY'] ?? 0.0;
-      else baseCY = _calculationResult?['earthCY'] ?? (_calculationResult?['totalCYLoose'] ?? 0.0);
+      if (lType == 'gravel') baseVal = _calculationResult?['gravelCY'] ?? 0.0;
+      else if (lType == 'total') baseVal = _calculationResult?['totalCYLoose'] ?? 0.0;
+      else baseVal = _calculationResult?['earthCY'] ?? (_calculationResult?['totalCYLoose'] ?? 0.0);
     }
     
-    final suggested = baseCY * yield;
+    final suggested = baseVal * yield;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1459,8 +1593,8 @@ class _ServiceEstimationDialogState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(mat['material_name'] ?? 'Material', style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
-                Text('Unit: ${mat['unit']} | Yield: ${yield.toStringAsFixed(2)} per CY', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500)),
-                if (_isAreaBased) ...[
+                Text('Unit: ${mat['unit']} | Yield: ${yield.toStringAsFixed(2)} per Unit', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500)),
+                if (_isAreaBased || _isLinearBased) ...[
                   const SizedBox(height: 8),
                   _buildLayerSelector(mat),
                 ],
@@ -1587,13 +1721,19 @@ class _ServiceEstimationDialogState
   void _addMaterial(Map<String, dynamic> catalogItem) {
     setState(() {
       final yield = (catalogItem['yield_factor'] as num?)?.toDouble() ?? 1.0;
-      final calculatedCY = _calculationResult?['totalCYLoose'] ?? 0.0;
-      final suggested = calculatedCY * yield;
+      
+      double baseVal = _calculationResult?['totalCYLoose'] ?? 0.0;
+      if (_isLinearBased) {
+        baseVal = double.tryParse(_compactedCtrl.text) ?? 0.0;
+      }
+      
+      final suggested = baseVal * yield;
       
       _selectedMaterials.add({
         'material_id': catalogItem['id'],
         'material_name': catalogItem['description'],
         'unit': catalogItem['unit'] ?? 'und',
+        'layer_type': _isLinearBased ? 'linear' : 'earth',
         'yield_factor': yield,
         'quantity': suggested,
         'unit_price': 0.0,
@@ -1662,9 +1802,7 @@ class _ServiceEstimationDialogState
     );
   }
 
-  // ══════════════════════════════════════════════════════════════
-  //  SHARED HELPERS
-  // ══════════════════════════════════════════════════════════════
+  // ── Shared Helpers ──
 
   Widget _inputLabel(String text) => Text(text.toUpperCase(), style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1, color: AppTheme.slate500));
 

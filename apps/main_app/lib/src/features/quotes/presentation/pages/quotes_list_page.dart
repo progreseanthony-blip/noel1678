@@ -32,19 +32,29 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
   }
 
   Future<void> _loadQuotes() async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
     try {
       final response = await Supabase.instance.client
           .from('quotes')
           .select()
           .order('created_at', ascending: false);
-      setState(() {
-        _quotes = List<Map<String, dynamic>>.from(response ?? []);
-        _isLoading = false;
-      });
-    } catch (e) {
+      
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _quotes = List<Map<String, dynamic>>.from(response ?? []);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading quotes: $e');
+      if (mounted) {
+        setState(() {
+          _error = 'Failed to load quotes: ${e.toString()}';
           _isLoading = false;
         });
       }
@@ -52,22 +62,23 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
   }
 
   List<Map<String, dynamic>> get _filteredQuotes {
-    if (_quotes == null) return [];
-    var base = _quotes!;
+    final base = _quotes ?? [];
     
+    var filtered = base;
     if (_mobileFilter != 'all') {
-      base = base.where((q) => (q['status'] ?? '').toString().toLowerCase() == _mobileFilter).toList();
+      filtered = filtered.where((q) => (q['status'] ?? '').toString().toLowerCase() == _mobileFilter).toList();
     }
     
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
-      base = base.where((u) {
+      filtered = filtered.where((u) {
         final title = (u['title'] ?? '').toString().toLowerCase();
+        final client = (u['client_name'] ?? '').toString().toLowerCase();
         final id = (u['id'] ?? '').toString().toLowerCase();
-        return title.contains(q) || id.contains(q);
+        return title.contains(q) || client.contains(q) || id.contains(q);
       }).toList();
     }
-    return base;
+    return filtered;
   }
 
   List<Map<String, dynamic>> get _paginatedQuotes {
@@ -635,12 +646,12 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
           ),
           child: Row(
             children: [
-              Expanded(flex: 25, child: Text(title, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900))),
-              Expanded(flex: 20, child: Text(quote['client_name'] ?? '-', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700))),
-              Expanded(flex: 20, child: Text(date, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500))),
+              Expanded(flex: 23, child: Text(title, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900))),
+              Expanded(flex: 18, child: Text(quote['client_name'] ?? '-', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700))),
+              Expanded(flex: 18, child: Text(date, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500))),
               Expanded(flex: 15, child: Text('\$${NumberFormat('#,##0.00', 'en_US').format(quote['total_amount'] ?? 0)}', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen))),
-              Expanded(flex: 12, child: _buildStatusBadge(status)),
-              Expanded(flex: 8, child: Align(alignment: Alignment.centerLeft, child: Row(mainAxisSize: MainAxisSize.min, children: [_editIconButton(quote), const SizedBox(width: 6), _deleteIconButton(quote)]))),
+              Expanded(flex: 14, child: _buildStatusBadge(status)),
+              Expanded(flex: 12, child: Align(alignment: Alignment.centerLeft, child: Row(mainAxisSize: MainAxisSize.min, children: [_editIconButton(quote), const SizedBox(width: 6), _deleteIconButton(quote)]))),
             ],
           ),
         ),

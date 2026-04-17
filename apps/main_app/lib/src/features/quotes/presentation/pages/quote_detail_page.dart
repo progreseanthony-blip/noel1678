@@ -21,6 +21,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
   Map<String, List<Map<String, dynamic>>> _machineries = {};
   Map<String, List<Map<String, dynamic>>> _labors = {};
   Map<String, List<Map<String, dynamic>>> _materials = {};
+  Map<String, List<Map<String, dynamic>>> _instruments = {};
   Map<String, Map<String, dynamic>> _estimations = {};
   bool _isLoading = true;
   String? _error;
@@ -44,6 +45,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
       final machMap = <String, List<Map<String, dynamic>>>{};
       final laborMap = <String, List<Map<String, dynamic>>>{};
       final materialMap = <String, List<Map<String, dynamic>>>{};
+      final instrumentMap = <String, List<Map<String, dynamic>>>{};
       final estMap = <String, Map<String, dynamic>>{};
 
       for (final svc in servicesData) {
@@ -56,6 +58,10 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
         // Fetch materials
         final materialRaw = await sb.from('quote_service_materials').select().eq('quote_service_id', svcId);
         materialMap[svcId] = List<Map<String, dynamic>>.from(materialRaw);
+
+        // Fetch instruments
+        final instrumentRaw = await sb.from('quote_service_instruments').select().eq('quote_service_id', svcId);
+        instrumentMap[svcId] = List<Map<String, dynamic>>.from(instrumentRaw);
 
         // Fetch estimation
         final estData = await sb.from('quote_service_estimations').select().eq('quote_service_id', svcId).maybeSingle();
@@ -71,6 +77,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
           _machineries = machMap;
           _labors = laborMap;
           _materials = materialMap;
+          _instruments = instrumentMap;
           _estimations = estMap;
           _isLoading = false;
         });
@@ -148,14 +155,16 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
     final mList = _machineries[svcId] ?? [];
     final lList = _labors[svcId] ?? [];
     final matList = _materials[svcId] ?? [];
+    final instList = _instruments[svcId] ?? [];
 
     final totalMach = mList.fold(0.0, (s, m) => s + _machTotalRent(m));
     final totalGas = mList.fold(0.0, (s, m) => s + _machTotalGasCost(m));
     final totalLabor = lList.fold(0.0, (s, l) => s + _laborTotalPay(l));
     final totalPD = lList.fold(0.0, (s, l) => s + _laborTotalPerDiem(l));
     final totalMats = matList.fold(0.0, (s, m) => s + _matTotal(m));
+    final totalInst = instList.fold(0.0, (s, i) => s + (_d(i, 'quantity') * _d(i, 'unit_price')));
 
-    final sub = totalMach + totalGas + totalLabor + totalPD + totalMats;
+    final sub = totalMach + totalGas + totalLabor + totalPD + totalMats + totalInst;
     final ohPct = _d(svc, 'overhead_percentage');
     final profPct = _d(svc, 'profit_percentage');
 
@@ -173,6 +182,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
       'totalLabor': totalLabor,
       'totalPD': totalPD,
       'totalMats': totalMats,
+      'totalInst': totalInst,
       'sub': sub,
       'oh': oh,
       'plusOh': plusOh,
@@ -294,18 +304,27 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
         : '-';
 
     double grandTotal = 0;
+    double totalOverhead = 0;
+    double totalProfit = 0;
+    double totalSubTotal = 0;
     for (final svc in _services) {
       final t = _svcTotals(svc['id'], svc);
       grandTotal += t['sale']!;
+      totalOverhead += t['oh']!;
+      totalProfit += t['prof']!;
+      totalSubTotal += t['sub']!;
     }
 
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(isMobile ? 16 : 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Header Card ──
-          Container(
+    final ohPct = totalSubTotal > 0 ? (totalOverhead / totalSubTotal) * 100 : 0.0;
+    final prPct = totalSubTotal > 0 ? (totalProfit / totalSubTotal) * 100 : 0.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // ── Header Card (Sticky) ──
+        Padding(
+          padding: EdgeInsets.all(isMobile ? 16 : 24).copyWith(bottom: 0),
+          child: Container(
             padding: EdgeInsets.all(isMobile ? 20 : 28),
             decoration: BoxDecoration(
               color: Colors.white,
@@ -348,6 +367,9 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                           children: [
                             Text('GRAND TOTAL', style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
                             Text('\$${_fmt.format(grandTotal)}', style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+                            const SizedBox(height: 4),
+                            Text('Sub Total: \$${_fmt.format(totalSubTotal)}', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate600)),
+                            Text('OH: \$${_fmt.format(totalOverhead)} (${ohPct.toStringAsFixed(1)}%) | Prof: \$${_fmt.format(totalProfit)} (${prPct.toStringAsFixed(1)}%)', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
                           ],
                         ),
                         Row(
@@ -414,6 +436,9 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                           Text('GRAND TOTAL', style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1, color: AppTheme.slate500)),
                           const SizedBox(height: 2),
                           Text('\$${_fmt.format(grandTotal)}', style: GoogleFonts.manrope(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+                          const SizedBox(height: 4),
+                          Text('Sub Total: \$${_fmt.format(totalSubTotal)}', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate600)),
+                          Text('OH: \$${_fmt.format(totalOverhead)} (${ohPct.toStringAsFixed(1)}%) | Prof: \$${_fmt.format(totalProfit)} (${prPct.toStringAsFixed(1)}%)', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
                         ],
                       ),
                     ),
@@ -478,20 +503,28 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                   ],
                 ),
           ),
-
-          const SizedBox(height: 28),
-
-          // ── Services ──
-          if (_services.isEmpty)
-            Container(
-              padding: const EdgeInsets.all(40),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200)),
-              child: Center(child: Text('No services added to this quote yet.', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 14))),
-            )
-          else
-            ..._services.asMap().entries.map((e) => _buildServiceSection(e.key, e.value, isMobile)),
-        ],
-      ),
+        ),
+        
+        // ── Services (Scrollable) ──
+        Expanded(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(isMobile ? 16 : 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_services.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(40),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200)),
+                    child: Center(child: Text('No services added to this quote yet.', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 14))),
+                  )
+                else
+                  ..._services.asMap().entries.map((e) => _buildServiceSection(e.key, e.value, isMobile)),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -637,6 +670,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                               _summaryLine('Total Labor', totals['totalLabor']!),
                               _summaryLine('Total Per Diem', totals['totalPD']!),
                               _summaryLine('Total Materials', totals['totalMats']!),
+                              _summaryLine('Total Instruments', totals['totalInst']!),
                               const Divider(height: 24),
                               _summaryLine('Overhead (${_d(svc, 'overhead_percentage')}%)', totals['oh']!),
                               _summaryLine('Profit (${_d(svc, 'profit_percentage')}%)', totals['prof']!),
@@ -655,6 +689,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                                     _summaryLine('Total Gasoline', totals['totalGas']!),
                                     _summaryLine('Total Labor', totals['totalLabor']!),
                                     _summaryLine('Total Per Diem', totals['totalPD']!),
+                                    _summaryLine('Total Instruments', totals['totalInst']!),
                                     const Divider(height: 20),
                                     _summaryLine('Sub Total', totals['sub']!, bold: true),
                                   ],

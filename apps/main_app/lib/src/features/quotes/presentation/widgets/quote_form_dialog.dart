@@ -9,6 +9,7 @@ import 'package:noel_app/src/features/catalogs/presentation/widgets/service_dial
 import 'package:noel_app/src/features/catalogs/presentation/widgets/machinery_dialog.dart';
 import 'package:noel_app/src/features/catalogs/presentation/widgets/labor_role_dialog.dart';
 import 'service_estimation_dialog.dart';
+import 'machinery_selection_dialog.dart';
 
 // ══════════════════════════════════════════════════════════════
 //  DATA MODELS (local, in-memory for the wizard)
@@ -85,6 +86,28 @@ class MaterialEntry {
   double get total => quantity * unitPrice;
 }
 
+class InstrumentEntry {
+  String instrumentName;
+  double quantity;
+  double days;
+  double unitPrice;
+  String? catalogId;
+  String? notes;
+  String? photoUrl;
+
+  InstrumentEntry({
+    this.instrumentName = '',
+    this.quantity = 1,
+    this.days = 1,
+    this.unitPrice = 0,
+    this.catalogId,
+    this.notes,
+    this.photoUrl,
+  });
+
+  double get total => quantity * days * unitPrice;
+}
+
 class ServiceEntry {
   String name;
   String unitOfMeasure;
@@ -94,6 +117,7 @@ class ServiceEntry {
   List<MachineryEntry> machineries;
   List<LaborEntry> labors;
   List<MaterialEntry> materials;
+  List<InstrumentEntry> instruments;
 
   Map<String, dynamic>? estimationData;
   String? catalogId;
@@ -107,11 +131,13 @@ class ServiceEntry {
     List<MachineryEntry>? machineries,
     List<LaborEntry>? labors,
     List<MaterialEntry>? materials,
+    List<InstrumentEntry>? instruments,
     this.estimationData,
     this.catalogId,
   }) : machineries = machineries ?? [],
        labors = labors ?? [],
-       materials = materials ?? [];
+       materials = materials ?? [],
+       instruments = instruments ?? [];
 
   double get totalMachinery => machineries.fold(0.0, (s, m) => s + m.totalRent);
   double get totalGasoline =>
@@ -121,13 +147,15 @@ class ServiceEntry {
   double get totalLabor => labors.fold(0.0, (s, l) => s + l.totalPay);
   double get totalPerDiem => labors.fold(0.0, (s, l) => s + l.totalPerDiem);
   double get totalMaterials => materials.fold(0.0, (s, m) => s + m.total);
+  double get totalInstruments => instruments.fold(0.0, (s, i) => s + i.total);
   double get subTotal =>
       totalMachinery +
       totalGasoline +
       totalDelivery +
       totalLabor +
       totalPerDiem +
-      totalMaterials;
+      totalMaterials +
+      totalInstruments;
   double get overheadAmount => subTotal * (overheadPercentage / 100);
   double get totalPlusOverhead => subTotal + overheadAmount;
   double get profitAmount => totalPlusOverhead * (profitPercentage / 100);
@@ -162,6 +190,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   List<Map<String, dynamic>> _catalogMachinery = [];
   List<Map<String, dynamic>> _catalogLaborRoles = [];
   List<Map<String, dynamic>> _catalogMaterials = [];
+  List<Map<String, dynamic>> _catalogInstruments = [];
 
   // Step 1+ - Services
   List<ServiceEntry> _services = [];
@@ -407,6 +436,30 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     setState(() {});
   }
 
+  void _syncInstrumentsFromEstimation(
+    ServiceEntry svc,
+    Map<String, dynamic> result,
+  ) {
+    final estInstruments = result['instruments'] as List?;
+    if (estInstruments == null || estInstruments.isEmpty) return;
+
+    // We replace instruments to match the estimation dialog's state exactly
+    svc.instruments.clear();
+    for (final ei in estInstruments) {
+      svc.instruments.add(
+        InstrumentEntry(
+          catalogId: ei['instrument_id']?.toString(),
+          instrumentName: ei['instrument_name'] ?? '',
+          quantity: (ei['quantity'] as num).toDouble(),
+          days: (ei['days'] as num?)?.toDouble() ?? 1.0,
+          unitPrice: (ei['unit_price'] as num).toDouble(),
+          notes: ei['notes'],
+        ),
+      );
+    }
+    setState(() {});
+  }
+
   Future<void> _loadCatalogs() async {
     try {
       final supabase = Supabase.instance.client;
@@ -426,6 +479,10 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           .from('materials')
           .select()
           .order('description');
+      final inst = await supabase
+          .from('logistics_equipment')
+          .select()
+          .order('description');
 
       if (mounted) {
         setState(() {
@@ -433,6 +490,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           _catalogMachinery = List<Map<String, dynamic>>.from(mach ?? []);
           _catalogLaborRoles = List<Map<String, dynamic>>.from(labr ?? []);
           _catalogMaterials = List<Map<String, dynamic>>.from(matr ?? []);
+          _catalogInstruments = List<Map<String, dynamic>>.from(inst ?? []);
         });
       }
     } catch (e) {
@@ -525,6 +583,12 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             'swell_factor': (responseEst['swell_factor'] as num).toDouble(),
             'thickness_inches':
                 (responseEst['thickness_inches'] as num?)?.toDouble() ?? 0.0,
+            'gravel_thickness_inches':
+                (responseEst['gravel_thickness_inches'] as num?)?.toDouble() ?? 0.0,
+            'trench_width_inches':
+                (responseEst['trench_width_inches'] as num?)?.toDouble() ?? 0.0,
+            'trench_depth_inches':
+                (responseEst['trench_depth_inches'] as num?)?.toDouble() ?? 0.0,
             'total_cy_loose': (responseEst['total_cy_loose'] as num).toDouble(),
             'working_days': (responseEst['total_working_days'] as num).toInt(),
             'start_date': DateTime.parse(responseEst['start_date']),
@@ -596,10 +660,28 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 materialName: m['material_name'] ?? '',
                 quantity: (m['quantity'] as num?)?.toDouble() ?? 0,
                 unitPrice: (m['unit_price'] as num?)?.toDouble() ?? 0,
-                unit:
-                    m['unit_name'] ??
-                    'und', // Or unit_measure if that's the col
+                unit: m['unit_name'] ?? 'und',
                 catalogId: m['material_id']?.toString(),
+              ),
+            )
+            .toList();
+
+        // Load instruments for this service
+        final responseInst = await supabase
+            .from('quote_service_instruments')
+            .select()
+            .eq('quote_service_id', svcId);
+
+        final instData = List<Map<String, dynamic>>.from(responseInst ?? []);
+        final instruments = instData
+            .map<InstrumentEntry>(
+              (i) => InstrumentEntry(
+                instrumentName: i['instrument_name'] ?? '',
+                quantity: (i['quantity'] as num?)?.toDouble() ?? 1,
+                unitPrice: (i['unit_price'] as num?)?.toDouble() ?? 0,
+                days: (i['days'] as num?)?.toDouble() ?? 1,
+                catalogId: i['instrument_id']?.toString(),
+                notes: i['notes'],
               ),
             )
             .toList();
@@ -616,6 +698,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             machineries: machineries,
             labors: labors,
             materials: materials,
+            instruments: instruments,
             estimationData: estimationData,
             catalogId: svcData['service_id']
                 ?.toString(), // Map it if it exists in DB, otherwise we match by name below
@@ -773,6 +856,18 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             'quantity': m.quantity,
             'unit_price': m.unitPrice,
             'unit_name': m.unit,
+          });
+        }
+
+        for (final i in svc.instruments) {
+          await supabase.from('quote_service_instruments').insert({
+            'quote_service_id': svcId,
+            'instrument_id': i.catalogId,
+            'instrument_name': i.instrumentName,
+            'quantity': i.quantity,
+            'days': i.days,
+            'unit_price': i.unitPrice,
+            'notes': i.notes,
           });
         }
 
@@ -1017,15 +1112,17 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   String _stepSubtitle() {
     switch (_currentStep) {
       case 0:
-        return 'Step 1 of 5 — Basic Information';
+        return 'Step 1 of 6 — Basic Information';
       case 1:
-        return 'Step 2 of 5 — Services & Machinery';
+        return 'Step 2 of 6 — Services & Machinery';
       case 2:
-        return 'Step 3 of 5 — Labor & Workforce';
+        return 'Step 3 of 6 — Labor & Workforce';
       case 3:
-        return 'Step 4 of 5 — Project Materials';
+        return 'Step 4 of 6 — Project Materials';
       case 4:
-        return 'Step 5 de 5 — Summary & Profit';
+        return 'Step 5 of 6 — Instruments & Tools';
+      case 5:
+        return 'Step 6 de 6 — Summary & Profit';
       default:
         return '';
     }
@@ -1033,7 +1130,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
 
   // ── Step Indicator ──
   Widget _buildStepIndicator() {
-    final steps = ['Info', 'Machinery', 'Labor', 'Materials', 'Summary'];
+    final steps = ['Info', 'Machinery', 'Labor', 'Materials', 'Tools', 'Summary'];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
       color: const Color(0xFFF8FAFC),
@@ -1115,7 +1212,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       case 3:
         return _buildStep3Materials();
       case 4:
-        return _buildStep4Summary();
+        return _buildStep4Instruments();
+      case 5:
+        return _buildStep5Summary();
       default:
         return const SizedBox.shrink();
     }
@@ -1447,6 +1546,10 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                                       result as Map<String, dynamic>,
                                     );
                                     _syncMaterialsFromEstimation(
+                                      svc,
+                                      result as Map<String, dynamic>,
+                                    );
+                                    _syncInstrumentsFromEstimation(
                                       svc,
                                       result as Map<String, dynamic>,
                                     );
@@ -2378,7 +2481,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   // ══════════════════════════════════════════════════════════════
   //  STEP 4: SUMMARY
   // ══════════════════════════════════════════════════════════════
-  Widget _buildStep4Summary() {
+  Widget _buildStep5Summary() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
       child: Column(
@@ -2427,6 +2530,11 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             svc.totalMaterials,
             highlight: svc.totalMaterials > 0,
           ),
+          _summaryRow(
+            'Total Instruments',
+            svc.totalInstruments,
+            highlight: svc.totalInstruments > 0,
+          ),
           const Divider(height: 24),
           _summaryRow('Sub Total', svc.subTotal, bold: true),
           _summaryRow(
@@ -2450,6 +2558,13 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
 
   Widget _buildGrandTotal() {
     final grandTotal = _services.fold(0.0, (s, svc) => s + svc.totalSaleV2);
+    final totalOverhead = _services.fold(0.0, (s, svc) => s + svc.overheadAmount);
+    final totalProfit = _services.fold(0.0, (s, svc) => s + svc.profitAmount);
+    final totalSubTotal = _services.fold(0.0, (s, svc) => s + svc.subTotal);
+
+    final overheadPct = totalSubTotal > 0 ? (totalOverhead / totalSubTotal) * 100 : 0.0;
+    final profitPct = totalSubTotal > 0 ? (totalProfit / totalSubTotal) * 100 : 0.0;
+    
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -2460,19 +2575,297 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            'GRAND TOTAL',
-            style: GoogleFonts.manrope(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.slate900,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'GRAND TOTAL',
+                  style: GoogleFonts.manrope(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.slate900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Sub Total: \$${_currencyFormat.format(totalSubTotal)}',
+                  style: GoogleFonts.manrope(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.slate700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Wrap(
+                  spacing: 12,
+                  children: [
+                    Text(
+                      'Overhead: \$${_currencyFormat.format(totalOverhead)} (${overheadPct.toStringAsFixed(1)}%)',
+                      style: GoogleFonts.manrope(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.slate500,
+                      ),
+                    ),
+                    Text(
+                      'Profit: \$${_currencyFormat.format(totalProfit)} (${profitPct.toStringAsFixed(1)}%)',
+                      style: GoogleFonts.manrope(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.slate500,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
+          const SizedBox(width: 16),
           Text(
             '\$${_currencyFormat.format(grandTotal)}',
             style: GoogleFonts.manrope(
               fontSize: 22,
               fontWeight: FontWeight.w800,
+              color: AppTheme.primaryGreen,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStep4Instruments() {
+    if (_services.isEmpty)
+      return Center(
+        child: Text(
+          'Add a service first',
+          style: GoogleFonts.manrope(color: AppTheme.slate500),
+        ),
+      );
+    final svc = _services[_activeServiceIndex.clamp(0, _services.length - 1)];
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(28),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildServiceTabs(),
+          const SizedBox(height: 20),
+          _sectionTitle('Instruments & Special Tools'),
+          const SizedBox(height: 16),
+          if (svc.instruments.isEmpty)
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Center(
+                child: Text(
+                  'No instruments added yet. Estimation values will appear here or click below to manually add.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.manrope(color: AppTheme.slate500),
+                ),
+              ),
+            )
+          else
+            ...svc.instruments.asMap().entries.map(
+              (e) => _buildInstrumentCard(svc, e.key, e.value),
+            ),
+          const SizedBox(height: 16),
+          _addButton('Add Instrument', () {
+            _showInstrumentSelector(svc);
+          }, icon: Icons.playlist_add),
+          const SizedBox(height: 20),
+          _buildInstrumentSummary(svc),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInstrumentCard(ServiceEntry svc, int index, InstrumentEntry inst) {
+    return Container(
+      key: ValueKey(inst),
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              if (inst.instrumentName != '' &&
+                  _catalogInstruments.any(
+                    (ix) => ix['description'] == inst.instrumentName,
+                  )) ...[
+                Builder(
+                  builder: (context) {
+                    final item = _catalogInstruments.firstWhere(
+                      (ix) => ix['description'] == inst.instrumentName,
+                    );
+                    final String? photoUrl = item['photo_url'];
+
+                    return Container(
+                      width: 50,
+                      height: 40,
+                      margin: const EdgeInsets.only(right: 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        color: AppTheme.slate50,
+                        border: Border.all(color: AppTheme.slate200),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.05),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: (photoUrl != null && photoUrl.isNotEmpty)
+                          ? Image.network(
+                              photoUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (c, e, s) => Container(
+                                color: AppTheme.slate50,
+                                child: const Icon(
+                                  Icons.construction,
+                                  size: 20,
+                                  color: AppTheme.slate400,
+                                ),
+                              ),
+                              loadingBuilder:
+                                  (context, child, loadingProgress) {
+                                if (loadingProgress == null) return child;
+                                return Center(
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    value: loadingProgress.expectedTotalBytes !=
+                                            null
+                                        ? loadingProgress
+                                                .cumulativeBytesLoaded /
+                                            loadingProgress.expectedTotalBytes!
+                                        : null,
+                                  ),
+                                );
+                              },
+                            )
+                          : const Icon(
+                              Icons.construction,
+                              size: 20,
+                              color: AppTheme.slate400,
+                            ),
+                    );
+                  },
+                ),
+              ],
+              Text(
+                'Tool / Instrument ${index + 1}',
+                style: GoogleFonts.manrope(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.slate900,
+                ),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => setState(() => svc.instruments.removeAt(index)),
+                child: const Icon(
+                  Icons.close,
+                  color: AppTheme.slate400,
+                  size: 18,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              _SearchableCatalogDropdown(
+                label: 'Tool Name',
+                width: 200,
+                items: _catalogInstruments,
+                initialValue: inst.instrumentName,
+                onSelected: (val, item) {
+                  setState(() {
+                    inst.instrumentName = val;
+                    if (item != null) {
+                      inst.catalogId = item['id']?.toString();
+                    }
+                  });
+                },
+                onAddNew: () => _openCatalogItemAdd('instruments'),
+              ),
+              _fieldCard(
+                'Qty',
+                inst.quantity,
+                70,
+                onNum: (v) => setState(() => inst.quantity = v),
+              ),
+              _fieldCard(
+                'Days',
+                inst.days,
+                70,
+                onNum: (v) => setState(() => inst.days = v),
+              ),
+              _fieldCard(
+                'Price/Day',
+                inst.unitPrice,
+                100,
+                onNum: (v) => setState(() => inst.unitPrice = v),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryGreen.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  '\$${_currencyFormat.format(inst.total)}',
+                  style: GoogleFonts.manrope(
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.primaryGreen,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInstrumentSummary(ServiceEntry svc) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryGreen.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.1)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            'Total Instruments for ${svc.name}',
+            style: GoogleFonts.manrope(
+              fontWeight: FontWeight.w700,
+              color: AppTheme.slate700,
+            ),
+          ),
+          Text(
+            _currencyFormat.format(svc.totalInstruments),
+            style: GoogleFonts.manrope(
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
               color: AppTheme.primaryGreen,
             ),
           ),
@@ -2590,7 +2983,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 () => Navigator.of(context).pop(),
               ),
               const SizedBox(width: 12),
-              if (_currentStep < 4)
+              if (_currentStep < 5)
                 _footerBtn(
                   'Next',
                   Icons.arrow_forward,
@@ -2760,6 +3153,40 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     );
   }
 
+  Future<void> _showInstrumentSelector(ServiceEntry svc) async {
+    final result = await showDialog<List<Map<String, dynamic>>>(
+      context: context,
+      builder: (context) => MachinerySelectionDialog(
+        serviceId: svc.catalogId ?? '',
+        isInstrument: true,
+      ),
+    );
+
+    if (result == null || result.isEmpty) return;
+
+    // Get default days from production
+    double defaultDays = 1.0;
+    if (svc.estimationData != null) {
+      final wDays = svc.estimationData!['workingDays'] ?? 
+                    svc.estimationData!['working_days'] ?? 
+                    svc.estimationData!['total_working_days'];
+      defaultDays = (wDays as num?)?.toDouble() ?? 1.0;
+      if (defaultDays <= 0) defaultDays = 1.0;
+    }
+
+    setState(() {
+      for (final i in result) {
+        svc.instruments.add(InstrumentEntry(
+          instrumentName: i['instrument_name'] ?? i['description'] ?? 'Untitled',
+          catalogId: i['instrument_id']?.toString() ?? i['id']?.toString(),
+          unitPrice: (i['unit_price'] as num?)?.toDouble() ?? (i['daily_rate'] as num?)?.toDouble() ?? 0.0,
+          photoUrl: i['photo_url'],
+          days: defaultDays,
+        ));
+      }
+    });
+  }
+
   Widget _labeledField(String label, Widget field) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2803,7 +3230,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     );
   }
 
-  Widget _addButton(String label, VoidCallback onTap) {
+  Widget _addButton(String label, VoidCallback onTap, {IconData icon = Icons.add}) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -2821,7 +3248,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.add, color: AppTheme.primaryGreen, size: 18),
+              Icon(icon, color: AppTheme.primaryGreen, size: 18),
               const SizedBox(width: 6),
               Text(
                 label,
@@ -3056,6 +3483,8 @@ class _SearchableCatalogDropdown extends StatelessWidget {
               if (t.isEmpty ||
                   t.startsWith('service') ||
                   t.startsWith('machine') ||
+                  t.startsWith('instrument') ||
+                  t.startsWith('tool') ||
                   t.startsWith('role')) {
                 return available;
               }
@@ -3493,3 +3922,4 @@ class _AutoSelectFieldState extends State<_AutoSelectField> {
     );
   }
 }
+

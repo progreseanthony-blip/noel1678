@@ -195,8 +195,35 @@ class QuotesService {
         'material_id': m['material_id'],
         'quantity': m['quantity'] ?? 0,
         'unit_price': m['unit_price'] ?? 0,
+        'layer_type': m['layer_type'] ?? 'earth',
         'notes': m['notes'],
       }).toList()
+    );
+  }
+
+  // ── Quote Service Instruments ──
+  Future<List<Map<String, dynamic>>> getInstrumentsForService(String quoteServiceId) async {
+    final response = await _supabase.from('quote_service_instruments')
+      .select('*, logistics_equipment(*)')
+      .eq('quote_service_id', quoteServiceId)
+      .order('created_at');
+    return List<Map<String, dynamic>>.from(response ?? []);
+  }
+
+  Future<void> saveInstruments(String quoteServiceId, List<Map<String, dynamic>> instruments) async {
+    // Delete existing and insert new
+    await _supabase.from('quote_service_instruments').delete().eq('quote_service_id', quoteServiceId);
+    if (instruments.isEmpty) return;
+
+    await _supabase.from('quote_service_instruments').insert(
+      instruments.map((i) => {
+        'quote_service_id': quoteServiceId,
+        'instrument_id': i['instrument_id'],
+        'instrument_name': i['instrument_name'],
+        'quantity': i['quantity'] ?? 1,
+        'unit_price': i['unit_price'] ?? 0,
+        'notes': i['notes'],
+      }).toList(),
     );
   }
 }
