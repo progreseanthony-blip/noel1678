@@ -199,7 +199,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
     final userEmail = currentUser?.email ?? '';
 
     final screenWidth = MediaQuery.of(context).size.width;
-    final bool isMobile = screenWidth < 1100;
+    final bool isMobile = screenWidth < 1250;
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
@@ -263,7 +263,13 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Icon(Icons.chevron_right, size: 16, color: AppTheme.slate400),
             ),
-            Text(_quote?['title'] ?? '', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900, fontWeight: FontWeight.w700)),
+            Flexible(
+              child: Text(
+                _quote?['title'] ?? '', 
+                style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900, fontWeight: FontWeight.w700),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ] else
             Expanded(
               child: Padding(
@@ -410,10 +416,15 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
+                          Wrap(
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 12,
+                            runSpacing: 8,
                             children: [
-                              Text(title, style: GoogleFonts.manrope(fontSize: 24, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
-                              const SizedBox(width: 12),
+                              Text(
+                                title, 
+                                style: GoogleFonts.manrope(fontSize: 24, fontWeight: FontWeight.w800, color: AppTheme.slate900),
+                              ),
                               _statusBadge(status),
                             ],
                           ),
@@ -424,22 +435,25 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                     ),
                     const SizedBox(width: 16),
                     // ── Grand Total ──
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryGreen.withOpacity(0.06),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2)),
-                      ),
-                      child: Column(
-                        children: [
-                          Text('GRAND TOTAL', style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1, color: AppTheme.slate500)),
-                          const SizedBox(height: 2),
-                          Text('\$${_fmt.format(grandTotal)}', style: GoogleFonts.manrope(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
-                          const SizedBox(height: 4),
-                          Text('Sub Total: \$${_fmt.format(totalSubTotal)}', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate600)),
-                          Text('OH: \$${_fmt.format(totalOverhead)} (${ohPct.toStringAsFixed(1)}%) | Prof: \$${_fmt.format(totalProfit)} (${prPct.toStringAsFixed(1)}%)', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
-                        ],
+                    Flexible(
+                      flex: 0,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryGreen.withOpacity(0.06),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2)),
+                        ),
+                        child: Column(
+                          children: [
+                            Text('GRAND TOTAL', style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, letterSpacing: 1, color: AppTheme.slate500)),
+                            const SizedBox(height: 2),
+                            Text('\$${_fmt.format(grandTotal)}', style: GoogleFonts.manrope(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+                            const SizedBox(height: 4),
+                            Text('Sub Total: \$${_fmt.format(totalSubTotal)}', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate600)),
+                            Text('OH: \$${_fmt.format(totalOverhead)} (${ohPct.toStringAsFixed(1)}%) | Prof: \$${_fmt.format(totalProfit)} (${prPct.toStringAsFixed(1)}%)', textAlign: TextAlign.center, style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
+                          ],
+                        ),
                       ),
                     ),
                     const SizedBox(width: 16),
