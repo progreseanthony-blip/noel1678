@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import '../../../../shared/widgets/sidebar.dart';
+import '../../../../shared/widgets/top_header.dart';
 
 import '../widgets/user_form_dialog.dart';
 import '../widgets/role_management_dialog.dart';
@@ -150,9 +152,10 @@ class _UserListPageState extends ConsumerState<UserListPage> {
       backgroundColor: AppTheme.backgroundLight,
       body: Row(
         children: [
-          _Sidebar(
+          Sidebar(
             userName: userName,
             userEmail: userEmail,
+            currentPath: '/users',
             onLogout: () async {
               await Supabase.instance.client.auth.signOut();
               if (context.mounted) context.go('/signin');
@@ -161,7 +164,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
           Expanded(
             child: Column(
               children: [
-                _TopHeader(userName: userName),
+                TopHeader(userName: userName, breadcrumbs: const ['Administration', 'User Management']),
                 Expanded(
                   child: _isLoading
                       ? Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen, strokeWidth: 3))
@@ -188,9 +191,10 @@ class _UserListPageState extends ConsumerState<UserListPage> {
       // ── Drawer (same sidebar style) ──
       drawer: Drawer(
         backgroundColor: const Color(0xFF0F172A),
-        child: _Sidebar(
+        child: Sidebar(
           userName: userName,
           userEmail: userEmail,
+          currentPath: '/users',
           onLogout: () async {
             Navigator.of(context).pop(); // close drawer first
             await Supabase.instance.client.auth.signOut();
@@ -238,6 +242,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
             children: [
               _buildBottomNavItem(Icons.group_outlined, 'Users', true, () {}),
               _buildBottomNavItem(Icons.request_quote_rounded, 'Quotes', false, () => context.go('/quotes')),
+              _buildBottomNavItem(Icons.person_search_outlined, 'Customers', false, () => context.go('/customers')),
             ],
           ),
         ),
@@ -1035,381 +1040,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
 // ══════════════════════════════════════════════════════════════
 //  SIDEBAR
 // ══════════════════════════════════════════════════════════════
-class _Sidebar extends StatelessWidget {
-  final String userName;
-  final String userEmail;
-  final VoidCallback onLogout;
-  final double? width;
 
-  const _Sidebar({
-    required this.userName,
-    required this.userEmail,
-    required this.onLogout,
-    this.width = 280,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      color: const Color(0xFF0F172A), // slate-900
-      child: Column(
-        children: [
-          // ── Logo ──
-          Padding(
-            padding: const EdgeInsets.all(28),
-            child: Row(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryGreen,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.golf_course, color: Colors.white, size: 22),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Global Golf',
-                      style: GoogleFonts.manrope(
-                        color: Colors.white,
-                        fontSize: 17,
-                        fontWeight: FontWeight.w800,
-                        height: 1.2,
-                      ),
-                    ),
-                    Text(
-                      'CONSTRUCTION',
-                      style: GoogleFonts.manrope(
-                        color: AppTheme.primaryGreen,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 2.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-
-          // ── Nav Items ──
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: [
-                  // User Management (active)
-                  _NavItem(
-                    icon: Icons.group_outlined,
-                    label: 'User Management',
-                    isActive: true,
-                    onTap: () {},
-                  ),
-                  const SizedBox(height: 4),
-                  _NavItem(
-                    icon: Icons.request_quote_rounded,
-                    label: 'Quotes',
-                    isActive: false,
-                    onTap: () => context.go('/quotes'),
-                  ),
-                  const SizedBox(height: 4),
-                  _NavItem(
-                    icon: Icons.folder_copy_outlined,
-                    label: 'Catalogs',
-                    isActive: false,
-                    onTap: () => context.go('/catalogs'),
-                  ),
-                  const SizedBox(height: 4),
-                  _NavItem(
-                    icon: Icons.engineering_outlined,
-                    label: 'Workers',
-                    isActive: false,
-                    onTap: () => context.go('/workers'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // ── Bottom Section ──
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              border: Border(
-                top: BorderSide(color: Color(0xFF1E293B), width: 1),
-              ),
-            ),
-            child: Column(
-              children: [
-                // Settings
-                _NavItem(
-                  icon: Icons.settings_outlined,
-                  label: 'Settings',
-                  isActive: false,
-                  onTap: () {},
-                ),
-                const SizedBox(height: 12),
-                // User Profile Card
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryGreen.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      // Avatar
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppTheme.primaryGreen.withOpacity(0.15),
-                          border: Border.all(
-                            color: AppTheme.primaryGreen.withOpacity(0.25),
-                          ),
-                        ),
-                        child: Icon(Icons.person,
-                            color: AppTheme.primaryGreen, size: 22),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              userName,
-                              style: GoogleFonts.manrope(
-                                color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            Text(
-                              userEmail,
-                              style: GoogleFonts.manrope(
-                                color: AppTheme.slate400,
-                                fontSize: 11,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      // Logout icon
-                      MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: GestureDetector(
-                          onTap: onLogout,
-                          child: const Icon(Icons.logout,
-                              color: AppTheme.slate400, size: 18),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Nav Item ──
-class _NavItem extends StatefulWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _NavItem({
-    required this.icon,
-    required this.label,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  @override
-  State<_NavItem> createState() => _NavItemState();
-}
-
-class _NavItemState extends State<_NavItem> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: widget.isActive
-                ? AppTheme.primaryGreen
-                : _hovered
-                    ? Colors.white.withOpacity(0.08)
-                    : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                widget.icon,
-                size: 22,
-                color: widget.isActive
-                    ? const Color(0xFF0F172A)
-                    : AppTheme.slate400,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                widget.label,
-                style: GoogleFonts.manrope(
-                  fontSize: 14,
-                  fontWeight: widget.isActive ? FontWeight.w700 : FontWeight.w500,
-                  color: widget.isActive
-                      ? const Color(0xFF0F172A)
-                      : Colors.white,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════
-//  TOP HEADER
-// ══════════════════════════════════════════════════════════════
-class _TopHeader extends StatelessWidget {
-  final String userName;
-
-  const _TopHeader({required this.userName});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 72,
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
-      ),
-      child: Row(
-        children: [
-          // Breadcrumb
-          Text('Administration',
-              style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500)),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 6),
-            child: Icon(Icons.chevron_right, size: 16, color: AppTheme.slate400),
-          ),
-          Text('User Management',
-              style: GoogleFonts.manrope(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.slate900)),
-
-          const Spacer(),
-
-          // Notification bell
-          Stack(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.transparent,
-                  border: Border.all(color: Colors.transparent),
-                ),
-                child: const Center(
-                  child: Icon(Icons.notifications_outlined,
-                      color: AppTheme.slate500, size: 22),
-                ),
-              ),
-              Positioned(
-                top: 8,
-                right: 8,
-                child: Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryGreen,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 1.5),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-
-          // Divider
-          Container(width: 1, height: 32, color: AppTheme.slate200),
-          const SizedBox(width: 16),
-
-          // User info
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                userName,
-                style: GoogleFonts.manrope(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.slate900),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Project Director',
-                style: GoogleFonts.manrope(
-                    fontSize: 11, color: AppTheme.slate500),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-
-          // Avatar
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: AppTheme.slate200,
-            ),
-            child: Center(
-              child: Text(
-                userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                style: GoogleFonts.manrope(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.slate500,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // ══════════════════════════════════════════════════════════════
 //  USER ROW

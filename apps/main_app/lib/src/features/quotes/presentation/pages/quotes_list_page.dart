@@ -5,6 +5,8 @@ import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:intl/intl.dart';
 import '../widgets/quote_form_dialog.dart';
+import '../../../../shared/widgets/sidebar.dart';
+import '../../../../shared/widgets/top_header.dart';
 
 class QuotesListPage extends ConsumerStatefulWidget {
   const QuotesListPage({super.key});
@@ -113,9 +115,10 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
       backgroundColor: AppTheme.backgroundLight,
       body: Row(
         children: [
-          _Sidebar(
+          Sidebar(
             userName: userName,
             userEmail: userEmail,
+            currentPath: '/quotes',
             onLogout: () async {
               await Supabase.instance.client.auth.signOut();
               if (context.mounted) context.go('/signin');
@@ -124,7 +127,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
           Expanded(
             child: Column(
               children: [
-                _TopHeader(userName: userName),
+                TopHeader(userName: userName, breadcrumbs: const ['Administration', 'Quotes']),
                 Expanded(
                   child: _isLoading
                       ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen, strokeWidth: 3))
@@ -149,9 +152,10 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
       backgroundColor: AppTheme.backgroundLight,
       drawer: Drawer(
         backgroundColor: const Color(0xFF0F172A),
-        child: _Sidebar(
+        child: Sidebar(
           userName: userName,
           userEmail: userEmail,
+          currentPath: '/quotes',
           onLogout: () async {
             Navigator.of(context).pop();
             await Supabase.instance.client.auth.signOut();
@@ -191,6 +195,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
             children: [
                _buildBottomNavItem(Icons.group_outlined, 'Users', false, () => context.go('/users')),
                _buildBottomNavItem(Icons.request_quote, 'Quotes', true, () {}),
+               _buildBottomNavItem(Icons.person_search_outlined, 'Customers', false, () => context.go('/customers')),
             ],
           ),
         ),
@@ -797,202 +802,5 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
 
   Widget _buildErrorState() {
     return Center(child: Text(_error ?? 'Unknown error', style: const TextStyle(color: Colors.red)));
-  }
-}
-
-// ══════════════════════════════════════════════════════════════
-//  SIDEBAR
-// ══════════════════════════════════════════════════════════════
-class _Sidebar extends StatelessWidget {
-  final String userName;
-  final String userEmail;
-  final VoidCallback onLogout;
-  final double? width;
-
-  const _Sidebar({
-    required this.userName,
-    required this.userEmail,
-    required this.onLogout,
-    this.width = 280,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      color: const Color(0xFF0F172A),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(28),
-            child: Row(
-              children: [
-                Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(color: AppTheme.primaryGreen, borderRadius: BorderRadius.circular(10)),
-                  child: const Center(child: Icon(Icons.golf_course, color: Colors.white, size: 22)),
-                ),
-                const SizedBox(width: 12),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Global Golf', style: GoogleFonts.manrope(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800, height: 1.2)),
-                    Text('CONSTRUCTION', style: GoogleFonts.manrope(color: AppTheme.primaryGreen, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 2.5)),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                children: [
-                  _NavItem(icon: Icons.group_outlined, label: 'User Management', isActive: false, onTap: () => context.go('/users')),
-                  const SizedBox(height: 4),
-                  _NavItem(icon: Icons.request_quote_rounded, label: 'Quotes', isActive: true, onTap: () => context.go('/quotes')),
-                  const SizedBox(height: 4),
-                  _NavItem(icon: Icons.folder_copy_outlined, label: 'Catalogs', isActive: false, onTap: () => context.go('/catalogs')),
-                  const SizedBox(height: 4),
-                  _NavItem(icon: Icons.engineering_outlined, label: 'Workers', isActive: false, onTap: () => context.go('/workers')),
-                ],
-              ),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Color(0xFF1E293B), width: 1)),
-            ),
-            child: Column(
-              children: [
-                _NavItem(icon: Icons.settings_outlined, label: 'Settings', isActive: false, onTap: () {}),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 40, height: 40,
-                        decoration: BoxDecoration(shape: BoxShape.circle, color: AppTheme.primaryGreen.withOpacity(0.15), border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.25))),
-                        child: const Icon(Icons.person, color: AppTheme.primaryGreen, size: 22),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(userName, style: GoogleFonts.manrope(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
-                            Text(userEmail, style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 11), overflow: TextOverflow.ellipsis),
-                          ],
-                        ),
-                      ),
-                      MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: GestureDetector(
-                          onTap: onLogout,
-                          child: const Icon(Icons.logout, color: AppTheme.slate400, size: 18),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatefulWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-  const _NavItem({required this.icon, required this.label, required this.isActive, required this.onTap});
-  @override State<_NavItem> createState() => _NavItemState();
-}
-class _NavItemState extends State<_NavItem> {
-  bool _isHovered = false;
-  @override Widget build(BuildContext context) {
-    final color = widget.isActive ? AppTheme.primaryGreen : (_isHovered ? Colors.white : AppTheme.slate400);
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovered = true),
-      onExit: (_) => setState(() => _isHovered = false),
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: widget.isActive ? AppTheme.primaryGreen.withOpacity(0.1) : (_isHovered ? Colors.white.withOpacity(0.03) : Colors.transparent),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            children: [
-              Icon(widget.icon, color: color, size: 20),
-              const SizedBox(width: 14),
-              Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 14, fontWeight: widget.isActive ? FontWeight.w700 : FontWeight.w600)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════
-//  TOP HEADER (Desktop)
-// ══════════════════════════════════════════════════════════════
-class _TopHeader extends StatelessWidget {
-  final String userName;
-  const _TopHeader({required this.userName});
-  @override Widget build(BuildContext context) {
-    return Container(
-      height: 72,
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      decoration: BoxDecoration(color: Colors.white, border: Border(bottom: BorderSide(color: AppTheme.slate200))),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              Text('Administration', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500, fontWeight: FontWeight.w500)),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                child: Icon(Icons.chevron_right, size: 16, color: AppTheme.slate400),
-              ),
-              Text('Quotes', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900, fontWeight: FontWeight.w700)),
-            ],
-          ),
-          Row(
-            children: [
-              Icon(Icons.notifications_none, color: AppTheme.slate500),
-              const SizedBox(width: 24),
-              Container(width: 1, height: 24, color: AppTheme.slate200),
-              const SizedBox(width: 24),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(userName, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
-                  Text('Active User', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500)),
-                ],
-              ),
-              const SizedBox(width: 12),
-              Container(
-                width: 36, height: 36,
-                decoration: BoxDecoration(color: AppTheme.slate200, shape: BoxShape.circle, border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2))),
-                child: Center(child: Text(userName.isNotEmpty ? userName[0].toUpperCase() : '?', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700))),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
   }
 }

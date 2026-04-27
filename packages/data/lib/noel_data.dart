@@ -7,4 +7,5 @@ export 'src/services/user_service.dart';
 export 'src/services/quotes_service.dart';
 export 'src/services/catalogs_service.dart';
 export 'src/services/workers_service.dart';
+export 'src/services/customers_service.dart';
 export 'package:supabase_flutter/supabase_flutter.dart';
