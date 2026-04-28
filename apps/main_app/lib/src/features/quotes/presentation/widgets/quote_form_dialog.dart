@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:noel_app/src/features/catalogs/presentation/widgets/service_dialog.dart';
 import 'package:noel_app/src/features/catalogs/presentation/widgets/machinery_dialog.dart';
 import 'package:noel_app/src/features/catalogs/presentation/widgets/labor_role_dialog.dart';
+import 'package:noel_app/src/features/customers/presentation/widgets/customer_form_dialog.dart';
 import 'service_estimation_dialog.dart';
 import 'machinery_selection_dialog.dart';
 
@@ -114,6 +115,8 @@ class ServiceEntry {
   double quantity;
   double overheadPercentage;
   double profitPercentage;
+  double directCost;
+  bool isStaffingRole;
   List<MachineryEntry> machineries;
   List<LaborEntry> labors;
   List<MaterialEntry> materials;
@@ -128,6 +131,8 @@ class ServiceEntry {
     this.quantity = 1,
     this.overheadPercentage = 0,
     this.profitPercentage = 0,
+    this.directCost = 0,
+    this.isStaffingRole = false,
     List<MachineryEntry>? machineries,
     List<LaborEntry>? labors,
     List<MaterialEntry>? materials,
@@ -148,14 +153,18 @@ class ServiceEntry {
   double get totalPerDiem => labors.fold(0.0, (s, l) => s + l.totalPerDiem);
   double get totalMaterials => materials.fold(0.0, (s, m) => s + m.total);
   double get totalInstruments => instruments.fold(0.0, (s, i) => s + i.total);
-  double get subTotal =>
-      totalMachinery +
-      totalGasoline +
-      totalDelivery +
-      totalLabor +
-      totalPerDiem +
-      totalMaterials +
-      totalInstruments;
+  double get subTotal {
+    if (unitOfMeasure.toLowerCase() == 'ls' || isStaffingRole) {
+      return quantity * directCost;
+    }
+    return totalMachinery +
+        totalGasoline +
+        totalDelivery +
+        totalLabor +
+        totalPerDiem +
+        totalMaterials +
+        totalInstruments;
+  }
   double get overheadAmount => subTotal * (overheadPercentage / 100);
   double get totalPlusOverhead => subTotal + overheadAmount;
   double get profitAmount => totalPlusOverhead * (profitPercentage / 100);
@@ -184,6 +193,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   late TextEditingController _clientController;
   DateTime _quoteDate = DateTime.now();
   String _selectedStatus = 'draft';
+  String _quoteType = 'standard';
 
   // Catalogs for step 1+
   List<Map<String, dynamic>> _catalogServices = [];
@@ -191,6 +201,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   List<Map<String, dynamic>> _catalogLaborRoles = [];
   List<Map<String, dynamic>> _catalogMaterials = [];
   List<Map<String, dynamic>> _catalogInstruments = [];
+  List<Map<String, dynamic>> _catalogCustomers = [];
 
   // Step 1+ - Services
   List<ServiceEntry> _services = [];
@@ -215,12 +226,13 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           DateTime.now();
     }
     _selectedStatus = widget.quoteToEdit?['status'] ?? 'draft';
+    _quoteType = widget.quoteToEdit?['quote_type'] ?? 'standard';
 
     _loadCatalogs();
     if (_isEditing) {
       _loadExistingData();
     } else {
-      _services.add(ServiceEntry(name: 'Service 1'));
+      _services.add(ServiceEntry(name: _quoteType == 'staffing' ? 'Role 1' : 'Service 1', unitOfMeasure: _quoteType == 'staffing' ? 'hr' : 'und', isStaffingRole: _quoteType == 'staffing'));
     }
   }
 
@@ -483,6 +495,10 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           .from('logistics_equipment')
           .select()
           .order('description');
+      final cust = await supabase
+          .from('customers')
+          .select()
+          .order('name');
 
       if (mounted) {
         setState(() {
@@ -491,6 +507,10 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           _catalogLaborRoles = List<Map<String, dynamic>>.from(labr ?? []);
           _catalogMaterials = List<Map<String, dynamic>>.from(matr ?? []);
           _catalogInstruments = List<Map<String, dynamic>>.from(inst ?? []);
+          _catalogCustomers = List<Map<String, dynamic>>.from(cust ?? []).map((c) => {
+            ...c,
+            'description': c['name'],
+          }).toList();
         });
       }
     } catch (e) {
@@ -695,6 +715,8 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 (svcData['overhead_percentage'] as num?)?.toDouble() ?? 0,
             profitPercentage:
                 (svcData['profit_percentage'] as num?)?.toDouble() ?? 0,
+            directCost: (svcData['direct_cost'] as num?)?.toDouble() ?? 0,
+            isStaffingRole: _quoteType == 'staffing',
             machineries: machineries,
             labors: labors,
             materials: materials,
@@ -784,6 +806,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               'total_amount': totalAmount,
               'quote_date': _quoteDate.toIso8601String().split('T')[0],
               'status': _selectedStatus,
+              'quote_type': _quoteType,
               'updated_at': DateTime.now().toIso8601String(),
             })
             .eq('id', widget.quoteToEdit!['id']);
@@ -800,6 +823,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               'total_amount': totalAmount,
               'quote_date': _quoteDate.toIso8601String().split('T')[0],
               'status': _selectedStatus,
+              'quote_type': _quoteType,
             })
             .select()
             .single();
@@ -817,6 +841,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               'quantity': svc.quantity,
               'overhead_percentage': svc.overheadPercentage,
               'profit_percentage': svc.profitPercentage,
+              'direct_cost': svc.directCost,
             })
             .select()
             .single();
@@ -1130,6 +1155,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
 
   // ── Step Indicator ──
   Widget _buildStepIndicator() {
+    final bool allServicesAreLS = _services.isNotEmpty && _services.every((s) => s.unitOfMeasure.toLowerCase() == 'ls' || s.isStaffingRole);
     final steps = ['Info', 'Machinery', 'Labor', 'Materials', 'Tools', 'Summary'];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
@@ -1151,7 +1177,10 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                     ),
                   ),
                 GestureDetector(
-                  onTap: () => setState(() => _currentStep = i),
+                  onTap: () {
+                    if (allServicesAreLS && i >= 1 && i <= 4) return;
+                    setState(() => _currentStep = i);
+                  },
                   child: Container(
                     width: 32,
                     height: 32,
@@ -1231,34 +1260,101 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         children: [
           _sectionTitle('Estimation Details'),
           const SizedBox(height: 16),
-          _labeledField(
-            'Estimation Title',
-            TextFormField(
-              controller: _titleController,
-              style: GoogleFonts.manrope(
-                fontSize: 14,
-                color: AppTheme.slate900,
+          Row(
+            children: [
+              Expanded(
+                child: _labeledField(
+                  'Quote Type',
+                  Container(
+                    height: 50,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.white,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              setState(() {
+                                _quoteType = 'standard';
+                                if (!_isEditing && _services.length == 1 && _services.first.name.startsWith('Role')) {
+                                  _services.first.name = 'Service 1';
+                                  _services.first.unitOfMeasure = 'und';
+                                  _services.first.isStaffingRole = false;
+                                }
+                              });
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: _quoteType == 'standard' ? AppTheme.primaryGreen.withOpacity(0.1) : Colors.transparent,
+                                borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text('Standard Project', style: GoogleFonts.manrope(fontSize: 13, fontWeight: _quoteType == 'standard' ? FontWeight.w700 : FontWeight.w500, color: _quoteType == 'standard' ? AppTheme.primaryGreen : AppTheme.slate600)),
+                            ),
+                          ),
+                        ),
+                        Container(width: 1, color: const Color(0xFFE2E8F0)),
+                        Expanded(
+                          child: InkWell(
+                            onTap: () {
+                              setState(() {
+                                _quoteType = 'staffing';
+                                if (!_isEditing && _services.length == 1 && _services.first.name.startsWith('Service')) {
+                                  _services.first.name = 'Role 1';
+                                  _services.first.unitOfMeasure = 'hr';
+                                  _services.first.isStaffingRole = true;
+                                }
+                              });
+                            },
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: _quoteType == 'staffing' ? AppTheme.primaryGreen.withOpacity(0.1) : Colors.transparent,
+                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(7)),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text('Labor Supply', style: GoogleFonts.manrope(fontSize: 13, fontWeight: _quoteType == 'staffing' ? FontWeight.w700 : FontWeight.w500, color: _quoteType == 'staffing' ? AppTheme.primaryGreen : AppTheme.slate600)),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-              decoration: _inputDeco(
-                'e.g. Golf Course Renovation Phase 1',
-                Icons.description_outlined,
+              const SizedBox(width: 16),
+              Expanded(
+                child: _labeledField(
+                  'Estimation Title',
+                  TextFormField(
+                    controller: _titleController,
+                    style: GoogleFonts.manrope(
+                      fontSize: 14,
+                      color: AppTheme.slate900,
+                    ),
+                    decoration: _inputDeco(
+                      'e.g. Golf Course Renovation Phase 1',
+                      Icons.description_outlined,
+                    ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
           const SizedBox(height: 16),
           Row(
             children: [
               Expanded(
-                child: _labeledField(
-                  'Client / Customer',
-                  TextFormField(
-                    controller: _clientController,
-                    style: GoogleFonts.manrope(
-                      fontSize: 14,
-                      color: AppTheme.slate900,
-                    ),
-                    decoration: _inputDeco('Client name', Icons.person_outline),
-                  ),
+                child: _SearchableCatalogDropdown(
+                  label: 'Client / Customer',
+                  items: _catalogCustomers,
+                  initialValue: _clientController.text,
+                  onSelected: (val, item) {
+                    _clientController.text = val;
+                  },
+                  onAddNew: () => _openCatalogItemAdd('customers'),
                 ),
               ),
               const SizedBox(width: 16),
@@ -1329,16 +1425,16 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             ),
           ),
           const SizedBox(height: 28),
-          _sectionTitle('Services'),
+          _sectionTitle(_quoteType == 'staffing' ? 'Labor Roles' : 'Services'),
           const SizedBox(height: 12),
           ..._services.asMap().entries.map(
             (e) => _buildServiceChip(e.key, e.value),
           ),
           const SizedBox(height: 12),
-          _addButton('Add Service', () {
+          _addButton(_quoteType == 'staffing' ? 'Add Role' : 'Add Service', () {
             setState(() {
               _services.add(
-                ServiceEntry(name: 'Service ${_services.length + 1}'),
+                ServiceEntry(name: _quoteType == 'staffing' ? 'Role ${_services.length + 1}' : 'Service ${_services.length + 1}', unitOfMeasure: _quoteType == 'staffing' ? 'hr' : 'und', isStaffingRole: _quoteType == 'staffing'),
               );
             });
           }),
@@ -1422,20 +1518,19 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        crossAxisAlignment: WrapCrossAlignment.end,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
+                          // ── Left: Role/Service + Unit + Qty + UnitCost + Subtotal ──
                           SizedBox(
-                            width: 200,
+                            width: 160,
                             child: GestureDetector(
                               onTapDown: (_) => setState(
                                 () => _activeServiceIndex = serviceIndex,
                               ),
                               child: _SearchableCatalogDropdown(
-                                label: 'Service name',
-                                items: _catalogServices,
+                                label: _quoteType == 'staffing' ? 'Role name' : 'Service name',
+                                items: _quoteType == 'staffing' ? _catalogLaborRoles : _catalogServices,
                                 excludeItems: _services
                                     .map((s) => s.name)
                                     .where((n) => n != svc.name)
@@ -1443,25 +1538,28 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                                 initialValue: svc.name,
                                 onSelected: (val, item) {
                                   setState(() {
-                                    _activeServiceIndex =
-                                        serviceIndex; // Auto-select on interact
+                                    _activeServiceIndex = serviceIndex;
                                     svc.name = val;
                                     if (item != null) {
                                       svc.catalogId = item['id']?.toString();
                                       if (item['unit'] != null) {
                                         svc.unitOfMeasure = item['unit'];
                                       }
+                                      if (_quoteType == 'staffing' && item['hourly_rate'] != null) {
+                                        svc.directCost = (item['hourly_rate'] as num).toDouble();
+                                      }
                                     }
                                   });
                                 },
-                                onAddNew: () => _openCatalogItemAdd('services'),
+                                onAddNew: () => _openCatalogItemAdd(_quoteType == 'staffing' ? 'labor' : 'services'),
                               ),
                             ),
                           ),
+                          const SizedBox(width: 10),
                           _miniField(
                             'Unit',
                             svc.unitOfMeasure,
-                            60,
+                            48,
                             (v) => setState(() {
                               _activeServiceIndex = serviceIndex;
                               svc.unitOfMeasure = v;
@@ -1471,10 +1569,11 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                               () => _activeServiceIndex = serviceIndex,
                             ),
                           ),
+                          const SizedBox(width: 10),
                           _miniNumField(
                             'Qty',
                             svc.quantity,
-                            85,
+                            80,
                             (v) => setState(() {
                               _activeServiceIndex = serviceIndex;
                               svc.quantity = v;
@@ -1483,10 +1582,32 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                               () => _activeServiceIndex = serviceIndex,
                             ),
                           ),
+                          if (svc.unitOfMeasure.toLowerCase() == 'ls' || svc.isStaffingRole) ...[
+                            const SizedBox(width: 10),
+                            _miniNumField(
+                              'Unit Cost (\$)',
+                              svc.directCost,
+                              72,
+                              (v) => setState(() {
+                                _activeServiceIndex = serviceIndex;
+                                svc.directCost = v;
+                              }),
+                              onTap: () => setState(
+                                () => _activeServiceIndex = serviceIndex,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            _calcChip(
+                              'Subtotal',
+                              svc.quantity * svc.directCost,
+                            ),
+                          ],
+                          // ── Spacer pushes OH% and Profit% to the right ──
+                          const Spacer(),
                           _miniNumField(
                             'OH%',
                             svc.overheadPercentage,
-                            55,
+                            48,
                             (v) => setState(() {
                               _activeServiceIndex = serviceIndex;
                               svc.overheadPercentage = v;
@@ -1495,10 +1616,11 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                               () => _activeServiceIndex = serviceIndex,
                             ),
                           ),
+                          const SizedBox(width: 10),
                           _miniNumField(
                             'Profit%',
                             svc.profitPercentage,
-                            60,
+                            52,
                             (v) => setState(() {
                               _activeServiceIndex = serviceIndex;
                               svc.profitPercentage = v;
@@ -1507,75 +1629,76 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                               () => _activeServiceIndex = serviceIndex,
                             ),
                           ),
-                          // Estimation Button
-                          MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            child: GestureDetector(
-                              onDoubleTap: () {}, // Prevent bubbling
-                              onTapDown: (_) => setState(
-                                () => _activeServiceIndex = serviceIndex,
-                              ),
-                              onTap: () async {
-                                final result = await showDialog(
-                                  context: context,
-                                  builder: (_) => ServiceEstimationDialog(
-                                    service: {
-                                      'id': null,
-                                      'catalog_service_id': svc.catalogId,
-                                      'name': svc.name,
-                                      'quantity': svc.quantity,
-                                      'unit': svc.unitOfMeasure,
-                                      'estimationData': svc.estimationData,
-                                    },
-                                  ),
-                                );
+                          // Estimation Button (only for non-LS/non-staffing)
+                          if (svc.unitOfMeasure.toLowerCase() != 'ls' && !svc.isStaffingRole) ...[
+                            const SizedBox(width: 10),
+                            MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onDoubleTap: () {},
+                                onTapDown: (_) => setState(
+                                  () => _activeServiceIndex = serviceIndex,
+                                ),
+                                onTap: () async {
+                                  final result = await showDialog(
+                                    context: context,
+                                    builder: (_) => ServiceEstimationDialog(
+                                      service: {
+                                        'id': null,
+                                        'catalog_service_id': svc.catalogId,
+                                        'name': svc.name,
+                                        'quantity': svc.quantity,
+                                        'unit': svc.unitOfMeasure,
+                                        'estimationData': svc.estimationData,
+                                      },
+                                    ),
+                                  );
 
-                                if (result != null &&
-                                    result is Map &&
-                                    result['applied'] == true) {
-                                  setState(() {
-                                    svc.quantity =
-                                        (result['total_cy_loose'] as num)
-                                            .toDouble();
-                                    svc.estimationData =
-                                        Map<String, dynamic>.from(
-                                          result as Map,
-                                        );
-                                    _syncMachineryFromEstimation(
-                                      svc,
-                                      result as Map<String, dynamic>,
-                                    );
-                                    _syncMaterialsFromEstimation(
-                                      svc,
-                                      result as Map<String, dynamic>,
-                                    );
-                                    _syncInstrumentsFromEstimation(
-                                      svc,
-                                      result as Map<String, dynamic>,
-                                    );
-                                  });
-                                }
-                              },
-                              child: Container(
-                                margin: const EdgeInsets.only(bottom: 2),
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryGreen.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: AppTheme.primaryGreen.withOpacity(
-                                      0.3,
+                                  if (result != null &&
+                                      result is Map &&
+                                      result['applied'] == true) {
+                                    setState(() {
+                                      svc.quantity =
+                                          (result['total_cy_loose'] as num)
+                                              .toDouble();
+                                      svc.estimationData =
+                                          Map<String, dynamic>.from(
+                                            result as Map,
+                                          );
+                                      _syncMachineryFromEstimation(
+                                        svc,
+                                        result as Map<String, dynamic>,
+                                      );
+                                      _syncMaterialsFromEstimation(
+                                        svc,
+                                        result as Map<String, dynamic>,
+                                      );
+                                      _syncInstrumentsFromEstimation(
+                                        svc,
+                                        result as Map<String, dynamic>,
+                                      );
+                                    });
+                                  }
+                                },
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 2),
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryGreen.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: AppTheme.primaryGreen.withOpacity(0.3),
                                     ),
                                   ),
-                                ),
-                                child: const Icon(
-                                  Icons.analytics_outlined,
-                                  color: AppTheme.primaryGreen,
-                                  size: 16,
+                                  child: const Icon(
+                                    Icons.analytics_outlined,
+                                    color: AppTheme.primaryGreen,
+                                    size: 16,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
+                          ],
                         ],
                       ),
                       if (svc.estimationData != null) ...[
@@ -2520,21 +2643,25 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             ),
           ),
           const SizedBox(height: 16),
-          _summaryRow('Total Machinery', svc.totalMachinery),
-          _summaryRow('Total Delivery', svc.totalDelivery),
-          _summaryRow('Total Gasoline', svc.totalGasoline),
-          _summaryRow('Total Labor', svc.totalLabor),
-          _summaryRow('Total PerDiem', svc.totalPerDiem),
-          _summaryRow(
-            'Total Materials',
-            svc.totalMaterials,
-            highlight: svc.totalMaterials > 0,
-          ),
-          _summaryRow(
-            'Total Instruments',
-            svc.totalInstruments,
-            highlight: svc.totalInstruments > 0,
-          ),
+          if (svc.unitOfMeasure.toLowerCase() == 'ls' || svc.isStaffingRole) ...[
+            _summaryRow('Direct Cost', svc.directCost),
+          ] else ...[
+            _summaryRow('Total Machinery', svc.totalMachinery),
+            _summaryRow('Total Delivery', svc.totalDelivery),
+            _summaryRow('Total Gasoline', svc.totalGasoline),
+            _summaryRow('Total Labor', svc.totalLabor),
+            _summaryRow('Total PerDiem', svc.totalPerDiem),
+            _summaryRow(
+              'Total Materials',
+              svc.totalMaterials,
+              highlight: svc.totalMaterials > 0,
+            ),
+            _summaryRow(
+              'Total Instruments',
+              svc.totalInstruments,
+              highlight: svc.totalInstruments > 0,
+            ),
+          ],
           const Divider(height: 24),
           _summaryRow('Sub Total', svc.subTotal, bold: true),
           _summaryRow(
@@ -2910,10 +3037,25 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   //  SERVICE TABS (used in Step 1 and 2)
   // ══════════════════════════════════════════════════════════════
   Widget _buildServiceTabs() {
+    final nonLSServices = _services.asMap().entries.where((e) => e.value.unitOfMeasure.toLowerCase() != 'ls' && !e.value.isStaffingRole).toList();
+
+    if (nonLSServices.isEmpty) return const SizedBox.shrink();
+
+    // Ensure active index is valid for tabs
+    if (_activeServiceIndex >= _services.length || _services[_activeServiceIndex].unitOfMeasure.toLowerCase() == 'ls' || _services[_activeServiceIndex].isStaffingRole) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _activeServiceIndex = nonLSServices.first.key;
+          });
+        }
+      });
+    }
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: _services.asMap().entries.map((e) {
+        children: nonLSServices.map((e) {
           final isActive = e.key == _activeServiceIndex;
           return Padding(
             padding: const EdgeInsets.only(right: 8),
@@ -2956,6 +3098,8 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   //  WIZARD FOOTER
   // ══════════════════════════════════════════════════════════════
   Widget _buildWizardFooter() {
+    final bool allServicesAreLS = _services.isNotEmpty && _services.every((s) => s.unitOfMeasure.toLowerCase() == 'ls' || s.isStaffingRole);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
       decoration: const BoxDecoration(
@@ -2970,7 +3114,13 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               'Back',
               Icons.arrow_back,
               false,
-              () => setState(() => _currentStep--),
+              () => setState(() {
+                if (_currentStep == 5 && allServicesAreLS) {
+                  _currentStep = 0;
+                } else {
+                  _currentStep--;
+                }
+              }),
             )
           else
             const SizedBox.shrink(),
@@ -2988,7 +3138,13 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                   'Next',
                   Icons.arrow_forward,
                   true,
-                  () => setState(() => _currentStep++),
+                  () => setState(() {
+                    if (_currentStep == 0 && allServicesAreLS) {
+                      _currentStep = 5;
+                    } else {
+                      _currentStep++;
+                    }
+                  }),
                 )
               else
                 _footerBtn(
@@ -3387,27 +3543,68 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     bool highlight = false,
     bool isCurrency = true,
   }) {
-    return Column(
-      children: [
-        Text(
-          label,
-          style: GoogleFonts.manrope(
-            fontSize: 9,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.slate400,
+    final displayText = isCurrency
+        ? '\$${_currencyFormat.format(value)}'
+        : NumberFormat('#,##0.00').format(value);
+    return SizedBox(
+      width: 90,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: GoogleFonts.manrope(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.slate500,
+            ),
           ),
-        ),
-        Text(
-          isCurrency
-              ? '\$${_currencyFormat.format(value)}'
-              : NumberFormat('#,##0.00').format(value),
-          style: GoogleFonts.manrope(
-            fontSize: 12,
-            fontWeight: highlight ? FontWeight.w800 : FontWeight.w600,
-            color: highlight ? AppTheme.primaryGreen : AppTheme.slate900,
+          SizedBox(
+            height: 28,
+            child: TextFormField(
+              readOnly: true,
+              initialValue: displayText,
+              style: GoogleFonts.manrope(
+                fontSize: 13,
+                fontWeight: highlight ? FontWeight.w800 : FontWeight.w600,
+                color: highlight ? AppTheme.primaryGreen : AppTheme.slate700,
+              ),
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                filled: true,
+                fillColor: highlight
+                    ? AppTheme.primaryGreen.withOpacity(0.06)
+                    : const Color(0xFFF1F5F9),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(
+                    color: highlight
+                        ? AppTheme.primaryGreen.withOpacity(0.3)
+                        : const Color(0xFFE2E8F0),
+                  ),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(
+                    color: highlight
+                        ? AppTheme.primaryGreen.withOpacity(0.3)
+                        : const Color(0xFFE2E8F0),
+                  ),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  borderSide: BorderSide(
+                    color: highlight
+                        ? AppTheme.primaryGreen
+                        : const Color(0xFFE2E8F0),
+                  ),
+                ),
+              ),
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -3419,6 +3616,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     if (type == 'services') dialog = ServiceDialog();
     if (type == 'machinery') dialog = MachineryDialog();
     if (type == 'labor') dialog = LaborRoleDialog();
+    if (type == 'customers') dialog = const CustomerFormDialog();
     // if (type == 'materials') dialog = MaterialDialog(); // Assume we might add later or use generic
 
     if (dialog != null) {
@@ -3583,10 +3781,9 @@ class _SearchableCatalogDropdown extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (options.isNotEmpty)
-                          Expanded(
+                          Flexible(
                             child: ListView.builder(
                               padding: EdgeInsets.zero,
-                              shrinkWrap: true,
                               itemCount: options.length,
                               itemBuilder: (context, index) {
                                 final option = options.elementAt(index);

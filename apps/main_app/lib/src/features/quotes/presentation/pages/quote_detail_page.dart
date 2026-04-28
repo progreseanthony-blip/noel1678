@@ -7,6 +7,7 @@ import 'package:noel_data/noel_data.dart';
 import 'package:intl/intl.dart';
 import '../widgets/quote_form_dialog.dart';
 import '../widgets/service_estimation_dialog.dart';
+import '../../../../shared/widgets/sidebar.dart';
 
 class QuoteDetailPage extends ConsumerStatefulWidget {
   final String quoteId;
@@ -164,7 +165,11 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
     final totalMats = matList.fold(0.0, (s, m) => s + _matTotal(m));
     final totalInst = instList.fold(0.0, (s, i) => s + (_d(i, 'quantity') * _d(i, 'unit_price')));
 
-    final sub = totalMach + totalGas + totalLabor + totalPD + totalMats + totalInst;
+    final isStaffing = _quote?['quote_type'] == 'staffing';
+    final isLS = (svc['unit_of_measure'] ?? svc['unit'] ?? '').toString().toLowerCase() == 'ls' || isStaffing;
+    final direct = _d(svc, 'direct_cost');
+    final qty = _d(svc, 'quantity');
+    final sub = isLS ? (qty * direct) : (totalMach + totalGas + totalLabor + totalPD + totalMats + totalInst);
     final ohPct = _d(svc, 'overhead_percentage');
     final profPct = _d(svc, 'profit_percentage');
 
@@ -173,7 +178,6 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
     final prof = plusOh * (profPct / 100);
     final sale = plusOh + prof;
 
-    final qty = _d(svc, 'quantity');
     final unitP = qty > 0 ? sale / qty : 0.0;
 
     return {
@@ -183,6 +187,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
       'totalPD': totalPD,
       'totalMats': totalMats,
       'totalInst': totalInst,
+      'direct': direct,
       'sub': sub,
       'oh': oh,
       'plusOh': plusOh,
@@ -203,10 +208,26 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
-      drawer: isMobile ? _buildSidebar(userName, userEmail) : null,
+      drawer: isMobile ? Sidebar(
+        userName: userName,
+        userEmail: userEmail,
+        currentPath: '/quotes',
+        onLogout: () async {
+          await Supabase.instance.client.auth.signOut();
+          if (context.mounted) context.go('/signin');
+        },
+      ) : null,
       body: Row(
         children: [
-          if (!isMobile) _buildSidebar(userName, userEmail),
+          if (!isMobile) Sidebar(
+            userName: userName,
+            userEmail: userEmail,
+            currentPath: '/quotes',
+            onLogout: () async {
+              await Supabase.instance.client.auth.signOut();
+              if (context.mounted) context.go('/signin');
+            },
+          ),
           Expanded(
             child: Column(
               children: [
@@ -547,9 +568,11 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
   // ══════════════════════════════════════════════════════════════
   Widget _buildServiceSection(int index, Map<String, dynamic> svc, bool isMobile) {
     final svcId = svc['id'] as String;
-    final name = svc['name'] ?? 'Service ${index + 1}';
+    final isStaffing = _quote?['quote_type'] == 'staffing';
+    final name = svc['name'] ?? (isStaffing ? 'Role ${index + 1}' : 'Service ${index + 1}');
     final unit = (svc['unit_of_measure'] ?? svc['unit'] ?? 'und').toString();
     final qty = _d(svc, 'quantity');
+    final isLS = unit.toLowerCase() == 'ls' || isStaffing;
     final mList = _machineries[svcId] ?? [];
     final lList = _labors[svcId] ?? [];
     final totals = _svcTotals(svcId, svc);
@@ -628,41 +651,43 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ── Machinery ──
-                _tableTitle(Icons.construction, 'Machinery', mList.length),
-                const SizedBox(height: 12),
-                if (mList.isEmpty)
-                  _emptyPlaceholder('No machinery assigned')
-                else if (isMobile)
-                  Column(children: mList.map((m) => _buildMachineryCard(m)).toList())
-                else
-                  _buildMachineryTable(mList),
+                if (!isLS) ...[
+                  // ── Machinery ──
+                  _tableTitle(Icons.construction, 'Machinery', mList.length),
+                  const SizedBox(height: 12),
+                  if (mList.isEmpty)
+                    _emptyPlaceholder('No machinery assigned')
+                  else if (isMobile)
+                    Column(children: mList.map((m) => _buildMachineryCard(m)).toList())
+                  else
+                    _buildMachineryTable(mList),
 
-                const SizedBox(height: 28),
+                  const SizedBox(height: 28),
 
-                // ── Labor ──
-                _tableTitle(Icons.engineering, 'Labor', lList.length),
-                const SizedBox(height: 12),
-                if (lList.isEmpty)
-                  _emptyPlaceholder('No labor assigned')
-                else if (isMobile)
-                  Column(children: lList.map((l) => _buildLaborCard(l)).toList())
-                else
-                  _buildLaborTable(lList),
+                  // ── Labor ──
+                  _tableTitle(Icons.engineering, 'Labor', lList.length),
+                  const SizedBox(height: 12),
+                  if (lList.isEmpty)
+                    _emptyPlaceholder('No labor assigned')
+                  else if (isMobile)
+                    Column(children: lList.map((l) => _buildLaborCard(l)).toList())
+                  else
+                    _buildLaborTable(lList),
 
-                const SizedBox(height: 28),
+                  const SizedBox(height: 28),
 
-                // ── Materials ──
-                _tableTitle(Icons.inventory_2_outlined, 'Materials', ( _materials[svcId] ?? []).length),
-                const SizedBox(height: 12),
-                if ((_materials[svcId] ?? []).isEmpty)
-                  _emptyPlaceholder('No materials assigned')
-                else if (isMobile)
-                  Column(children: (_materials[svcId] ?? []).map((m) => _buildMaterialCard(m)).toList())
-                else
-                  _buildMaterialsTable(_materials[svcId] ?? []),
+                  // ── Materials ──
+                  _tableTitle(Icons.inventory_2_outlined, 'Materials', ( _materials[svcId] ?? []).length),
+                  const SizedBox(height: 12),
+                  if ((_materials[svcId] ?? []).isEmpty)
+                    _emptyPlaceholder('No materials assigned')
+                  else if (isMobile)
+                    Column(children: (_materials[svcId] ?? []).map((m) => _buildMaterialCard(m)).toList())
+                  else
+                    _buildMaterialsTable(_materials[svcId] ?? []),
 
-                const SizedBox(height: 28),
+                  const SizedBox(height: 28),
+                ],
 
                 // ── Financial Summary ──
                 Container(
@@ -679,12 +704,16 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                       isMobile 
                         ? Column(
                             children: [
-                              _summaryLine('Total Machinery', totals['totalMach']!),
-                              _summaryLine('Total Gasoline', totals['totalGas']!),
-                              _summaryLine('Total Labor', totals['totalLabor']!),
-                              _summaryLine('Total Per Diem', totals['totalPD']!),
-                              _summaryLine('Total Materials', totals['totalMats']!),
-                              _summaryLine('Total Instruments', totals['totalInst']!),
+                              if (isLS)
+                                _summaryLine('Direct Cost', totals['direct']!)
+                              else ...[
+                                _summaryLine('Total Machinery', totals['totalMach']!),
+                                _summaryLine('Total Gasoline', totals['totalGas']!),
+                                _summaryLine('Total Labor', totals['totalLabor']!),
+                                _summaryLine('Total Per Diem', totals['totalPD']!),
+                                _summaryLine('Total Materials', totals['totalMats']!),
+                                _summaryLine('Total Instruments', totals['totalInst']!),
+                              ],
                               const Divider(height: 24),
                               _summaryLine('Overhead (${_d(svc, 'overhead_percentage')}%)', totals['oh']!),
                               _summaryLine('Profit (${_d(svc, 'profit_percentage')}%)', totals['prof']!),
@@ -699,11 +728,15 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                               Expanded(
                                 child: Column(
                                   children: [
-                                    _summaryLine('Total Machinery', totals['totalMach']!),
-                                    _summaryLine('Total Gasoline', totals['totalGas']!),
-                                    _summaryLine('Total Labor', totals['totalLabor']!),
-                                    _summaryLine('Total Per Diem', totals['totalPD']!),
-                                    _summaryLine('Total Instruments', totals['totalInst']!),
+                                    if (isLS)
+                                      _summaryLine('Direct Cost', totals['direct']!)
+                                    else ...[
+                                      _summaryLine('Total Machinery', totals['totalMach']!),
+                                      _summaryLine('Total Gasoline', totals['totalGas']!),
+                                      _summaryLine('Total Labor', totals['totalLabor']!),
+                                      _summaryLine('Total Per Diem', totals['totalPD']!),
+                                      _summaryLine('Total Instruments', totals['totalInst']!),
+                                    ],
                                     const Divider(height: 20),
                                     _summaryLine('Sub Total', totals['sub']!, bold: true),
                                   ],
@@ -1134,89 +1167,6 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
     );
   }
 
-  // ══════════════════════════════════════════════════════════════
-  //  SIDEBAR (same style)
-  // ══════════════════════════════════════════════════════════════
-  Widget _buildSidebar(String userName, String userEmail) {
-    return Container(
-      width: 280,
-      color: const Color(0xFF0F172A),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(28),
-            child: Row(
-              children: [
-                Container(width: 40, height: 40, decoration: BoxDecoration(color: AppTheme.primaryGreen, borderRadius: BorderRadius.circular(10)), child: const Center(child: Icon(Icons.golf_course, color: Colors.white, size: 22))),
-                const SizedBox(width: 12),
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Global Golf', style: GoogleFonts.manrope(color: Colors.white, fontSize: 17, fontWeight: FontWeight.w800, height: 1.2)),
-                  Text('CONSTRUCTION', style: GoogleFonts.manrope(color: AppTheme.primaryGreen, fontSize: 10, fontWeight: FontWeight.w600, letterSpacing: 2.5)),
-                ]),
-              ],
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(children: [
-                _navItem(Icons.group_outlined, 'User Management', false, () => context.go('/users')),
-                const SizedBox(height: 4),
-                _navItem(Icons.request_quote_rounded, 'Estimations', true, () => context.go('/quotes')),
-                const SizedBox(height: 4),
-                _navItem(Icons.folder_copy_outlined, 'Catalogs', false, () => context.go('/catalogs')),
-              ]),
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0xFF1E293B), width: 1))),
-            child: Column(children: [
-              _navItem(Icons.settings_outlined, 'Settings', false, () {}),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
-                child: Row(children: [
-                  Container(width: 40, height: 40, decoration: BoxDecoration(shape: BoxShape.circle, color: AppTheme.primaryGreen.withOpacity(0.15), border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.25))), child: const Icon(Icons.person, color: AppTheme.primaryGreen, size: 22)),
-                  const SizedBox(width: 10),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(userName, style: GoogleFonts.manrope(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
-                    Text(userEmail, style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 11), overflow: TextOverflow.ellipsis),
-                  ])),
-                  MouseRegion(cursor: SystemMouseCursors.click, child: GestureDetector(
-                    onTap: () async { await Supabase.instance.client.auth.signOut(); if (context.mounted) context.go('/signin'); },
-                    child: const Icon(Icons.logout, color: AppTheme.slate400, size: 18),
-                  )),
-                ]),
-              ),
-            ]),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _navItem(IconData icon, String label, bool isActive, VoidCallback onTap) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: isActive ? AppTheme.primaryGreen.withOpacity(0.1) : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(children: [
-            Icon(icon, color: isActive ? AppTheme.primaryGreen : AppTheme.slate400, size: 20),
-            const SizedBox(width: 14),
-            Text(label, style: GoogleFonts.manrope(color: isActive ? AppTheme.primaryGreen : AppTheme.slate400, fontSize: 14, fontWeight: isActive ? FontWeight.w700 : FontWeight.w600)),
-          ]),
-        ),
-      ),
-    );
-  }
 
   Widget _buildEstimationSummaryBoxes(String svcId) {
     final data = _estimations[svcId];

@@ -564,10 +564,11 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
             ),
             child: Row(
               children: [
-                Expanded(flex: 25, child: _colHeader('TITLE')),
-                Expanded(flex: 20, child: _colHeader('CLIENT')),
-                Expanded(flex: 20, child: _colHeader('CREATED DATE')),
-                Expanded(flex: 15, child: _colHeader('TOTAL')),
+                Expanded(flex: 20, child: _colHeader('TITLE')),
+                Expanded(flex: 16, child: _colHeader('CLIENT')),
+                Expanded(flex: 12, child: _colHeader('QUOTE TYPE')),
+                Expanded(flex: 18, child: _colHeader('CREATED DATE')),
+                Expanded(flex: 14, child: _colHeader('TOTAL')),
                 Expanded(flex: 12, child: _colHeader('STATUS')),
                 Expanded(flex: 8, child: _colHeader('ACTIONS')),
               ],
@@ -651,10 +652,11 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
           ),
           child: Row(
             children: [
-              Expanded(flex: 23, child: Text(title, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900))),
-              Expanded(flex: 18, child: Text(quote['client_name'] ?? '-', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700))),
+              Expanded(flex: 20, child: Text(title, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900))),
+              Expanded(flex: 16, child: Text(quote['client_name'] ?? '-', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700))),
+              Expanded(flex: 12, child: _buildQuoteTypeBadge(quote['quote_type'] ?? 'standard')),
               Expanded(flex: 18, child: Text(date, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500))),
-              Expanded(flex: 15, child: Text('\$${NumberFormat('#,##0.00', 'en_US').format(quote['total_amount'] ?? 0)}', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen))),
+              Expanded(flex: 14, child: Text('\$${NumberFormat('#,##0.00', 'en_US').format(quote['total_amount'] ?? 0)}', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen))),
               Expanded(flex: 14, child: _buildStatusBadge(status)),
               Expanded(flex: 12, child: Align(alignment: Alignment.centerLeft, child: Row(mainAxisSize: MainAxisSize.min, children: [_editIconButton(quote), const SizedBox(width: 6), _deleteIconButton(quote)]))),
             ],
@@ -716,6 +718,29 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
         child: Text(
           status.toUpperCase(),
           style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: text, letterSpacing: 0.5),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuoteTypeBadge(String quoteType) {
+    final isStaffing = quoteType.toLowerCase() == 'staffing';
+    final Color bg = isStaffing
+        ? const Color(0xFF6366F1).withOpacity(0.1)
+        : AppTheme.primaryGreen.withOpacity(0.08);
+    final Color textColor = isStaffing
+        ? const Color(0xFF6366F1)
+        : AppTheme.primaryGreen;
+    final String label = isStaffing ? 'LABOR SUPPLY' : 'STANDARD';
+
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+        child: Text(
+          label,
+          style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: textColor, letterSpacing: 0.4),
         ),
       ),
     );
