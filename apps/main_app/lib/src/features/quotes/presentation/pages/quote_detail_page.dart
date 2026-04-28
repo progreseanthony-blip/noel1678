@@ -273,7 +273,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                   const Icon(Icons.arrow_back, size: 18, color: AppTheme.slate500),
                   if (!isMobile) ...[
                     const SizedBox(width: 8),
-                    Text('Estimations', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500, fontWeight: FontWeight.w500)),
+                    Text('Estimates', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500, fontWeight: FontWeight.w500)),
                   ],
                 ],
               ),
@@ -507,7 +507,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                               const Icon(Icons.edit_outlined, color: Color(0xFF0F172A), size: 20),
                               const SizedBox(width: 10),
                               Text(
-                                'Edit Estimation',
+                                'Edit Estimate',
                                 style: GoogleFonts.manrope(
                                   color: const Color(0xFF0F172A),
                                   fontWeight: FontWeight.w700,

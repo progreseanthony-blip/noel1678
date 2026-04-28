@@ -127,7 +127,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
           Expanded(
             child: Column(
               children: [
-                TopHeader(userName: userName, breadcrumbs: const ['Administration', 'Estimations']),
+                TopHeader(userName: userName, breadcrumbs: const ['Administration', 'Estimates']),
                 Expanded(
                   child: _isLoading
                       ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen, strokeWidth: 3))
@@ -194,7 +194,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
                _buildBottomNavItem(Icons.group_outlined, 'Users', false, () => context.go('/users')),
-               _buildBottomNavItem(Icons.request_quote, 'Estimations', true, () {}),
+               _buildBottomNavItem(Icons.request_quote, 'Estimates', true, () {}),
                _buildBottomNavItem(Icons.person_search_outlined, 'Customers', false, () => context.go('/customers')),
             ],
           ),
@@ -299,7 +299,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
       children: [
         const SizedBox(height: 24),
         Text(
-          'Estimations Management',
+          'Estimates Management',
           style: GoogleFonts.manrope(
             fontSize: 22,
             fontWeight: FontWeight.w800,
@@ -409,7 +409,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
                      children: [
                         Icon(Icons.edit, size: 16, color: AppTheme.slate400),
                         const SizedBox(width: 8),
-                        Text('Edit Estimation', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
+                        Text('Edit Estimate', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
                      ],
                     ),
                   ),
@@ -439,7 +439,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Estimations Management',
+                      'Estimates Management',
                       style: GoogleFonts.manrope(
                         fontSize: 30,
                         fontWeight: FontWeight.w800,
@@ -483,7 +483,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
                         const Icon(Icons.add, color: Color(0xFF0F172A), size: 20),
                         const SizedBox(width: 10),
                         Text(
-                          'Create Estimation',
+                          'Create Estimate',
                           style: GoogleFonts.manrope(
                             color: const Color(0xFF0F172A),
                             fontWeight: FontWeight.w700,

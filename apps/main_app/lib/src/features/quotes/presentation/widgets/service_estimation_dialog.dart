@@ -487,7 +487,7 @@ class _ServiceEstimationDialogState
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Estimation saved successfully'), backgroundColor: AppTheme.primaryGreen),
+          const SnackBar(content: Text('Estimate saved successfully'), backgroundColor: AppTheme.primaryGreen),
         );
         Navigator.pop(context, {
           'applied': true,
@@ -704,8 +704,8 @@ class _ServiceEstimationDialogState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Estimation & Production Planning', style: GoogleFonts.manrope(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
-                Text('Service: ${widget.service['name']}', style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 13)),
+                Text('Work Projection', style: GoogleFonts.manrope(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w800)),
+                Text('Field Planning & Timeline · ${widget.service['name']}', style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 13)),
               ],
             ),
           ),
@@ -1810,7 +1810,7 @@ class _ServiceEstimationDialogState
                       padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
-                    child: Text('Finish & Save Estimation', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+                    child: Text('Finish & Save Estimate', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
                   ),
         ],
       ),

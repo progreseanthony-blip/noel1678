@@ -777,7 +777,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Please enter an estimation title',
+            'Please enter an estimate title',
             style: GoogleFonts.manrope(),
           ),
           backgroundColor: AppTheme.errorRed,
@@ -1101,7 +1101,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _isEditing ? 'Edit Estimation' : 'Create New Estimation',
+                  _isEditing ? 'Edit Estimate' : 'Create New Estimate',
                   style: GoogleFonts.manrope(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
@@ -1258,7 +1258,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle('Estimation Details'),
+          _sectionTitle('Estimate Details'),
           const SizedBox(height: 16),
           Row(
             children: [
@@ -1327,7 +1327,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               const SizedBox(width: 16),
               Expanded(
                 child: _labeledField(
-                  'Estimation Title',
+                  'Estimate Title',
                   TextFormField(
                     controller: _titleController,
                     style: GoogleFonts.manrope(
@@ -1360,7 +1360,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               const SizedBox(width: 16),
               Expanded(
                 child: _labeledField(
-                  'Estimation Date',
+                  'Estimate Date',
                   InkWell(
                     onTap: () async {
                       final picked = await showDatePicker(
@@ -1587,7 +1587,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                             _miniNumField(
                               'Unit Cost (\$)',
                               svc.directCost,
-                              72,
+                              90,
                               (v) => setState(() {
                                 _activeServiceIndex = serviceIndex;
                                 svc.directCost = v;
@@ -1596,6 +1596,8 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                                 () => _activeServiceIndex = serviceIndex,
                               ),
                             ),
+                          ],
+                          if (svc.isStaffingRole) ...[
                             const SizedBox(width: 10),
                             _calcChip(
                               'Subtotal',
@@ -1629,76 +1631,80 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                               () => _activeServiceIndex = serviceIndex,
                             ),
                           ),
-                          // Estimation Button (only for non-LS/non-staffing)
+                          // Work Projection Button (only for non-LS/non-staffing)
                           if (svc.unitOfMeasure.toLowerCase() != 'ls' && !svc.isStaffingRole) ...[
                             const SizedBox(width: 10),
-                            MouseRegion(
-                              cursor: SystemMouseCursors.click,
-                              child: GestureDetector(
-                                onDoubleTap: () {},
-                                onTapDown: (_) => setState(
-                                  () => _activeServiceIndex = serviceIndex,
-                                ),
-                                onTap: () async {
-                                  final result = await showDialog(
-                                    context: context,
-                                    builder: (_) => ServiceEstimationDialog(
-                                      service: {
-                                        'id': null,
-                                        'catalog_service_id': svc.catalogId,
-                                        'name': svc.name,
-                                        'quantity': svc.quantity,
-                                        'unit': svc.unitOfMeasure,
-                                        'estimationData': svc.estimationData,
-                                      },
-                                    ),
-                                  );
-
-                                  if (result != null &&
-                                      result is Map &&
-                                      result['applied'] == true) {
-                                    setState(() {
-                                      svc.quantity =
-                                          (result['total_cy_loose'] as num)
-                                              .toDouble();
-                                      svc.estimationData =
-                                          Map<String, dynamic>.from(
-                                            result as Map,
-                                          );
-                                      _syncMachineryFromEstimation(
-                                        svc,
-                                        result as Map<String, dynamic>,
-                                      );
-                                      _syncMaterialsFromEstimation(
-                                        svc,
-                                        result as Map<String, dynamic>,
-                                      );
-                                      _syncInstrumentsFromEstimation(
-                                        svc,
-                                        result as Map<String, dynamic>,
-                                      );
-                                    });
-                                  }
-                                },
-                                child: Container(
-                                  margin: const EdgeInsets.only(bottom: 2),
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primaryGreen.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: AppTheme.primaryGreen.withOpacity(0.3),
-                                    ),
+                            Tooltip(
+                              message: 'Work Projection',
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                child: GestureDetector(
+                                  onDoubleTap: () {},
+                                  onTapDown: (_) => setState(
+                                    () => _activeServiceIndex = serviceIndex,
                                   ),
-                                  child: const Icon(
-                                    Icons.analytics_outlined,
-                                    color: AppTheme.primaryGreen,
-                                    size: 16,
+                                  onTap: () async {
+                                    final result = await showDialog(
+                                      context: context,
+                                      builder: (_) => ServiceEstimationDialog(
+                                        service: {
+                                          'id': null,
+                                          'catalog_service_id': svc.catalogId,
+                                          'name': svc.name,
+                                          'quantity': svc.quantity,
+                                          'unit': svc.unitOfMeasure,
+                                          'estimationData': svc.estimationData,
+                                        },
+                                      ),
+                                    );
+
+                                    if (result != null &&
+                                        result is Map &&
+                                        result['applied'] == true) {
+                                      setState(() {
+                                        svc.quantity =
+                                            (result['total_cy_loose'] as num)
+                                                .toDouble();
+                                        svc.estimationData =
+                                            Map<String, dynamic>.from(
+                                              result as Map,
+                                            );
+                                        _syncMachineryFromEstimation(
+                                          svc,
+                                          result as Map<String, dynamic>,
+                                        );
+                                        _syncMaterialsFromEstimation(
+                                          svc,
+                                          result as Map<String, dynamic>,
+                                        );
+                                        _syncInstrumentsFromEstimation(
+                                          svc,
+                                          result as Map<String, dynamic>,
+                                        );
+                                      });
+                                    }
+                                  },
+                                  child: Container(
+                                    margin: const EdgeInsets.only(bottom: 2),
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.primaryGreen.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(
+                                        color: AppTheme.primaryGreen.withOpacity(0.3),
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.analytics_outlined,
+                                      color: AppTheme.primaryGreen,
+                                      size: 16,
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
                           ],
+
                         ],
                       ),
                       if (svc.estimationData != null) ...[
@@ -2610,7 +2616,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle('Estimation: ${_titleController.text}'),
+          _sectionTitle('Estimate: ${_titleController.text}'),
           const SizedBox(height: 20),
           ..._services.asMap().entries.map(
             (e) => _buildServiceSummaryCard(e.key, e.value),
@@ -3148,7 +3154,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 )
               else
                 _footerBtn(
-                  _isSaving ? 'Saving...' : (_isEditing ? 'Save Estimation' : 'Create Estimation'),
+                  _isSaving ? 'Saving...' : (_isEditing ? 'Save Estimate' : 'Create Estimate'),
                   Icons.check,
                   true,
                   _isSaving ? null : _saveQuote,
@@ -3564,6 +3570,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             child: TextFormField(
               readOnly: true,
               initialValue: displayText,
+              key: ValueKey(displayText),
               style: GoogleFonts.manrope(
                 fontSize: 13,
                 fontWeight: highlight ? FontWeight.w800 : FontWeight.w600,
@@ -3571,33 +3578,38 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               ),
               decoration: InputDecoration(
                 isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
                 filled: true,
-                fillColor: highlight
-                    ? AppTheme.primaryGreen.withOpacity(0.06)
-                    : const Color(0xFFF1F5F9),
+                fillColor:
+                    highlight
+                        ? AppTheme.primaryGreen.withOpacity(0.06)
+                        : const Color(0xFFF1F5F9),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
                   borderSide: BorderSide(
-                    color: highlight
-                        ? AppTheme.primaryGreen.withOpacity(0.3)
-                        : const Color(0xFFE2E8F0),
+                    color:
+                        highlight
+                            ? AppTheme.primaryGreen.withOpacity(0.3)
+                            : const Color(0xFFE2E8F0),
                   ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
                   borderSide: BorderSide(
-                    color: highlight
-                        ? AppTheme.primaryGreen.withOpacity(0.3)
-                        : const Color(0xFFE2E8F0),
+                    color:
+                        highlight
+                            ? AppTheme.primaryGreen.withOpacity(0.3)
+                            : const Color(0xFFE2E8F0),
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
                   borderSide: BorderSide(
-                    color: highlight
-                        ? AppTheme.primaryGreen
-                        : const Color(0xFFE2E8F0),
+                    color:
+                        highlight
+                            ? AppTheme.primaryGreen
+                            : const Color(0xFFE2E8F0),
                   ),
                 ),
               ),
@@ -3608,30 +3620,24 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     );
   }
 
-  // ═══════════════════════════════
-  // QUICK ADD METHODS
-  // ═══════════════════════════════
   void _openCatalogItemAdd(String type) {
     Widget? dialog;
     if (type == 'services') dialog = ServiceDialog();
     if (type == 'machinery') dialog = MachineryDialog();
     if (type == 'labor') dialog = LaborRoleDialog();
     if (type == 'customers') dialog = const CustomerFormDialog();
-    // if (type == 'materials') dialog = MaterialDialog(); // Assume we might add later or use generic
+    if (type == 'materials' || type == 'instruments') dialog = MachineryDialog();
 
     if (dialog != null) {
-      showDialog(context: context, builder: (context) => dialog!).then((
-        success,
-      ) {
+      showDialog(
+        context: context,
+        builder: (context) => dialog!,
+      ).then((success) {
         if (success == true) _loadCatalogs();
       });
     }
   }
 }
-
-// ══════════════════════════════════════════════════════════════
-//  SEARCHABLE DROPDOWN COMPONENT
-// ══════════════════════════════════════════════════════════════
 
 class _SearchableCatalogDropdown extends StatelessWidget {
   final String label;
@@ -3675,18 +3681,13 @@ class _SearchableCatalogDropdown extends StatelessWidget {
               final available = items.where(
                 (i) => !excludeItems.contains(i['description']),
               );
-
               final t = textEditingValue.text.toLowerCase();
-              // If empty or a default placeholder, show all available
               if (t.isEmpty ||
                   t.startsWith('service') ||
                   t.startsWith('machine') ||
-                  t.startsWith('instrument') ||
-                  t.startsWith('tool') ||
                   t.startsWith('role')) {
                 return available;
               }
-
               return available
                   .where(
                     (i) =>
@@ -3727,7 +3728,10 @@ class _SearchableCatalogDropdown extends StatelessWidget {
                         ),
                       ),
                       suffixIcon: IconButton(
-                        icon: const Icon(Icons.arrow_drop_down, color: AppTheme.slate400),
+                        icon: const Icon(
+                          Icons.arrow_drop_down,
+                          color: AppTheme.slate400,
+                        ),
                         onPressed: () {
                           final current = controller.text;
                           controller.text = '';
@@ -3737,23 +3741,6 @@ class _SearchableCatalogDropdown extends StatelessWidget {
                       ),
                     ),
                     onChanged: (v) => onSelected(v, null),
-                    onTap: () {
-                      final t = controller.text.toLowerCase();
-                      if (t.startsWith('service') ||
-                          t.startsWith('machine') ||
-                          t.startsWith('role')) {
-                        controller.clear();
-                        onSelected('', null);
-                      } else {
-                        final current = controller.text;
-                        controller.text = '';
-                        controller.text = current;
-                        controller.selection = TextSelection(
-                          baseOffset: 0,
-                          extentOffset: current.length,
-                        );
-                      }
-                    },
                   );
                 },
             optionsViewBuilder: (context, onSelectedInternal, options) {
@@ -3761,177 +3748,96 @@ class _SearchableCatalogDropdown extends StatelessWidget {
                 alignment: Alignment.topLeft,
                 child: Material(
                   elevation: 8,
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    width: 400,
-                    constraints: const BoxConstraints(maxHeight: 300),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(color: AppTheme.slate200),
-                      borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.15),
-                          blurRadius: 15,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
+                  borderRadius: BorderRadius.circular(10),
+                  clipBehavior: Clip.antiAlias,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 260,
+                      maxHeight: 260,
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (options.isNotEmpty)
-                          Flexible(
-                            child: ListView.builder(
-                              padding: EdgeInsets.zero,
-                              itemCount: options.length,
-                              itemBuilder: (context, index) {
-                                final option = options.elementAt(index);
-                                final photoUrl = option['photo_url'] as String?;
-
-                                return ListTile(
-                                  dense: true,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 4,
-                                  ),
-                                  leading:
-                                      label.toLowerCase().contains('machine')
-                                      ? Container(
-                                          width: 44,
-                                          height: 44,
-                                          decoration: BoxDecoration(
-                                            borderRadius: BorderRadius.circular(
-                                              8,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: AppTheme.slate200),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: ListView(
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        children: [
+                          ...options.map((option) {
+                            final photoUrl = option['photo_url'] as String?;
+                            return ListTile(
+                              dense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 4,
+                              ),
+                              leading: label.toLowerCase().contains('machine')
+                                  ? Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(6),
+                                        color: AppTheme.slate50,
+                                        border: Border.all(color: AppTheme.slate200),
+                                      ),
+                                      clipBehavior: Clip.antiAlias,
+                                      child: (photoUrl != null && photoUrl.isNotEmpty)
+                                          ? Image.network(photoUrl, fit: BoxFit.cover)
+                                          : const Center(
+                                              child: Icon(Icons.precision_manufacturing, size: 18, color: AppTheme.slate400),
                                             ),
-                                            color: AppTheme.slate50,
-                                            border: Border.all(
-                                              color: AppTheme.slate200,
-                                            ),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: Colors.black.withOpacity(
-                                                  0.04,
-                                                ),
-                                                blurRadius: 4,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ],
-                                          ),
-                                          clipBehavior: Clip.antiAlias,
-                                          child:
-                                              (photoUrl != null &&
-                                                  photoUrl.isNotEmpty)
-                                              ? Image.network(
-                                                  photoUrl,
-                                                  fit: BoxFit.cover,
-                                                  errorBuilder: (c, e, s) =>
-                                                      const Center(
-                                                        child: Icon(
-                                                          Icons
-                                                              .precision_manufacturing,
-                                                          size: 22,
-                                                          color:
-                                                              AppTheme.slate400,
-                                                        ),
-                                                      ),
-                                                  loadingBuilder:
-                                                      (
-                                                        context,
-                                                        child,
-                                                        progress,
-                                                      ) {
-                                                        if (progress == null)
-                                                          return child;
-                                                        return const Center(
-                                                          child: SizedBox(
-                                                            width: 16,
-                                                            height: 16,
-                                                            child:
-                                                                CircularProgressIndicator(
-                                                                  strokeWidth:
-                                                                      2,
-                                                                ),
-                                                          ),
-                                                        );
-                                                      },
-                                                )
-                                              : const Center(
-                                                  child: Icon(
-                                                    Icons
-                                                        .precision_manufacturing,
-                                                    size: 22,
-                                                    color: AppTheme.slate400,
-                                                  ),
-                                                ),
+                                    )
+                                  : null,
+                              title: Text(
+                                option['description'] ?? '',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.slate900,
+                                ),
+                              ),
+                              subtitle: option['hourly_rate'] != null
+                                  ? Text(
+                                      '\$${option['hourly_rate']}/hr',
+                                      style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500),
+                                    )
+                                  : (option['unit'] != null
+                                      ? Text(
+                                          'Unit: ${option['unit']}',
+                                          style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500),
                                         )
-                                      : null,
-                                  title: Text(
-                                    option['description'] ?? '',
+                                      : null),
+                              hoverColor: AppTheme.primaryGreen.withOpacity(0.05),
+                              onTap: () => onSelectedInternal(option),
+                            );
+                          }).toList(),
+                          const Divider(height: 1),
+                          InkWell(
+                            onTap: () => onAddNew(),
+                            child: Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                              color: AppTheme.primaryGreen.withOpacity(0.05),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.add_circle_outline, size: 16, color: AppTheme.primaryGreen),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Add New to Catalog',
                                     style: GoogleFonts.manrope(
-                                      fontSize: 13,
+                                      fontSize: 12,
                                       fontWeight: FontWeight.w700,
-                                      color: AppTheme.slate900,
+                                      color: AppTheme.primaryGreen,
                                     ),
                                   ),
-                                  subtitle: option['hourly_rate'] != null
-                                      ? Text(
-                                          '\$${option['hourly_rate']}/hr',
-                                          style: GoogleFonts.manrope(
-                                            fontSize: 11,
-                                            color: AppTheme.slate500,
-                                          ),
-                                        )
-                                      : (option['unit'] != null
-                                            ? Text(
-                                                'Unit: ${option['unit']}',
-                                                style: GoogleFonts.manrope(
-                                                  fontSize: 11,
-                                                  color: AppTheme.slate500,
-                                                ),
-                                              )
-                                            : null),
-                                  hoverColor: AppTheme.primaryGreen.withOpacity(
-                                    0.05,
-                                  ),
-                                  onTap: () => onSelectedInternal(option),
-                                );
-                              },
+                                ],
+                              ),
                             ),
                           ),
-                        const Divider(height: 1),
-                        InkWell(
-                          onTap: () {
-                            onAddNew();
-                          },
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.symmetric(
-                              vertical: 10,
-                              horizontal: 12,
-                            ),
-                            color: AppTheme.primaryGreen.withOpacity(0.05),
-                            child: Row(
-                              children: [
-                                const Icon(
-                                  Icons.add_circle_outline,
-                                  size: 18,
-                                  color: AppTheme.primaryGreen,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'Add New to Catalog',
-                                  style: GoogleFonts.manrope(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppTheme.primaryGreen,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),

@@ -60,7 +60,7 @@ class Sidebar extends StatelessWidget {
                   const SizedBox(height: 4),
                   _NavItem(
                     icon: Icons.request_quote_rounded, 
-                    label: 'Estimations', 
+                    label: 'Estimates', 
                     isActive: currentPath.startsWith('/quotes'), 
                     onTap: () => context.go('/quotes')
                   ),
