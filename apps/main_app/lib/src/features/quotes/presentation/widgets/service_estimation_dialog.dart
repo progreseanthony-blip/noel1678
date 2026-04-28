@@ -93,6 +93,23 @@ class _ServiceEstimationDialogState
     if (res['perfCtrl'] is TextEditingController) (res['perfCtrl'] as TextEditingController).dispose();
   }
 
+  double _calculateBaseVal(Map<String, dynamic> mat) {
+    if (_isLinearBased) {
+      final lType = mat['layer_type'] ?? 'linear';
+      if (lType == 'earth') return _calculationResult?['earthCY'] ?? 0.0;
+      if (lType == 'gravel') return _calculationResult?['gravelCY'] ?? 0.0;
+      return double.tryParse(_compactedCtrl.text) ?? 0.0; // The LF length
+    } else if (_isAreaBased) {
+      final lType = mat['layer_type'] ?? 'earth';
+      if (lType == 'gravel') return _calculationResult?['gravelCY'] ?? 0.0;
+      if (lType == 'total') return _calculationResult?['totalCYLoose'] ?? 0.0;
+      return _calculationResult?['earthCY'] ?? (_calculationResult?['totalCYLoose'] ?? 0.0);
+    } else if (_isAcresBased) {
+      return double.tryParse(_compactedCtrl.text) ?? 0.0;
+    }
+    return _calculationResult?['totalCYLoose'] ?? 0.0;
+  }
+
   Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
     try {
@@ -1190,7 +1207,7 @@ class _ServiceEstimationDialogState
   }
 
   Widget _primaryInputs(Map<String, dynamic> res) {
-    if (_isAreaBased || _isLinearBased || _isAcresBased) {
+    if (_isLinearBased || _isAcresBased) {
       final perfLabel = _isAcresBased ? 'PERFORMANCE (AC/D)' : (_isLinearBased ? 'PERFORMANCE (LF/D)' : 'PERFORMANCE (SQFT/D)');
       return Row(
         children: [
@@ -1537,7 +1554,17 @@ class _ServiceEstimationDialogState
               isDense: true,
               style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate700),
               onChanged: (v) {
-                setState(() => mat['layer_type'] = v);
+                setState(() {
+                  mat['layer_type'] = v;
+                  // Auto-update quantity when layer changes
+                  final baseVal = _calculateBaseVal(mat);
+                  final yield = (mat['yield_factor'] as num?)?.toDouble() ?? 1.0;
+                  final suggested = baseVal * yield;
+                  mat['quantity'] = suggested;
+                  if (mat['qtyCtrl'] is TextEditingController) {
+                    (mat['qtyCtrl'] as TextEditingController).text = suggested.toStringAsFixed(2);
+                  }
+                });
               },
               items: _isLinearBased
                   ? [
@@ -1561,18 +1588,7 @@ class _ServiceEstimationDialogState
   Widget _materialItemRow(Map<String, dynamic> mat, double calculatedCY) {
     final yield = (mat['yield_factor'] as num?)?.toDouble() ?? 1.0;
     
-    double baseVal = calculatedCY;
-    if (_isLinearBased) {
-        final lType = mat['layer_type'] ?? 'linear';
-        if (lType == 'earth') baseVal = _calculationResult?['earthCY'] ?? 0.0;
-        else if (lType == 'gravel') baseVal = _calculationResult?['gravelCY'] ?? 0.0;
-        else baseVal = double.tryParse(_compactedCtrl.text) ?? 0.0; // The LF length
-    } else if (_isAreaBased) {
-      final lType = mat['layer_type'] ?? 'earth';
-      if (lType == 'gravel') baseVal = _calculationResult?['gravelCY'] ?? 0.0;
-      else if (lType == 'total') baseVal = _calculationResult?['totalCYLoose'] ?? 0.0;
-      else baseVal = _calculationResult?['earthCY'] ?? (_calculationResult?['totalCYLoose'] ?? 0.0);
-    }
+    final baseVal = _calculateBaseVal(mat);
     
     final suggested = baseVal * yield;
 
@@ -1722,10 +1738,9 @@ class _ServiceEstimationDialogState
     setState(() {
       final yield = (catalogItem['yield_factor'] as num?)?.toDouble() ?? 1.0;
       
-      double baseVal = _calculationResult?['totalCYLoose'] ?? 0.0;
-      if (_isLinearBased) {
-        baseVal = double.tryParse(_compactedCtrl.text) ?? 0.0;
-      }
+      final baseVal = _calculateBaseVal({
+        'layer_type': _isLinearBased ? 'linear' : 'earth',
+      });
       
       final suggested = baseVal * yield;
       

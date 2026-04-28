@@ -95,7 +95,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
           children: [
             Icon(Icons.warning_amber_rounded, color: AppTheme.errorRed, size: 24),
             const SizedBox(width: 10),
-            Text('Delete Quote', style: GoogleFonts.manrope(fontWeight: FontWeight.w800)),
+            Text('Delete Estimation', style: GoogleFonts.manrope(fontWeight: FontWeight.w800)),
           ],
         ),
         content: Text(
@@ -121,7 +121,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
         await Supabase.instance.client.from('quotes').delete().eq('id', widget.quoteId);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Quote deleted', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.primaryGreen),
+            SnackBar(content: Text('Estimation deleted', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.primaryGreen),
           );
           context.go('/quotes');
         }
@@ -252,7 +252,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                   const Icon(Icons.arrow_back, size: 18, color: AppTheme.slate500),
                   if (!isMobile) ...[
                     const SizedBox(width: 8),
-                    Text('Quotes', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500, fontWeight: FontWeight.w500)),
+                    Text('Estimations', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500, fontWeight: FontWeight.w500)),
                   ],
                 ],
               ),
@@ -486,7 +486,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                               const Icon(Icons.edit_outlined, color: Color(0xFF0F172A), size: 20),
                               const SizedBox(width: 10),
                               Text(
-                                'Edit Quote',
+                                'Edit Estimation',
                                 style: GoogleFonts.manrope(
                                   color: const Color(0xFF0F172A),
                                   fontWeight: FontWeight.w700,
@@ -530,7 +530,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                   Container(
                     padding: const EdgeInsets.all(40),
                     decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200)),
-                    child: Center(child: Text('No services added to this quote yet.', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 14))),
+                    child: Center(child: Text('No services added to this estimation yet.', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 14))),
                   )
                 else
                   ..._services.asMap().entries.map((e) => _buildServiceSection(e.key, e.value, isMobile)),
@@ -1162,7 +1162,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
               child: Column(children: [
                 _navItem(Icons.group_outlined, 'User Management', false, () => context.go('/users')),
                 const SizedBox(height: 4),
-                _navItem(Icons.request_quote_rounded, 'Quotes', true, () => context.go('/quotes')),
+                _navItem(Icons.request_quote_rounded, 'Estimations', true, () => context.go('/quotes')),
                 const SizedBox(height: 4),
                 _navItem(Icons.folder_copy_outlined, 'Catalogs', false, () => context.go('/catalogs')),
               ]),

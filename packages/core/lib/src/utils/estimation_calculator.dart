@@ -41,7 +41,7 @@ class EstimationCalculator {
       totalCYLoose = earthCY + gravelCY;
       trenchFillCY = totalCYLoose;
     } else if (isAreaBased) {
-      totalTarget = totalArea;
+      // Area mode: Convert to volume target for machinery trips
       // Earth layer: ((SQFT * earthThickness/12) / 27) * (1 + swell)
       earthCY = thicknessInches > 0
           ? ((totalArea * (thicknessInches / 12)) / 27) * (1 + swellFactor)
@@ -51,6 +51,7 @@ class EstimationCalculator {
           ? ((totalArea * (gravelThicknessInches / 12)) / 27) * (1 + swellFactor)
           : 0;
       totalCYLoose = earthCY + gravelCY;
+      totalTarget = totalCYLoose;
     } else {
       totalCYLoose = (topsoilVolume + compactedVolume) * (1 + swellFactor);
       totalTarget = totalCYLoose;
@@ -58,7 +59,7 @@ class EstimationCalculator {
 
     double remainingTarget = isAcresBased
         ? totalAcres
-        : (isLinearBased ? totalLength : (isAreaBased ? totalArea : totalCYLoose));
+        : (isLinearBased ? totalLength : totalCYLoose);
     
     if (remainingTarget <= 0) {
       return {
@@ -94,7 +95,7 @@ class EstimationCalculator {
 
           final qty = (res['quantity'] as num?)?.toDouble() ?? 0;
           
-          if (isAreaBased || isLinearBased || isAcresBased) {
+          if (isLinearBased || isAcresBased) {
             // In Area/Linear/Acre mode, we use performance_per_day (SQFT/Day, LF/Day, or AC/Day)
             final performance = (res['performance_per_day'] as num?)?.toDouble() ?? 0;
             dayProduction += (qty * performance * factor);
@@ -126,7 +127,7 @@ class EstimationCalculator {
               double dailyOutput;
               double calculatedVolume;
 
-              if (isAreaBased || isLinearBased || isAcresBased) {
+              if (isLinearBased || isAcresBased) {
                 final performance = (res['performance_per_day'] as num?)?.toDouble() ?? 0.0;
                 dailyOutput = performance * factor * qty;
                 // Proportional volume for this machine's production
@@ -143,8 +144,8 @@ class EstimationCalculator {
                 'name': res['machine_name'] ?? 'Machine',
                 'type': type,
                 'loads': (isAreaBased || isLinearBased || isAcresBased) ? 0 : dailyOutput, // "loads" only makes sense for hauling
-                'production': (isAreaBased || isLinearBased || isAcresBased) ? dailyOutput : calculatedVolume,
-                'area_production': isAreaBased ? dailyOutput : 0,
+                'production': (isLinearBased || isAcresBased) ? dailyOutput : calculatedVolume,
+                'area_production': (isAreaBased && totalCYLoose > 0) ? (calculatedVolume / totalCYLoose) * totalArea : 0,
                 'linear_production': isLinearBased ? dailyOutput : 0,
                 'acre_production': isAcresBased ? dailyOutput : 0,
               };

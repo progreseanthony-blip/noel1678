@@ -127,7 +127,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
           Expanded(
             child: Column(
               children: [
-                TopHeader(userName: userName, breadcrumbs: const ['Administration', 'Quotes']),
+                TopHeader(userName: userName, breadcrumbs: const ['Administration', 'Estimations']),
                 Expanded(
                   child: _isLoading
                       ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen, strokeWidth: 3))
@@ -194,7 +194,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
                _buildBottomNavItem(Icons.group_outlined, 'Users', false, () => context.go('/users')),
-               _buildBottomNavItem(Icons.request_quote, 'Quotes', true, () {}),
+               _buildBottomNavItem(Icons.request_quote, 'Estimations', true, () {}),
                _buildBottomNavItem(Icons.person_search_outlined, 'Customers', false, () => context.go('/customers')),
             ],
           ),
@@ -299,7 +299,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
       children: [
         const SizedBox(height: 24),
         Text(
-          'Quotes Management',
+          'Estimations Management',
           style: GoogleFonts.manrope(
             fontSize: 22,
             fontWeight: FontWeight.w800,
@@ -409,7 +409,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
                      children: [
                         Icon(Icons.edit, size: 16, color: AppTheme.slate400),
                         const SizedBox(width: 8),
-                        Text('Edit Quote', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
+                        Text('Edit Estimation', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
                      ],
                     ),
                   ),
@@ -439,7 +439,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Quotes Management',
+                      'Estimations Management',
                       style: GoogleFonts.manrope(
                         fontSize: 30,
                         fontWeight: FontWeight.w800,
@@ -483,7 +483,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
                         const Icon(Icons.add, color: Color(0xFF0F172A), size: 20),
                         const SizedBox(width: 10),
                         Text(
-                          'Create Quote',
+                          'Create Estimation',
                           style: GoogleFonts.manrope(
                             color: const Color(0xFF0F172A),
                             fontWeight: FontWeight.w700,
@@ -748,11 +748,11 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
           children: [
             Icon(Icons.warning_amber_rounded, color: AppTheme.errorRed, size: 24),
             const SizedBox(width: 10),
-            Text('Delete Quote', style: GoogleFonts.manrope(fontWeight: FontWeight.w800)),
+            Text('Delete Estimation', style: GoogleFonts.manrope(fontWeight: FontWeight.w800)),
           ],
         ),
         content: Text(
-          'Are you sure you want to delete "${quote['title']}"?\n\nThis will permanently remove all services, machinery, and labor data associated with this quote.',
+          'Are you sure you want to delete "${quote['title']}"?\n\nThis will permanently remove all services, machinery, and labor data associated with this estimation.',
           style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate700, height: 1.5),
         ),
         actions: [
@@ -774,7 +774,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
         await Supabase.instance.client.from('quotes').delete().eq('id', quote['id']);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Quote deleted successfully', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.primaryGreen),
+            SnackBar(content: Text('Estimation deleted successfully', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.primaryGreen),
           );
           _loadQuotes();
         }

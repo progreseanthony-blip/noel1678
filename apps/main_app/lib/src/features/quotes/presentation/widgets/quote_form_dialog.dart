@@ -755,7 +755,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Please enter a quote title',
+            'Please enter an estimation title',
             style: GoogleFonts.manrope(),
           ),
           backgroundColor: AppTheme.errorRed,
@@ -977,7 +977,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _isEditing ? 'Quote updated!' : 'Quote created!',
+              _isEditing ? 'Estimation updated!' : 'Estimation created!',
               style: GoogleFonts.manrope(color: Colors.white),
             ),
             backgroundColor: AppTheme.primaryGreen,
@@ -1076,7 +1076,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _isEditing ? 'Edit Quote' : 'Create New Quote',
+                  _isEditing ? 'Edit Estimation' : 'Create New Estimation',
                   style: GoogleFonts.manrope(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
@@ -1229,10 +1229,10 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle('Quote Details'),
+          _sectionTitle('Estimation Details'),
           const SizedBox(height: 16),
           _labeledField(
-            'Quote Title',
+            'Estimation Title',
             TextFormField(
               controller: _titleController,
               style: GoogleFonts.manrope(
@@ -1264,7 +1264,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               const SizedBox(width: 16),
               Expanded(
                 child: _labeledField(
-                  'Quote Date',
+                  'Estimation Date',
                   InkWell(
                     onTap: () async {
                       final picked = await showDatePicker(
@@ -2487,7 +2487,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle('Quote: ${_titleController.text}'),
+          _sectionTitle('Estimation: ${_titleController.text}'),
           const SizedBox(height: 20),
           ..._services.asMap().entries.map(
             (e) => _buildServiceSummaryCard(e.key, e.value),
@@ -2992,7 +2992,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 )
               else
                 _footerBtn(
-                  _isSaving ? 'Saving...' : 'Save Quote',
+                  _isSaving ? 'Saving...' : (_isEditing ? 'Save Estimation' : 'Create Estimation'),
                   Icons.check,
                   true,
                   _isSaving ? null : _saveQuote,
