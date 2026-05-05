@@ -9,6 +9,7 @@ import '../../../../shared/widgets/top_header.dart';
 import '../controllers/workers_controller.dart';
 import '../widgets/worker_form_dialog.dart';
 import '../widgets/worker_profile_dialog.dart';
+import '../../../catalogs/presentation/controllers/catalogs_controller.dart';
 
 class WorkersPage extends ConsumerStatefulWidget {
   const WorkersPage({super.key});
@@ -21,25 +22,33 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
   String _searchQuery = '';
   String _statusFilter = 'All'; // All, Active, Inactive
+  String _roleFilter = 'All'; // Role ID or 'All'
 
   @override
   Widget build(BuildContext context) {
     final workersAsync = ref.watch(workersControllerProvider);
+    final rolesAsync = ref.watch(laborRolesControllerProvider);
+    
     final currentUser = Supabase.instance.client.auth.currentUser;
     final userName = currentUser?.userMetadata?['name'] ?? 'Admin User';
     final userEmail = currentUser?.email ?? '';
     final isMobile = MediaQuery.of(context).size.width < 768;
 
     if (isMobile) {
-      return _buildMobileLayout(userName, userEmail, workersAsync);
+      return _buildMobileLayout(userName, userEmail, workersAsync, rolesAsync);
     }
-    return _buildDesktopLayout(userName, userEmail, workersAsync);
+    return _buildDesktopLayout(userName, userEmail, workersAsync, rolesAsync);
   }
 
   // ══════════════════════════════════════════════════════════════
   //  DESKTOP LAYOUT
   // ══════════════════════════════════════════════════════════════
-  Widget _buildDesktopLayout(String userName, String userEmail, AsyncValue<List<Map<String, dynamic>>> workersAsync) {
+  Widget _buildDesktopLayout(
+    String userName, 
+    String userEmail, 
+    AsyncValue<List<Map<String, dynamic>>> workersAsync,
+    AsyncValue<List<Map<String, dynamic>>> rolesAsync,
+  ) {
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
       body: Row(
@@ -59,7 +68,11 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
                 TopHeader(userName: userName, breadcrumbs: const ['Administration', 'Workers']),
                 Expanded(
                   child: workersAsync.when(
-                    data: (workers) => _buildMainContent(workers),
+                    data: (workers) => rolesAsync.when(
+                      data: (roles) => _buildMainContent(workers, roles),
+                      loading: () => const Center(child: CircularProgressIndicator()),
+                      error: (e, st) => Center(child: Text('Error: $e')),
+                    ),
                     loading: () => const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen)),
                     error: (e, st) => Center(child: Text('Error: $e')),
                   ),
@@ -72,11 +85,12 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
     );
   }
 
-  Widget _buildMainContent(List<Map<String, dynamic>> workers) {
+  Widget _buildMainContent(List<Map<String, dynamic>> workers, List<Map<String, dynamic>> roles) {
     final filtered = workers.where((w) {
       final matchesStatus = _statusFilter == 'All' || w['status'] == _statusFilter;
       final matchesSearch = (w['full_name'] ?? '').toString().toLowerCase().contains(_searchQuery.toLowerCase());
-      return matchesStatus && matchesSearch;
+      final matchesRole = _roleFilter == 'All' || w['role_id'] == _roleFilter;
+      return matchesStatus && matchesSearch && matchesRole;
     }).toList();
 
     return SingleChildScrollView(
@@ -127,7 +141,7 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
             ],
           ),
           const SizedBox(height: 24),
-          _buildSearchFilters(),
+          _buildSearchFilters(roles),
           const SizedBox(height: 24),
           _buildTable(filtered),
         ],
@@ -135,7 +149,7 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
     );
   }
 
-  Widget _buildSearchFilters() {
+  Widget _buildSearchFilters(List<Map<String, dynamic>> roles) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -146,6 +160,7 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
       child: Row(
         children: [
           Expanded(
+            flex: 2,
             child: Container(
               height: 44,
               decoration: BoxDecoration(
@@ -167,15 +182,51 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
             ),
           ),
           const SizedBox(width: 16),
-          DropdownButton<String>(
-            value: _statusFilter,
-            items: ['All', 'Active', 'Inactive']
-                .map((s) => DropdownMenuItem(value: s, child: Text(s)))
-                .toList(),
-            onChanged: (val) {
-              if (val != null) setState(() => _statusFilter = val);
-            },
-            underline: const SizedBox(),
+          Expanded(
+            child: Container(
+              height: 44,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.slate200),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _roleFilter,
+                  isExpanded: true,
+                  hint: Text('Filter by Role', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500)),
+                  items: [
+                    const DropdownMenuItem(value: 'All', child: Text('All Roles')),
+                    ...roles.map((r) => DropdownMenuItem(value: r['id'], child: Text(r['description'] ?? 'No Desc'))),
+                  ],
+                  onChanged: (val) {
+                    if (val != null) setState(() => _roleFilter = val);
+                  },
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.slate200),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _statusFilter,
+                items: ['All', 'Active', 'Inactive']
+                    .map((s) => DropdownMenuItem(value: s, child: Text(s)))
+                    .toList(),
+                onChanged: (val) {
+                  if (val != null) setState(() => _statusFilter = val);
+                },
+              ),
+            ),
           ),
         ],
       ),
@@ -249,7 +300,29 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
                   ],
                 ),
               ),
-              Expanded(flex: 20, child: Text(role, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700))),
+              Expanded(
+                flex: 20, 
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.slate200.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppTheme.slate200),
+                    ),
+                    child: Text(
+                      role.toUpperCase(),
+                      style: GoogleFonts.manrope(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.slate600,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
               Expanded(flex: 20, child: Text(rate, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen))),
               Expanded(flex: 15, child: _buildStatusBadge(w['status'] ?? 'Active')),
               Expanded(
@@ -265,6 +338,11 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
                       icon: const Icon(Icons.visibility_outlined, color: AppTheme.slate500, size: 20),
                       onPressed: () => _showWorkerProfile(context, w),
                       tooltip: 'View Profile',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: AppTheme.errorRed, size: 20),
+                      onPressed: () => _confirmDeleteWorker(context, w),
+                      tooltip: 'Delete Worker',
                     ),
                   ],
                 ),
@@ -302,7 +380,7 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
   // ══════════════════════════════════════════════════════════════
   //  MOBILE LAYOUT
   // ══════════════════════════════════════════════════════════════
-  Widget _buildMobileLayout(String userName, String userEmail, AsyncValue<List<Map<String, dynamic>>> workersAsync) {
+  Widget _buildMobileLayout(String userName, String userEmail, AsyncValue<List<Map<String, dynamic>>> workersAsync, AsyncValue<List<Map<String, dynamic>>> rolesAsync) {
     return Scaffold(
       key: _mobileScaffoldKey,
       backgroundColor: AppTheme.backgroundLight,
@@ -341,7 +419,8 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
                 final filtered = workers.where((w) {
                   final matchesStatus = _statusFilter == 'All' || w['status'] == _statusFilter;
                   final matchesSearch = (w['full_name'] ?? '').toString().toLowerCase().contains(_searchQuery.toLowerCase());
-                  return matchesStatus && matchesSearch;
+                  final matchesRole = _roleFilter == 'All' || w['role_id'] == _roleFilter;
+                  return matchesStatus && matchesSearch && matchesRole;
                 }).toList();
                 
                 return ListView(
@@ -405,5 +484,37 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
 
   void _showWorkerProfile(BuildContext context, Map<String, dynamic> worker) {
     showDialog(context: context, builder: (context) => WorkerProfileDialog(worker: worker));
+  }
+
+  Future<void> _confirmDeleteWorker(BuildContext context, Map<String, dynamic> worker) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Delete Worker', style: GoogleFonts.manrope(fontWeight: FontWeight.bold)),
+        content: Text('Are you sure you want to delete ${worker['full_name']}? This action cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.errorRed),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await Supabase.instance.client.from('workers').delete().eq('id', worker['id']);
+        ref.invalidate(workersControllerProvider);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Worker deleted successfully')));
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error deleting worker: $e')));
+        }
+      }
+    }
   }
 }

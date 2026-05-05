@@ -652,8 +652,8 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
           ),
           child: Row(
             children: [
-              Expanded(flex: 20, child: Text(title, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900))),
-              Expanded(flex: 16, child: Text(quote['client_name'] ?? '-', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700))),
+              Expanded(flex: 20, child: Padding(padding: const EdgeInsets.only(right: 16), child: Text(title, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900), overflow: TextOverflow.ellipsis, maxLines: 2))),
+              Expanded(flex: 16, child: Padding(padding: const EdgeInsets.only(right: 16), child: Text(quote['client_name'] ?? '-', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700), overflow: TextOverflow.ellipsis, maxLines: 2))),
               Expanded(flex: 12, child: _buildQuoteTypeBadge(quote['quote_type'] ?? 'standard')),
               Expanded(flex: 18, child: Text(date, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500))),
               Expanded(flex: 14, child: Text('\$${NumberFormat('#,##0.00', 'en_US').format(quote['total_amount'] ?? 0)}', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen))),

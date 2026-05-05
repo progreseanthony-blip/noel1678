@@ -8,6 +8,8 @@ import '../features/quotes/presentation/pages/quote_detail_page.dart';
 import '../features/catalogs/presentation/pages/catalogs_page.dart';
 import '../features/workers/presentation/pages/workers_page.dart';
 import '../features/customers/presentation/pages/customers_list_page.dart';
+import '../features/projects/presentation/pages/projects_list_page.dart';
+import '../features/projects/presentation/pages/project_detail_page.dart';
 
 final goRouter = GoRouter(
   initialLocation: '/signin',
@@ -35,6 +37,14 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/quotes/:id',
       builder: (context, state) => QuoteDetailPage(quoteId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/projects',
+      builder: (context, state) => const ProjectsListPage(),
+    ),
+    GoRoute(
+      path: '/projects/:id',
+      builder: (context, state) => ProjectDetailPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/catalogs',

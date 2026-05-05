@@ -66,6 +66,13 @@ class Sidebar extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   _NavItem(
+                    icon: Icons.rocket_launch_outlined, 
+                    label: 'Projects', 
+                    isActive: currentPath.startsWith('/projects'), 
+                    onTap: () => context.go('/projects')
+                  ),
+                  const SizedBox(height: 4),
+                  _NavItem(
                     icon: Icons.person_search_outlined, 
                     label: 'Customers', 
                     isActive: currentPath.startsWith('/customers'), 

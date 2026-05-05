@@ -5,9 +5,13 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
+import '../../../projects/services/project_service.dart';
 import '../widgets/quote_form_dialog.dart';
 import '../widgets/service_estimation_dialog.dart';
 import '../../../../shared/widgets/sidebar.dart';
+import '../utils/quote_pdf_generator.dart';
 
 class QuoteDetailPage extends ConsumerStatefulWidget {
   final String quoteId;
@@ -25,6 +29,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
   Map<String, List<Map<String, dynamic>>> _instruments = {};
   Map<String, Map<String, dynamic>> _estimations = {};
   bool _isLoading = true;
+  bool _isConverting = false;
   String? _error;
 
   final _fmt = NumberFormat('#,##0.00', 'en_US');
@@ -87,6 +92,31 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
       if (mounted) setState(() { _error = e.toString(); _isLoading = false; });
     }
   }
+  Future<void> _generateAndPrintPdf() async {
+    if (_quote == null) return;
+
+    double grandTotal = 0;
+    Map<String, Map<String, double>> serviceTotals = {};
+    
+    for (final svc in _services) {
+      final t = _svcTotals(svc['id'], svc);
+      serviceTotals[svc['id']] = t;
+      grandTotal += t['sale'] ?? 0.0;
+    }
+
+    final pdfBytes = await QuotePdfGenerator.generate(
+      quote: _quote!,
+      services: _services,
+      serviceTotals: serviceTotals,
+      grandTotal: grandTotal,
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => pdfBytes,
+      name: 'Estimate_${_quote?['id'].toString().substring(0, 8) ?? '0000'}',
+    );
+  }
+
   Future<void> _confirmDelete() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -133,6 +163,64 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
           );
         }
       }
+    }
+  }
+
+  Future<void> _approveAndCreateProject() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.rocket_launch, color: AppTheme.primaryGreen, size: 24),
+            const SizedBox(width: 10),
+            Text('Start Project', style: GoogleFonts.manrope(fontWeight: FontWeight.w800)),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to approve this estimate?\n\nThis will convert it into an active project and generate the machinery reception list.',
+          style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate700, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text('Cancel', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: AppTheme.slate500)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.primaryGreen,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('Approve & Start', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isConverting = true);
+    try {
+      await ProjectService.convertQuoteToProject(widget.quoteId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Project successfully created!', style: GoogleFonts.manrope(fontWeight: FontWeight.bold)),
+            backgroundColor: AppTheme.primaryGreen,
+          )
+        );
+        _loadData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed)
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isConverting = false);
     }
   }
 
@@ -402,6 +490,10 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                         Row(
                           children: [
                             IconButton(
+                              onPressed: () => _generateAndPrintPdf(),
+                              icon: const Icon(Icons.picture_as_pdf_outlined, color: AppTheme.primaryGreen),
+                            ),
+                            IconButton(
                               onPressed: () {
                                 showDialog(
                                   context: context,
@@ -419,6 +511,24 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                         ),
                       ],
                     ),
+                    if (status.toLowerCase() != 'accepted') ...[
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _isConverting ? null : _approveAndCreateProject,
+                          icon: _isConverting 
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Icon(Icons.rocket_launch, color: Colors.white, size: 18),
+                          label: Text('Approve & Start Project', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryGreen,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 )
               : Row(
@@ -478,62 +588,138 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                       ),
                     ),
                     const SizedBox(width: 16),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () {
-                          showDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.2),
-                            builder: (_) => QuoteFormDialog(quoteToEdit: _quote),
-                          ).then((updated) { if (updated == true) _loadData(); });
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryGreen,
-                            borderRadius: BorderRadius.circular(999),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppTheme.primaryGreen.withOpacity(0.25),
-                                blurRadius: 16,
-                                offset: const Offset(0, 6),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.edit_outlined, color: Color(0xFF0F172A), size: 20),
-                              const SizedBox(width: 10),
-                              Text(
-                                'Edit Estimate',
-                                style: GoogleFonts.manrope(
-                                  color: const Color(0xFF0F172A),
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onTap: () {
+                                  showDialog(
+                                    context: context,
+                                    barrierColor: Colors.black.withOpacity(0.2),
+                                    builder: (_) => QuoteFormDialog(quoteToEdit: _quote),
+                                  ).then((updated) { if (updated == true) _loadData(); });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryGreen,
+                                    borderRadius: BorderRadius.circular(999),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: AppTheme.primaryGreen.withOpacity(0.25),
+                                        blurRadius: 16,
+                                        offset: const Offset(0, 6),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.edit_outlined, color: Color(0xFF0F172A), size: 20),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        'Edit Estimate',
+                                        style: GoogleFonts.manrope(
+                                          color: const Color(0xFF0F172A),
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ],
+                            ),
+                            const SizedBox(width: 8),
+                            MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: GestureDetector(
+                                onTap: () => _confirmDelete(),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.errorRed.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: AppTheme.errorRed.withOpacity(0.2)),
+                                  ),
+                                  child: const Icon(Icons.delete_outline, color: AppTheme.errorRed, size: 18),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () => _generateAndPrintPdf(),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryGreen.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2)),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.picture_as_pdf_outlined, color: AppTheme.primaryGreen, size: 18),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Export to PDF',
+                                    style: GoogleFonts.manrope(
+                                      color: AppTheme.primaryGreen,
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => _confirmDelete(),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          decoration: BoxDecoration(
-                            color: AppTheme.errorRed.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppTheme.errorRed.withOpacity(0.2)),
+                        if (status.toLowerCase() != 'accepted') ...[
+                          const SizedBox(height: 8),
+                          MouseRegion(
+                            cursor: _isConverting ? SystemMouseCursors.basic : SystemMouseCursors.click,
+                            child: GestureDetector(
+                              onTap: _isConverting ? null : _approveAndCreateProject,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(colors: [AppTheme.primaryGreen, Color(0xFF0D9488)]),
+                                  borderRadius: BorderRadius.circular(10),
+                                  boxShadow: [BoxShadow(color: AppTheme.primaryGreen.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    if (_isConverting)
+                                      const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                    else
+                                      const Icon(Icons.rocket_launch, color: Colors.white, size: 18),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      'Approve & Start Project',
+                                      style: GoogleFonts.manrope(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w800,
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
-                          child: const Icon(Icons.delete_outline, color: AppTheme.errorRed, size: 18),
-                        ),
-                      ),
+                        ],
+                      ],
                     ),
                   ],
                 ),
