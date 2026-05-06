@@ -474,45 +474,18 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                       ],
                     ),
                     const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('GRAND TOTAL', style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
-                            Text('\$${_fmt.format(grandTotal)}', style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
-                            const SizedBox(height: 4),
-                            Text('Sub Total: \$${_fmt.format(totalSubTotal)}', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate600)),
-                            Text('OH: \$${_fmt.format(totalOverhead)} (${ohPct.toStringAsFixed(1)}%) | Prof: \$${_fmt.format(totalProfit)} (${prPct.toStringAsFixed(1)}%)', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
-                          ],
-                        ),
-                        Row(
-                          children: [
-                            IconButton(
-                              onPressed: () => _generateAndPrintPdf(),
-                              icon: const Icon(Icons.picture_as_pdf_outlined, color: AppTheme.primaryGreen),
-                            ),
-                            IconButton(
-                              onPressed: () {
-                                showDialog(
-                                  context: context,
-                                  barrierColor: Colors.black.withOpacity(0.2),
-                                  builder: (_) => QuoteFormDialog(quoteToEdit: _quote),
-                                ).then((updated) { if (updated == true) _loadData(); });
-                              },
-                              icon: const Icon(Icons.edit_outlined, color: AppTheme.primaryGreen),
-                            ),
-                            IconButton(
-                              onPressed: () => _confirmDelete(),
-                              icon: const Icon(Icons.delete_outline, color: AppTheme.errorRed),
-                            ),
-                          ],
-                        ),
+                        Text('GRAND TOTAL', style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
+                        Text('\$${_fmt.format(grandTotal)}', style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+                        const SizedBox(height: 4),
+                        Text('Sub Total: \$${_fmt.format(totalSubTotal)}', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate600)),
+                        Text('OH: \$${_fmt.format(totalOverhead)} (${ohPct.toStringAsFixed(1)}%) | Prof: \$${_fmt.format(totalProfit)} (${prPct.toStringAsFixed(1)}%)', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
                       ],
                     ),
+                    const SizedBox(height: 16),
                     if (status.toLowerCase() != 'accepted') ...[
-                      const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
@@ -523,12 +496,61 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                           label: Text('Approve & Start Project', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.primaryGreen,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            elevation: 0,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                           ),
                         ),
                       ),
+                      const SizedBox(height: 10),
                     ],
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                barrierColor: Colors.black.withOpacity(0.2),
+                                builder: (_) => QuoteFormDialog(quoteToEdit: _quote),
+                              ).then((updated) { if (updated == true) _loadData(); });
+                            },
+                            icon: const Icon(Icons.edit_outlined, size: 16),
+                            label: Text('Edit', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.primaryGreen,
+                              side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _generateAndPrintPdf(),
+                            icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                            label: Text('PDF', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.primaryGreen,
+                              side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: () => _confirmDelete(),
+                          icon: const Icon(Icons.delete_outline, color: AppTheme.errorRed, size: 20),
+                          style: IconButton.styleFrom(
+                            backgroundColor: AppTheme.errorRed.withOpacity(0.1),
+                            padding: const EdgeInsets.all(12),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 )
               : Row(
@@ -592,125 +614,39 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            MouseRegion(
-                              cursor: SystemMouseCursors.click,
-                              child: GestureDetector(
-                                onTap: () {
-                                  showDialog(
-                                    context: context,
-                                    barrierColor: Colors.black.withOpacity(0.2),
-                                    builder: (_) => QuoteFormDialog(quoteToEdit: _quote),
-                                  ).then((updated) { if (updated == true) _loadData(); });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primaryGreen,
-                                    borderRadius: BorderRadius.circular(999),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppTheme.primaryGreen.withOpacity(0.25),
-                                        blurRadius: 16,
-                                        offset: const Offset(0, 6),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.edit_outlined, color: Color(0xFF0F172A), size: 20),
-                                      const SizedBox(width: 10),
-                                      Text(
-                                        'Edit Estimate',
-                                        style: GoogleFonts.manrope(
-                                          color: const Color(0xFF0F172A),
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            MouseRegion(
-                              cursor: SystemMouseCursors.click,
-                              child: GestureDetector(
-                                onTap: () => _confirmDelete(),
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.errorRed.withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(color: AppTheme.errorRed.withOpacity(0.2)),
-                                  ),
-                                  child: const Icon(Icons.delete_outline, color: AppTheme.errorRed, size: 18),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            onTap: () => _generateAndPrintPdf(),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryGreen.withOpacity(0.08),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2)),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.picture_as_pdf_outlined, color: AppTheme.primaryGreen, size: 18),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Export to PDF',
-                                    style: GoogleFonts.manrope(
-                                      color: AppTheme.primaryGreen,
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 13,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
                         if (status.toLowerCase() != 'accepted') ...[
-                          const SizedBox(height: 8),
                           MouseRegion(
                             cursor: _isConverting ? SystemMouseCursors.basic : SystemMouseCursors.click,
                             child: GestureDetector(
                               onTap: _isConverting ? null : _approveAndCreateProject,
                               child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                width: 260,
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                                 decoration: BoxDecoration(
                                   gradient: const LinearGradient(colors: [AppTheme.primaryGreen, Color(0xFF0D9488)]),
-                                  borderRadius: BorderRadius.circular(10),
-                                  boxShadow: [BoxShadow(color: AppTheme.primaryGreen.withOpacity(0.3), blurRadius: 8, offset: const Offset(0, 4))],
+                                  borderRadius: BorderRadius.circular(12),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppTheme.primaryGreen.withOpacity(0.3),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 6),
+                                    ),
+                                  ],
                                 ),
                                 child: Row(
-                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment: MainAxisAlignment.center,
                                   children: [
                                     if (_isConverting)
                                       const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                                     else
-                                      const Icon(Icons.rocket_launch, color: Colors.white, size: 18),
-                                    const SizedBox(width: 8),
+                                      const Icon(Icons.rocket_launch, color: Colors.white, size: 20),
+                                    const SizedBox(width: 10),
                                     Text(
                                       'Approve & Start Project',
                                       style: GoogleFonts.manrope(
                                         color: Colors.white,
                                         fontWeight: FontWeight.w800,
-                                        fontSize: 13,
+                                        fontSize: 14,
                                       ),
                                     ),
                                   ],
@@ -718,7 +654,103 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                               ),
                             ),
                           ),
+                          const SizedBox(height: 12),
                         ],
+                        SizedBox(
+                          width: 260,
+                          child: Row(
+                            children: [
+                              // Edit Button
+                              Expanded(
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      showDialog(
+                                        context: context,
+                                        barrierColor: Colors.black.withOpacity(0.2),
+                                        builder: (_) => QuoteFormDialog(quoteToEdit: _quote),
+                                      ).then((updated) { if (updated == true) _loadData(); });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryGreen.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2)),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(Icons.edit_outlined, color: AppTheme.primaryGreen, size: 16),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Edit',
+                                            style: GoogleFonts.manrope(
+                                              color: AppTheme.primaryGreen,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // PDF Button
+                              Expanded(
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: GestureDetector(
+                                    onTap: () => _generateAndPrintPdf(),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryGreen.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2)),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(Icons.picture_as_pdf_outlined, color: AppTheme.primaryGreen, size: 16),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'PDF',
+                                            style: GoogleFonts.manrope(
+                                              color: AppTheme.primaryGreen,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Delete Button
+                              MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                child: GestureDetector(
+                                  onTap: () => _confirmDelete(),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.errorRed.withOpacity(0.08),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(color: AppTheme.errorRed.withOpacity(0.2)),
+                                    ),
+                                    child: const Icon(Icons.delete_outline, color: AppTheme.errorRed, size: 18),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ],

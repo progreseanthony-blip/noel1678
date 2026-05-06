@@ -12,6 +12,7 @@ import '../widgets/material_history_dialog.dart';
 import '../widgets/labor_checkin_dialog.dart';
 import '../widgets/labor_history_dialog.dart';
 import '../widgets/worker_assignment_dialog.dart';
+import '../widgets/machinery_scheduling_dialog.dart';
 
 class ProjectDetailPage extends StatefulWidget {
   final String projectId;
@@ -27,6 +28,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
   List<Map<String, dynamic>> _materials = [];
   List<Map<String, dynamic>> _labor = [];
   Map<String, String?> _machineryPhotos = {};
+  Map<String, double?> _serviceDurations = {};
   bool _isLoading = true;
   String? _error;
   late TabController _tabController;
@@ -64,13 +66,17 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
       if (pResult == null) throw 'Project not found';
 
       // 2. Machinery
-      final mResult = await supabase.from('project_machinery').select('*, quote_service_machineries(quote_services(name))').eq('project_id', widget.projectId).order('machinery_name');
+      final mResult = await supabase.from('project_machinery').select('*, quote_service_machineries(quote_services(name, quote_service_estimations(total_working_days)))').eq('project_id', widget.projectId).order('machinery_name');
 
       // 3. Materials
-      final matResult = await supabase.from('project_materials').select('*, quote_service_materials(quote_services(name))').eq('project_id', widget.projectId).order('material_name');
+      final matResult = await supabase.from('project_materials').select('*, quote_service_materials(quote_services(name, quote_service_estimations(total_working_days)))').eq('project_id', widget.projectId).order('material_name');
 
       // 4. Labor
-      final labResult = await supabase.from('project_labor').select('*, quote_service_labors(quote_services(name)), project_labor_assignments(count)').eq('project_id', widget.projectId).order('role_name');
+      final labResult = await supabase
+          .from('project_labor')
+          .select('*, quote_service_labors(quote_services(name, quote_service_estimations(total_working_days))), project_labor_assignments(start_date, end_date, workers(full_name))')
+          .eq('project_id', widget.projectId)
+          .order('role_name');
 
       // 5. Machinery Photos (Catalog)
       final photoMap = <String, String?>{};
@@ -90,6 +96,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
       if (mounted) {
         final allServices = <String>{'All Services'};
         
+        final serviceDurations = <String, double?>{};
+        
         void addServiceSafely(dynamic list, String relationName) {
           if (list == null || list is! List) return;
           for (final item in list) {
@@ -103,25 +111,41 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
               }
               
               if (service != null) {
-                final name = (service is List && service.isNotEmpty) 
-                    ? service[0]['name'] 
-                    : (service is Map ? service['name'] : null);
-                if (name != null) allServices.add(name.toString());
+                final sData = (service is List && service.isNotEmpty) ? service[0] : (service is Map ? service : null);
+                if (sData != null) {
+                  final name = sData['name']?.toString();
+                  if (name != null) {
+                    allServices.add(name);
+                    
+                    // Extract duration
+                    final est = sData['quote_service_estimations'];
+                    dynamic duration;
+                    if (est is List && est.isNotEmpty) {
+                      duration = est[0]['total_working_days'];
+                    } else if (est is Map) {
+                      duration = est['total_working_days'];
+                    }
+                    if (duration != null) {
+                      serviceDurations[name] = (duration as num).toDouble();
+                    }
+                  }
+                }
               }
             } catch (_) {}
           }
         }
-
+  
         addServiceSafely(mResult, 'quote_service_machineries');
         addServiceSafely(matResult, 'quote_service_materials');
         addServiceSafely(labResult, 'quote_service_labors');
-
+  
         setState(() {
           _project = pResult;
           _machinery = List<Map<String, dynamic>>.from(mResult as List? ?? []);
           _materials = List<Map<String, dynamic>>.from(matResult as List? ?? []);
           _labor = List<Map<String, dynamic>>.from(labResult as List? ?? []);
           _machineryPhotos = photoMap;
+          _serviceDurations = serviceDurations;
           _projectServices = allServices.toList()..sort((a, b) => a == 'All Services' ? -1 : a.compareTo(b));
           _isLoading = false;
         });
@@ -144,18 +168,17 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
       String serviceName = 'General / Unassigned';
       
       if (data != null) {
-        dynamic service;
-        if (data is List && data.isNotEmpty) {
-          service = data[0]['quote_services'];
-        } else if (data is Map) {
-          service = data['quote_services'];
-        }
-        
-        if (service != null) {
-          final name = (service is List && service.isNotEmpty) 
-              ? service[0]['name'] 
-              : (service is Map ? service['name'] : null);
-          if (name != null) serviceName = name.toString();
+        // Handle if relation is a list or map
+        final dData = (data is List && data.isNotEmpty) ? data[0] : (data is Map ? data : null);
+        if (dData != null) {
+          final service = dData['quote_services'];
+          if (service != null) {
+            // Handle if service is a list or map
+            final sData = (service is List && service.isNotEmpty) ? service[0] : (service is Map ? service : null);
+            if (sData != null && sData['name'] != null) {
+              serviceName = sData['name'].toString();
+            }
+          }
         }
       }
       
@@ -168,6 +191,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
   }
 
   Widget _buildServiceHeader(String name) {
+    final duration = _serviceDurations[name];
     return Padding(
       padding: const EdgeInsets.only(bottom: 16, top: 12),
       child: Row(
@@ -190,6 +214,24 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
               letterSpacing: 1.5,
             ),
           ),
+          if (duration != null) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppTheme.slate200,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                '${duration} DAYS',
+                style: GoogleFonts.manrope(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.slate600,
+                ),
+              ),
+            ),
+          ],
           const SizedBox(width: 12),
           Expanded(child: Divider(color: AppTheme.slate200, thickness: 1)),
         ],
@@ -517,10 +559,50 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
                               color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
                             ),
                           ),
+                          if (m['start_date'] != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.calendar_today, size: 12, color: Colors.orange),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'Plan: ${m['start_date']} to ${m['end_date']}',
+                                    style: GoogleFonts.manrope(
+                                      fontSize: 12, 
+                                      color: AppTheme.slate600, 
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                         ],
                       ),
                     ),
                     const SizedBox(width: 16),
+                    IconButton(
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          barrierColor: Colors.black.withOpacity(0.5),
+                          builder: (_) => MachinerySchedulingDialog(
+                            projectMachineryId: m['id'],
+                            machineryName: mName,
+                            expectedQuantity: expected,
+                          ),
+                        ).then((updated) {
+                          if (updated == true) _loadProjectData();
+                        });
+                      },
+                      icon: const Icon(Icons.calendar_month, color: Colors.orange),
+                      tooltip: 'Plan Schedule',
+                      style: IconButton.styleFrom(
+                        backgroundColor: Colors.orange.withOpacity(0.1),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
                     if (received > 0)
                       IconButton(
                         onPressed: () {
@@ -871,7 +953,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                           Text(
+                          Text(
                             roleName,
                             style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900),
                           ),
@@ -881,13 +963,53 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
                               _buildLaborStatusInfo(
                                 'Crew Status', 
                                 (l['project_labor_assignments'] != null && (l['project_labor_assignments'] as List).isNotEmpty)
-                                    ? (l['project_labor_assignments'][0]['count'] ?? 0).toInt()
+                                    ? (l['project_labor_assignments'] as List).length
                                     : 0, 
                                 expected,
                                 Colors.blue
                               ),
                             ],
                           ),
+                          if (l['project_labor_assignments'] != null && (l['project_labor_assignments'] as List).isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: (l['project_labor_assignments'] as List).map((a) {
+                                final wName = a['workers']?['full_name'] ?? 'Unknown';
+                                final start = a['start_date'] ?? '?';
+                                final end = a['end_date'] ?? '?';
+                                return Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.slate50,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: AppTheme.slate200),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.person_outline, size: 14, color: AppTheme.slate600),
+                                      const SizedBox(width: 6),
+                                      Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            wName,
+                                            style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate700),
+                                          ),
+                                          Text(
+                                            '$start to $end',
+                                            style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate500),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                          ],
                         ],
                       ),
                     ),

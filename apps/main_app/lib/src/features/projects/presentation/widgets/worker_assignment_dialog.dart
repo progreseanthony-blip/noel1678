@@ -24,6 +24,13 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
   List<Map<String, dynamic>> _allWorkers = [];
   Set<String> _assignedWorkerIds = {};
   Map<String, String> _globalBusyWorkers = {}; // workerId -> Project Name
+  Map<String, Map<String, String>> _workerDates = {}; // workerId -> {start, end}
+  
+  double? _stipulatedDays;
+  DateTime? _startDate;
+  DateTime? _endDate;
+  String? _limitError;
+  final Set<String> _processingWorkers = {}; 
 
   @override
   void initState() {
@@ -31,18 +38,65 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
     _loadData();
   }
 
+  DateTime _calculateEndDate(DateTime start, double duration) {
+    DateTime current = start;
+    double remaining = duration;
+    
+    while (remaining > 0) {
+      double contribution = 0;
+      if (current.weekday >= 1 && current.weekday <= 5) {
+        contribution = 1.0;
+      } else if (current.weekday == 6) {
+        contribution = 0.5;
+      }
+      
+      if (remaining <= contribution) {
+        remaining = 0;
+      } else {
+        remaining -= contribution;
+        current = current.add(const Duration(days: 1));
+        if (current.weekday == 7) {
+          current = current.add(const Duration(days: 1));
+        }
+      }
+    }
+    return current;
+  }
+
   Future<void> _loadData() async {
     try {
       final supabase = Supabase.instance.client;
 
-      // 1. Get the required role_id
+      // 1. Get role and stipulated duration
       final laborData = await supabase
           .from('project_labor')
-          .select('quote_service_labor_id(role_id)')
+          .select('quote_service_labors(role_id, quote_services(quote_service_estimations(total_working_days)))')
           .eq('id', widget.projectLaborId)
-          .single();
+          .maybeSingle();
       
-      final roleId = laborData['quote_service_labor_id']?['role_id'];
+      if (laborData == null) return;
+
+      dynamic duration;
+      dynamic roleId;
+      try {
+        final qsl = laborData['quote_service_labors'];
+        if (qsl != null) {
+          roleId = qsl['role_id'];
+          final qs = qsl['quote_services'];
+          if (qs != null) {
+            final est = qs['quote_service_estimations'];
+            if (est is List && est.isNotEmpty) {
+              duration = est[0]['total_working_days'];
+            } else if (est is Map) {
+              duration = est['total_working_days'];
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error parsing labor duration path: $e');
+      }
+
+      final double? durationValue = duration != null ? (duration as num).toDouble() : null;
 
       // 2. Load all workers with that role
       var workersQuery = supabase
@@ -56,73 +110,243 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       
       final workersResult = await workersQuery.order('full_name');
 
-      // 3. Load current assignments for THIS role
+      // 3. Load current assignments with dates
       final assignmentsResult = await supabase
           .from('project_labor_assignments')
-          .select('worker_id')
+          .select('worker_id, start_date, end_date')
           .eq('project_labor_id', widget.projectLaborId);
 
-      // 4. Load GLOBAL assignments to identify busy workers (Simplified)
-      final globalBusyResult = await supabase
-          .from('project_labor_assignments')
-          .select('worker_id')
-          .neq('project_labor_id', widget.projectLaborId);
+      final Map<String, Map<String, String>> workerDatesMap = {};
+      final Set<String> assignedIds = {};
+      if (assignmentsResult != null && assignmentsResult is List) {
+        for (final a in assignmentsResult) {
+          final id = a['worker_id'].toString();
+          assignedIds.add(id);
+          workerDatesMap[id] = {
+            'start': a['start_date'].toString(),
+            'end': a['end_date'].toString(),
+          };
+        }
+      }
 
-      if (mounted) {
-        final busyMap = <String, String>{};
-        try {
-          if (globalBusyResult != null && globalBusyResult is List) {
-            for (final row in globalBusyResult) {
-              final workerId = row['worker_id']?.toString();
-              if (workerId != null) {
-                busyMap[workerId] = 'Another project/role';
-              }
+      // 4. Load GLOBAL assignments to identify busy workers (Date-Aware)
+      final busyMap = <String, String>{};
+      
+      if (_startDate != null && _endDate != null) {
+        final startIso = _startDate!.toIso8601String().split('T')[0];
+        final endIso = _endDate!.toIso8601String().split('T')[0];
+
+        final globalBusyResult = await supabase
+            .from('project_labor_assignments')
+            .select('worker_id, project_labor(project_id(name))')
+            .neq('project_labor_id', widget.projectLaborId)
+            .lte('start_date', endIso)
+            .gte('end_date', startIso);
+
+        if (globalBusyResult != null && globalBusyResult is List) {
+          for (final row in globalBusyResult) {
+            final workerId = row['worker_id']?.toString();
+            final projectName = row['project_labor']?['project_id']?['name'] ?? 'Another project';
+            if (workerId != null) {
+              busyMap[workerId] = projectName;
             }
           }
-        } catch (e) {
-          debugPrint('Error parsing global busy workers: $e');
         }
+      }
 
+      if (mounted) {
         setState(() {
+          _stipulatedDays = durationValue;
           _allWorkers = List<Map<String, dynamic>>.from(workersResult ?? []);
-          _assignedWorkerIds = (assignmentsResult as List? ?? [])
-              .map((a) => a['worker_id'].toString())
-              .toSet();
+          _assignedWorkerIds = assignedIds;
+          _workerDates = workerDatesMap;
           _globalBusyWorkers = busyMap;
           _isLoading = false;
+          
+          if (_assignedWorkerIds.length > widget.expectedEmployees) {
+            _limitError = 'Exceeded Limit: ${_assignedWorkerIds.length} workers assigned, but only ${widget.expectedEmployees} required.';
+          } else {
+            _limitError = null;
+          }
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading assignments: $e')),
+          SnackBar(content: Text('Error loading data: $e')),
         );
       }
     }
   }
 
+  Future<void> _selectStartDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate ?? DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+    );
+
+    if (picked != null) {
+      setState(() {
+        _startDate = picked;
+        if (_stipulatedDays != null) {
+          _endDate = _calculateEndDate(picked, _stipulatedDays!);
+        } else {
+          _endDate = picked.add(const Duration(days: 7));
+        }
+        _isLoading = true;
+      });
+      _loadData();
+    }
+  }
+
+  Future<void> _selectEndDate() async {
+    if (_startDate == null) return;
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate ?? _startDate!,
+      firstDate: _startDate!,
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+    );
+
+    if (picked != null) {
+      setState(() {
+        _endDate = picked;
+        _isLoading = true;
+      });
+      _loadData();
+    }
+  }
+
+  Future<void> _editIndividualDates(String workerId) async {
+    final current = _workerDates[workerId];
+    if (current == null) return;
+
+    final DateTime initialStart = DateTime.parse(current['start']!);
+    final DateTime initialEnd = DateTime.parse(current['end']!);
+
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+      initialDateRange: DateTimeRange(start: initialStart, end: initialEnd),
+    );
+
+    if (picked != null) {
+      try {
+        final supabase = Supabase.instance.client;
+        final startIso = picked.start.toIso8601String().split('T')[0];
+        final endIso = picked.end.toIso8601String().split('T')[0];
+
+        // Check for conflicts
+        final conflict = await supabase
+            .from('project_labor_assignments')
+            .select('project_labor(project_id(name))')
+            .eq('worker_id', workerId)
+            .neq('project_labor_id', widget.projectLaborId)
+            .lte('start_date', endIso)
+            .gte('end_date', startIso)
+            .maybeSingle();
+
+        if (conflict != null) {
+          final pName = conflict['project_labor']?['project_id']?['name'] ?? 'another project';
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Conflict: Worker is busy in "$pName" during those dates.')),
+            );
+          }
+          return;
+        }
+
+        await supabase
+            .from('project_labor_assignments')
+            .update({
+              'start_date': startIso,
+              'end_date': endIso,
+            })
+            .eq('project_labor_id', widget.projectLaborId)
+            .eq('worker_id', workerId);
+
+        _loadData();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error updating individual dates: $e')),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _toggleAssignment(String workerId, bool assign) async {
+    if (_processingWorkers.contains(workerId)) return;
+    
     try {
       final supabase = Supabase.instance.client;
+      setState(() {
+        _processingWorkers.add(workerId);
+        _limitError = null;
+      });
+
       if (assign) {
+        if (_startDate == null || _endDate == null) {
+          setState(() {
+            _processingWorkers.remove(workerId);
+            _limitError = 'Please select a starting date first';
+          });
+          return;
+        }
+
+        // Final safety check on limit
+        if (_assignedWorkerIds.length >= widget.expectedEmployees) {
+          setState(() {
+            _processingWorkers.remove(workerId);
+            _limitError = 'Limit reached: Only ${widget.expectedEmployees} required.';
+          });
+          return;
+        }
+
         await supabase.from('project_labor_assignments').insert({
           'project_labor_id': widget.projectLaborId,
           'worker_id': workerId,
+          'start_date': _startDate!.toIso8601String().split('T')[0],
+          'end_date': _endDate!.toIso8601String().split('T')[0],
         });
-        setState(() => _assignedWorkerIds.add(workerId));
+        
+        setState(() {
+          _assignedWorkerIds.add(workerId);
+          _workerDates[workerId] = {
+            'start': _startDate!.toIso8601String().split('T')[0],
+            'end': _endDate!.toIso8601String().split('T')[0],
+          };
+        });
       } else {
         await supabase
             .from('project_labor_assignments')
             .delete()
             .eq('project_labor_id', widget.projectLaborId)
             .eq('worker_id', workerId);
-        setState(() => _assignedWorkerIds.remove(workerId));
+        setState(() {
+          _assignedWorkerIds.remove(workerId);
+          _workerDates.remove(workerId);
+        });
       }
+      
+      // Reload to ensure everything is in sync
+      await _loadData();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error updating assignment: $e')),
-      );
+      debugPrint('Error updating assignment: $e');
+      if (mounted) {
+        setState(() => _limitError = 'Error updating assignment: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _processingWorkers.remove(workerId);
+        });
+      }
     }
   }
 
@@ -131,7 +355,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        width: 500,
+        width: 550,
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -153,7 +377,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Assign Crew',
+                        'Team Planning',
                         style: GoogleFonts.manrope(
                           fontSize: 20,
                           fontWeight: FontWeight.w800,
@@ -161,7 +385,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
                         ),
                       ),
                       Text(
-                        'Select workers for ${widget.roleName}',
+                        'Scheduling ${widget.roleName}',
                         style: GoogleFonts.manrope(
                           fontSize: 14,
                           color: AppTheme.slate500,
@@ -177,23 +401,142 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
               ],
             ),
             const SizedBox(height: 24),
-            const Divider(),
+            
+            // Resource Info & Calculation
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.primaryGreen.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.1)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 20, color: AppTheme.primaryGreen),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'STIPULATED DURATION',
+                          style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen, letterSpacing: 1),
+                        ),
+                        Text(
+                          _stipulatedDays != null ? '${_stipulatedDays} Working Days' : 'Not defined',
+                          style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.slate900),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_stipulatedDays != null)
+                    Text(
+                      '(Sat = 0.5d)',
+                      style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500, fontStyle: FontStyle.italic),
+                    ),
+                ],
+              ),
+            ),
+            
             const SizedBox(height: 16),
-            if (_isLoading)
-              const Center(child: Padding(
-                padding: EdgeInsets.all(32.0),
-                child: CircularProgressIndicator(),
-              ))
-            else if (_allWorkers.isEmpty)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32.0),
-                  child: Text(
-                    'No active workers found for this role.',
-                    style: GoogleFonts.manrope(color: AppTheme.slate500),
+            
+            // Global Scheduling Row
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Start Date', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.slate600)),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: _selectStartDate,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppTheme.slate200),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.calendar_month, size: 16, color: AppTheme.primaryGreen),
+                              const SizedBox(width: 8),
+                              Text(
+                                _startDate != null ? _startDate!.toString().split(' ')[0] : 'Choose...',
+                                style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              )
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('End Date (Estimated)', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.slate600)),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: _selectEndDate,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppTheme.slate200),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.event_available, size: 16, color: AppTheme.primaryGreen),
+                              const SizedBox(width: 8),
+                              Text(
+                                _endDate != null ? _endDate!.toString().split(' ')[0] : 'Choose...',
+                                style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            
+            const SizedBox(height: 24),
+            
+            if (_limitError != null)
+              Container(
+                margin: const EdgeInsets.only(bottom: 16),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.errorRed.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.errorRed.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber_rounded, color: AppTheme.errorRed, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _limitError!,
+                        style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.errorRed),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+            const Divider(),
+            const SizedBox(height: 16),
+            
+            if (_isLoading)
+              const Center(child: Padding(padding: EdgeInsets.all(32.0), child: CircularProgressIndicator()))
             else
               Flexible(
                 child: ListView.builder(
@@ -201,9 +544,11 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
                   itemCount: _allWorkers.length,
                   itemBuilder: (context, index) {
                     final worker = _allWorkers[index];
-                    final isAssignedHere = _assignedWorkerIds.contains(worker['id']);
-                    final busyProject = _globalBusyWorkers[worker['id']];
+                    final workerId = worker['id'].toString();
+                    final isAssignedHere = _assignedWorkerIds.contains(workerId);
+                    final busyProject = _globalBusyWorkers[workerId];
                     final isBusyElsewhere = busyProject != null;
+                    final dates = _workerDates[workerId];
                     
                     return Container(
                       margin: const EdgeInsets.only(bottom: 8),
@@ -218,64 +563,63 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
                               : (isBusyElsewhere ? AppTheme.slate200.withOpacity(0.5) : AppTheme.slate200),
                         ),
                       ),
-                      child: Opacity(
-                        opacity: isBusyElsewhere ? 0.6 : 1.0,
-                        child: CheckboxListTile(
-                          enabled: !isBusyElsewhere,
-                          value: isAssignedHere,
-                          onChanged: (val) {
-                            if (isBusyElsewhere) return;
-                            final isChecking = val ?? false;
-                            if (isChecking && _assignedWorkerIds.length >= widget.expectedEmployees) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Limit reached: Only ${widget.expectedEmployees} workers required for this role.'),
-                                  backgroundColor: Colors.orange,
-                                ),
-                              );
-                              return;
-                            }
-                            _toggleAssignment(worker['id'], isChecking);
-                          },
-                          title: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  worker['full_name'],
-                                  style: GoogleFonts.manrope(
-                                    fontWeight: FontWeight.w600,
-                                    color: isBusyElsewhere ? AppTheme.slate500 : AppTheme.slate900,
-                                  ),
-                                ),
-                              ),
-                              if (isBusyElsewhere)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.errorRed.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
+                      child: Column(
+                        children: [
+                          CheckboxListTile(
+                            enabled: !isBusyElsewhere && (_startDate != null || isAssignedHere),
+                            value: isAssignedHere,
+                            onChanged: _processingWorkers.contains(workerId) ? null : (val) {
+                              if (isBusyElsewhere) return;
+                              if (val == true && _startDate == null) {
+                                setState(() => _limitError = 'Select a start date for the team first');
+                                return;
+                              }
+                              if (val == true && _assignedWorkerIds.length >= widget.expectedEmployees) {
+                                setState(() => _limitError = 'Limit reached: Only ${widget.expectedEmployees} required.');
+                                return;
+                              }
+                              _toggleAssignment(workerId, val ?? false);
+                            },
+                            title: Row(
+                              children: [
+                                Expanded(
                                   child: Text(
-                                    'BUSY: $busyProject',
+                                    worker['full_name'],
                                     style: GoogleFonts.manrope(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w800,
-                                      color: AppTheme.errorRed,
+                                      fontWeight: FontWeight.w700,
+                                      color: isBusyElsewhere ? AppTheme.slate400 : AppTheme.slate900,
                                     ),
                                   ),
                                 ),
-                            ],
-                          ),
-                          subtitle: Text(
-                            'ID: ${worker['id_number']}',
-                            style: GoogleFonts.manrope(
-                              fontSize: 12, 
-                              color: isBusyElsewhere ? AppTheme.slate400 : AppTheme.slate500
+                                if (isBusyElsewhere)
+                                  _buildBusyBadge(busyProject),
+                                if (isAssignedHere)
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_calendar, size: 20, color: Colors.blue),
+                                    onPressed: () => _editIndividualDates(workerId),
+                                    tooltip: 'Edit individual dates',
+                                  ),
+                              ],
                             ),
+                            subtitle: Text('ID: ${worker['id_number']}', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500)),
+                            activeColor: AppTheme.primaryGreen,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
-                          activeColor: AppTheme.primaryGreen,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
+                          if (isAssignedHere && dates != null)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 70, bottom: 12, right: 16),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.date_range, size: 14, color: AppTheme.slate400),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Planned: ${dates['start']} to ${dates['end']}',
+                                    style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.slate600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                        ],
                       ),
                     );
                   },
@@ -291,12 +635,20 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                child: Text('Done', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+                child: Text('Confirm Schedule', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBusyBadge(String project) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(color: AppTheme.errorRed.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+      child: Text('BUSY: $project', style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.errorRed)),
     );
   }
 }

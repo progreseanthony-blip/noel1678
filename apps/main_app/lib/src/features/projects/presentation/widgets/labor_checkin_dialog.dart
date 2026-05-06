@@ -87,11 +87,14 @@ class _LaborCheckInDialogState extends State<LaborCheckInDialog> {
       List<Map<String, dynamic>> availableWorkers = [];
 
       if (!_showAllQualified) {
-        // 2. Load PRE-ASSIGNED workers for this labor category
+        // 2. Load PRE-ASSIGNED workers for this labor category (FILTERED BY TODAY)
+        final today = DateTime.now().toIso8601String().split('T')[0];
         final assignedRes = await supabase
             .from('project_labor_assignments')
             .select('workers(id, full_name, id_number)')
-            .eq('project_labor_id', widget.projectLaborId);
+            .eq('project_labor_id', widget.projectLaborId)
+            .lte('start_date', today)
+            .gte('end_date', today);
         
         availableWorkers = (assignedRes as List)
             .map((a) => a['workers'] as Map<String, dynamic>)
