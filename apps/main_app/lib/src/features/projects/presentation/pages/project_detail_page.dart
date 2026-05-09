@@ -146,7 +146,11 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with SingleTicker
           _labor = List<Map<String, dynamic>>.from(labResult as List? ?? []);
           _machineryPhotos = photoMap;
           _serviceDurations = serviceDurations;
-          _projectServices = allServices.toList()..sort((a, b) => a == 'All Services' ? -1 : a.compareTo(b));
+          _projectServices = allServices.toList()..sort((a, b) {
+            if (a == 'All Services') return -1;
+            if (b == 'All Services') return 1;
+            return a.compareTo(b);
+          });
           _isLoading = false;
         });
       }
