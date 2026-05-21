@@ -673,27 +673,23 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
               ),
               ElevatedButton.icon(
                 onPressed: () {
+                  debugPrint('>>> ADD BUTTON PRESSED <<<');
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Button pressed!'), duration: Duration(seconds: 2)),
+                  );
                   showDialog(
                     context: context,
+                    useRootNavigator: false,
                     barrierColor: Colors.black.withOpacity(0.5),
-                    builder: (ctx) {
-                      try {
-                        return AddUnplannedResourceDialog(projectId: widget.projectId);
-                      } catch (e, st) {
-                        debugPrint('Error building AddUnplannedResourceDialog: $e\n$st');
-                        return AlertDialog(
-                          backgroundColor: const Color(0xFF1E293B),
-                          title: const Text('Error', style: TextStyle(color: Colors.red)),
-                          content: Text('Failed to open dialog: $e', style: const TextStyle(color: Colors.white)),
-                          actions: [
-                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
-                          ],
-                        );
-                      }
-                    },
+                    builder: (ctx) => AddUnplannedResourceDialog(projectId: widget.projectId),
                   ).then((added) {
-                    if (added == true) {
-                      _loadData();
+                    if (added == true) _loadData();
+                  }).catchError((e, st) {
+                    debugPrint('showDialog error: $e\n$st');
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Dialog error: $e'), backgroundColor: Colors.red),
+                      );
                     }
                   });
                 },
