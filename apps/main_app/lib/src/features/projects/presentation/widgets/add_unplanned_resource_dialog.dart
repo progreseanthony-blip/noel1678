@@ -577,8 +577,15 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
   }
 
   Future<void> _saveResource() async {
-    if (_selectedCatalogItemId == null || _selectedServiceId == null) return;
-    setState(() => _isSaving = true);
+    if (_selectedCatalogItemId == null) {
+      setState(() => _error = 'Please select a resource from the catalog first.');
+      return;
+    }
+    if (_selectedServiceId == null) {
+      setState(() => _error = 'Please select a target service first.');
+      return;
+    }
+    setState(() { _isSaving = true; _error = null; });
 
     try {
       final supabase = Supabase.instance.client;
@@ -674,8 +681,9 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
       }
 
       if (mounted) Navigator.of(context).pop(true);
-    } catch (e) {
-      debugPrint('Error saving: $e');
+    } catch (e, st) {
+      debugPrint('Error saving resource: $e\n$st');
+      if (mounted) setState(() => _error = 'Failed to save: $e');
     }
     setState(() => _isSaving = false);
   }
@@ -778,8 +786,21 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
                   ],
                 ),
               ),
-              const SizedBox(height: 32),
-  
+              const SizedBox(height: 16),
+
+              if (_error != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.only(bottom: 8),
+                  decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.red.withOpacity(0.3))),
+                  child: Row(children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(_error!, style: GoogleFonts.manrope(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w600))),
+                  ]),
+                ),
+
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [

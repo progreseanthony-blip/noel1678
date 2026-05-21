@@ -671,52 +671,27 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
                   color: Colors.white,
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.all(12),
-                margin: const EdgeInsets.only(top: 8),
-                decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.red, width: 2)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('⬇ DIAGNOSTIC TEST BUTTON BELOW ⬇', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.red)),
-                    const SizedBox(height: 8),
-                    TextButton(
-                      onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('TEST BUTTON: SÍ RESPONDE'), backgroundColor: Colors.green, duration: Duration(seconds: 3)),
-                        );
-                        showDialog(
-                          context: context,
-                          useRootNavigator: false,
-                          barrierColor: Colors.black.withOpacity(0.5),
-                          builder: (ctx) => AddUnplannedResourceDialog(projectId: widget.projectId),
-                        ).then((added) {
-                          if (added == true) _loadData();
-                        }).catchError((e, st) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Dialog error: $e'), backgroundColor: Colors.red),
-                            );
-                          }
-                        });
-                      },
-                      style: TextButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(200, 60),
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.add, size: 20),
-                          SizedBox(width: 8),
-                          Text('TEST: ADD EXTRA RESOURCE', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
-                  ],
+              ElevatedButton.icon(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    barrierColor: Colors.black.withOpacity(0.5),
+                    builder: (ctx) => AddUnplannedResourceDialog(projectId: widget.projectId),
+                  ).then((added) {
+                    if (added == true) _loadData();
+                  }).catchError((e, st) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                      );
+                    }
+                  });
+                },
+                icon: const Icon(Icons.add, size: 16, color: Colors.white),
+                label: Text('Add Extra Resource', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryGreen,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                 ),
               ),
             ],
