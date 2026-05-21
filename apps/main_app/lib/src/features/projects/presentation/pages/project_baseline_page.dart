@@ -676,7 +676,21 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
                   showDialog(
                     context: context,
                     barrierColor: Colors.black.withOpacity(0.5),
-                    builder: (_) => AddUnplannedResourceDialog(projectId: widget.projectId),
+                    builder: (ctx) {
+                      try {
+                        return AddUnplannedResourceDialog(projectId: widget.projectId);
+                      } catch (e, st) {
+                        debugPrint('Error building AddUnplannedResourceDialog: $e\n$st');
+                        return AlertDialog(
+                          backgroundColor: const Color(0xFF1E293B),
+                          title: const Text('Error', style: TextStyle(color: Colors.red)),
+                          content: Text('Failed to open dialog: $e', style: const TextStyle(color: Colors.white)),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+                          ],
+                        );
+                      }
+                    },
                   ).then((added) {
                     if (added == true) {
                       _loadData();
