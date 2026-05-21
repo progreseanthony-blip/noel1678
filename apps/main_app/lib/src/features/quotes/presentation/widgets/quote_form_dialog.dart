@@ -3553,7 +3553,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         ? '\$${_currencyFormat.format(value)}'
         : NumberFormat('#,##0.00').format(value);
     return SizedBox(
-      width: 90,
+      width: 120,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

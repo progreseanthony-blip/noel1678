@@ -10,7 +10,7 @@ import '../features/workers/presentation/pages/workers_page.dart';
 import '../features/customers/presentation/pages/customers_list_page.dart';
 import '../features/projects/presentation/pages/projects_list_page.dart';
 import '../features/projects/presentation/pages/project_detail_page.dart';
-
+import '../features/projects/presentation/pages/project_baseline_page.dart';
 final goRouter = GoRouter(
   initialLocation: '/signin',
   routes: [
@@ -45,6 +45,10 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/projects/:id',
       builder: (context, state) => ProjectDetailPage(projectId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/projects/:id/baseline',
+      builder: (context, state) => ProjectBaselinePage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/catalogs',

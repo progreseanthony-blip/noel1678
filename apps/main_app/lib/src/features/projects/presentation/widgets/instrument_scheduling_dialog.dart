@@ -3,28 +3,27 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-class MachinerySchedulingDialog extends StatefulWidget {
-  final String projectMachineryId;
-  final String machineryName;
+class InstrumentSchedulingDialog extends StatefulWidget {
+  final String projectInstrumentId;
+  final String instrumentName;
   final int expectedQuantity;
 
-  const MachinerySchedulingDialog({
+  const InstrumentSchedulingDialog({
     super.key,
-    required this.projectMachineryId,
-    required this.machineryName,
+    required this.projectInstrumentId,
+    required this.instrumentName,
     required this.expectedQuantity,
   });
 
   @override
-  State<MachinerySchedulingDialog> createState() => _MachinerySchedulingDialogState();
+  State<InstrumentSchedulingDialog> createState() => _InstrumentSchedulingDialogState();
 }
 
-class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
+class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog> {
   bool _isLoading = true;
   double? _stipulatedDays;
   String? _quoteServiceId;
   
-  // Virtual units: index -> {startDate, endDate, assignmentId}
   final Map<int, Map<String, dynamic>> _unitPlans = {};
   final Set<int> _selectedUnits = {};
   
@@ -66,31 +65,25 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
     try {
       final supabase = Supabase.instance.client;
 
-      // 1. Get machinery details and stipulated duration
       final mRes = await supabase
-          .from('project_machinery')
-          .select('quote_service_id, calculation_metadata, quote_service_machineries(quote_services(quote_service_estimations(total_working_days)))')
-          .eq('id', widget.projectMachineryId)
+          .from('project_instruments')
+          .select('quote_service_id, quote_service_instruments(quote_services(quote_service_estimations(total_working_days)))')
+          .eq('id', widget.projectInstrumentId)
           .single();
       
       _quoteServiceId = mRes['quote_service_id'];
       
       dynamic duration;
       try {
-        final meta = mRes['calculation_metadata'] as Map<String, dynamic>?;
-        if (meta != null && meta['days'] != null) {
-          duration = meta['days'];
-        } else {
-          final qsm = mRes['quote_service_machineries'];
-          if (qsm != null) {
-            final qs = qsm['quote_services'];
-            if (qs != null) {
-              final est = qs['quote_service_estimations'];
-              if (est is List && est.isNotEmpty) {
-                duration = est[0]['total_working_days'];
-              } else if (est is Map) {
-                duration = est['total_working_days'];
-              }
+        final qsi = mRes['quote_service_instruments'];
+        if (qsi != null) {
+          final qs = qsi['quote_services'];
+          if (qs != null) {
+            final est = qs['quote_service_estimations'];
+            if (est is List && est.isNotEmpty) {
+              duration = est[0]['total_working_days'];
+            } else if (est is Map) {
+              duration = est['total_working_days'];
             }
           }
         }
@@ -99,16 +92,14 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
       }
       _stipulatedDays = duration != null ? (duration as num).toDouble() : null;
 
-      // 2. Load existing assignments
       final assignments = await supabase
-          .from('project_machinery_assignments')
+          .from('project_instrument_assignments')
           .select()
-          .eq('project_machinery_id', widget.projectMachineryId)
+          .eq('project_instrument_id', widget.projectInstrumentId)
           .order('created_at');
 
-      // 3. Try to find DEFAULT dates from OTHER resources in the same service (Request 5)
+      // Request 5: Default dates from other resources
       if (assignments.isEmpty && _quoteServiceId != null) {
-        // Try Labor first
         final laborAssign = await supabase
             .from('project_labor_assignments')
             .select('start_date, end_date')
@@ -118,35 +109,12 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
         
         if (laborAssign != null) {
           _batchStartDate = DateTime.parse(laborAssign['start_date']);
-          if (_stipulatedDays != null) {
-            _batchEndDate = _calculateEndDate(_batchStartDate!, _stipulatedDays!);
-          } else {
-            _batchEndDate = DateTime.parse(laborAssign['end_date']);
-          }
-        } else {
-          // Try other machinery in same service
-          final otherMachAssign = await supabase
-              .from('project_machinery_assignments')
-              .select('start_date, end_date')
-              .eq('project_machinery.quote_service_id', _quoteServiceId)
-              .neq('project_machinery_id', widget.projectMachineryId)
-              .limit(1)
-              .maybeSingle();
-          
-          if (otherMachAssign != null) {
-            _batchStartDate = DateTime.parse(otherMachAssign['start_date']);
-            if (_stipulatedDays != null) {
-              _batchEndDate = _calculateEndDate(_batchStartDate!, _stipulatedDays!);
-            } else {
-              _batchEndDate = DateTime.parse(otherMachAssign['end_date']);
-            }
-          }
+          _batchEndDate = DateTime.parse(laborAssign['end_date']);
         }
       }
 
       if (mounted) {
         setState(() {
-          // Map existing assignments to virtual units
           int currentUnitIdx = 1;
           for (var a in assignments) {
             final qty = (a['quantity'] as num?)?.toInt() ?? 1;
@@ -165,7 +133,7 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
         });
       }
     } catch (e) {
-      debugPrint('Error loading machinery data: $e');
+      debugPrint('Error loading instrument data: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -174,15 +142,8 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
     setState(() => _isLoading = true);
     try {
       final supabase = Supabase.instance.client;
+      await supabase.from('project_instrument_assignments').delete().eq('project_instrument_id', widget.projectInstrumentId);
 
-      // Group units by their plans (dates) to minimize records
-      // Or just save one record per unit for maximum granularity?
-      // User wants "Joint or Independent".
-      
-      // 1. Delete all current assignments for this project_machinery
-      await supabase.from('project_machinery_assignments').delete().eq('project_machinery_id', widget.projectMachineryId);
-
-      // 2. Insert new ones grouped by identical dates
       final Map<String, List<int>> groups = {};
       for (int i = 1; i <= widget.expectedQuantity; i++) {
         final plan = _unitPlans[i];
@@ -198,21 +159,20 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
 
       for (var entry in groups.entries) {
         final dates = entry.key.split('|');
-        await supabase.from('project_machinery_assignments').insert({
-          'project_machinery_id': widget.projectMachineryId,
+        await supabase.from('project_instrument_assignments').insert({
+          'project_instrument_id': widget.projectInstrumentId,
           'start_date': dates[0],
           'end_date': dates[1],
           'quantity': entry.value.length,
         });
       }
 
-      // 3. Update main record with first available dates for summary
       if (groups.isNotEmpty) {
         final first = groups.keys.first.split('|');
-        await supabase.from('project_machinery').update({
+        await supabase.from('project_instruments').update({
           'start_date': first[0],
           'end_date': first[1],
-        }).eq('id', widget.projectMachineryId);
+        }).eq('id', widget.projectInstrumentId);
       }
 
       if (mounted) {
@@ -289,21 +249,20 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
           : Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Row(
               children: [
                 Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                  child: const Icon(Icons.precision_manufacturing, color: Colors.orange),
+                  decoration: BoxDecoration(color: Colors.purple.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.handyman_outlined, color: Colors.purple),
                 ),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Machinery Planning', style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
-                      Text('${widget.machineryName} (${widget.expectedQuantity} Units)', style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate500)),
+                      Text('Instrument Planning', style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+                      Text('${widget.instrumentName} (${widget.expectedQuantity} Units)', style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate500)),
                     ],
                   ),
                 ),
@@ -312,7 +271,6 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
             ),
             const Divider(height: 32),
             
-            // Batch Selection & Date Picker
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(color: AppTheme.slate50, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200)),
@@ -340,7 +298,7 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
                       ElevatedButton(
                         onPressed: _applyBatchDates,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryGreen,
+                          backgroundColor: Colors.purple,
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
@@ -354,7 +312,6 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
             
             const SizedBox(height: 24),
             
-            // Units Grid
             Text('2. SELECT UNITS (${_selectedUnits.length} SELECTED)', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500, letterSpacing: 1)),
             const SizedBox(height: 12),
             Expanded(
@@ -382,13 +339,13 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12),
                       decoration: BoxDecoration(
-                        color: isSelected ? AppTheme.primaryGreen.withOpacity(0.05) : Colors.white,
+                        color: isSelected ? Colors.purple.withOpacity(0.05) : Colors.white,
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: isSelected ? AppTheme.primaryGreen : AppTheme.slate200),
+                        border: Border.all(color: isSelected ? Colors.purple : AppTheme.slate200),
                       ),
                       child: Row(
                         children: [
-                          Icon(isSelected ? Icons.check_circle : Icons.circle_outlined, size: 18, color: isSelected ? AppTheme.primaryGreen : AppTheme.slate400),
+                          Icon(isSelected ? Icons.check_circle : Icons.circle_outlined, size: 18, color: isSelected ? Colors.purple : AppTheme.slate400),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -400,7 +357,7 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
                                   hasPlan 
                                     ? '${plan['start'].toString().split(' ')[0]} to ${plan['end'].toString().split(' ')[0]}'
                                     : 'Not Scheduled',
-                                  style: GoogleFonts.manrope(fontSize: 10, color: hasPlan ? AppTheme.primaryGreen : AppTheme.slate400),
+                                  style: GoogleFonts.manrope(fontSize: 10, color: hasPlan ? Colors.purple : AppTheme.slate400),
                                 ),
                               ],
                             ),
@@ -413,7 +370,6 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
               ),
             ),
             
-            // Footer
             const Divider(height: 32),
             Row(
               children: [
@@ -424,7 +380,7 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
                       else _selectedUnits.addAll(List.generate(widget.expectedQuantity, (i) => i + 1));
                     });
                   },
-                  child: Text(_selectedUnits.length == widget.expectedQuantity ? 'Deselect All' : 'Select All Units'),
+                  child: const Text('Select All Units'),
                 ),
                 const Spacer(),
                 OutlinedButton(
@@ -456,7 +412,7 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppTheme.slate200)),
       child: Row(
         children: [
-          const Icon(Icons.calendar_today, size: 16, color: Colors.orange),
+          const Icon(Icons.calendar_today, size: 16, color: Colors.purple),
           const SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,

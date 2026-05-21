@@ -1529,7 +1529,7 @@ class _ServiceEstimationDialogState
          mat['layer_type'] = 'linear';
        }
     } else {
-       if (currentType == 'linear' || currentType == 'earth' || currentType == 'gravel') {
+       if (currentType == 'linear') {
          currentType = 'earth';
          mat['layer_type'] = 'earth';
        }

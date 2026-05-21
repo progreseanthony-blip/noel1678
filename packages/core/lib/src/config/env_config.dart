@@ -2,7 +2,7 @@
 class EnvConfig {
   static const String supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
-    defaultValue: 'http://127.0.0.1:56421',
+    defaultValue: 'http://127.0.0.1:54421',
   );
   
   static const String supabaseAnonKey = String.fromEnvironment(

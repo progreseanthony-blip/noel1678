@@ -23,7 +23,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _allWorkers = [];
   Set<String> _assignedWorkerIds = {};
-  Map<String, String> _globalBusyWorkers = {}; // workerId -> Project Name
+  Map<String, String> _globalBusyWorkers = {}; // workerId -> Reason/Project Name
   Map<String, Map<String, String>> _workerDates = {}; // workerId -> {start, end}
   
   double? _stipulatedDays;
@@ -70,7 +70,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       // 1. Get role and stipulated duration
       final laborData = await supabase
           .from('project_labor')
-          .select('quote_service_labors(role_id, quote_services(quote_service_estimations(total_working_days)))')
+          .select('project_id, quote_service_labors(role_id, quote_services(quote_service_estimations(total_working_days)))')
           .eq('id', widget.projectLaborId)
           .maybeSingle();
       
@@ -105,7 +105,10 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
           .eq('status', 'Active');
       
       if (roleId != null) {
+        debugPrint('Filtering workers by role_id: $roleId');
         workersQuery = workersQuery.eq('role_id', roleId);
+      } else {
+        debugPrint('Warning: roleId is null, showing all active workers');
       }
       
       final workersResult = await workersQuery.order('full_name');
@@ -130,25 +133,38 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       }
 
       // 4. Load GLOBAL assignments to identify busy workers (Date-Aware)
-      final busyMap = <String, String>{};
+      // 3. Check for Global Busy Workers (Other projects or other roles in same project)
+      final Set<String> busyWorkerIds = {};
+      final Map<String, String> busyReasons = {};
+
+      final projectAssignments = await supabase
+          .from('project_labor_assignments')
+          .select('worker_id, project_labor!inner(project_id, role_name)')
+          .eq('project_labor.project_id', laborData['project_id']);
       
+      for (var row in projectAssignments as List) {
+        final wId = row['worker_id'].toString();
+        final roleName = row['project_labor']?['role_name'] ?? 'Other Role';
+        if (wId != null) {
+          busyWorkerIds.add(wId);
+          busyReasons[wId] = 'Already assigned to this project as $roleName';
+        }
+      }
+
       if (_startDate != null && _endDate != null) {
-        final startIso = _startDate!.toIso8601String().split('T')[0];
-        final endIso = _endDate!.toIso8601String().split('T')[0];
-
-        final globalBusyResult = await supabase
+        final busyRes = await supabase
             .from('project_labor_assignments')
-            .select('worker_id, project_labor(project_id(name))')
+            .select('worker_id, project_labor(project_id(title))')
             .neq('project_labor_id', widget.projectLaborId)
-            .lte('start_date', endIso)
-            .gte('end_date', startIso);
-
-        if (globalBusyResult != null && globalBusyResult is List) {
-          for (final row in globalBusyResult) {
-            final workerId = row['worker_id']?.toString();
-            final projectName = row['project_labor']?['project_id']?['name'] ?? 'Another project';
-            if (workerId != null) {
-              busyMap[workerId] = projectName;
+            .or('and(start_date.lte.${_endDate!.toIso8601String()},end_date.gte.${_startDate!.toIso8601String()})');
+        
+        if (busyRes != null) {
+          for (var row in busyRes as List) {
+            final wId = row['worker_id'].toString();
+            final projectName = row['project_labor']?['project_id']?['title'] ?? 'Another Project';
+            if (!busyWorkerIds.contains(wId)) {
+              busyWorkerIds.add(wId);
+              busyReasons[wId] = 'Busy in $projectName';
             }
           }
         }
@@ -160,7 +176,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
           _allWorkers = List<Map<String, dynamic>>.from(workersResult ?? []);
           _assignedWorkerIds = assignedIds;
           _workerDates = workerDatesMap;
-          _globalBusyWorkers = busyMap;
+          _globalBusyWorkers = Map.fromIterable(busyWorkerIds, value: (id) => busyReasons[id] ?? 'Busy');
           _isLoading = false;
           
           if (_assignedWorkerIds.length > widget.expectedEmployees) {
@@ -243,7 +259,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
         // Check for conflicts
         final conflict = await supabase
             .from('project_labor_assignments')
-            .select('project_labor(project_id(name))')
+            .select('project_labor(project_id(title))')
             .eq('worker_id', workerId)
             .neq('project_labor_id', widget.projectLaborId)
             .lte('start_date', endIso)
@@ -251,7 +267,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
             .maybeSingle();
 
         if (conflict != null) {
-          final pName = conflict['project_labor']?['project_id']?['name'] ?? 'another project';
+          final pName = conflict['project_labor']?['project_id']?['title'] ?? 'another project';
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text('Conflict: Worker is busy in "$pName" during those dates.')),

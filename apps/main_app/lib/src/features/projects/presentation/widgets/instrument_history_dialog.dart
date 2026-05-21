@@ -3,27 +3,27 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'machinery_reception_dialog.dart';
+import 'instrument_reception_dialog.dart';
 
-class MachineryHistoryDialog extends StatefulWidget {
+class InstrumentHistoryDialog extends StatefulWidget {
   final String projectId;
-  final String projectMachineryId;
-  final String machineryName;
+  final String projectInstrumentId;
+  final String instrumentName;
   final String serviceName;
 
-  const MachineryHistoryDialog({
+  const InstrumentHistoryDialog({
     super.key,
     required this.projectId,
-    required this.projectMachineryId,
-    required this.machineryName,
+    required this.projectInstrumentId,
+    required this.instrumentName,
     required this.serviceName,
   });
 
   @override
-  State<MachineryHistoryDialog> createState() => _MachineryHistoryDialogState();
+  State<InstrumentHistoryDialog> createState() => _InstrumentHistoryDialogState();
 }
 
-class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
+class _InstrumentHistoryDialogState extends State<InstrumentHistoryDialog> {
   List<Map<String, dynamic>> _inspections = [];
   bool _isLoading = true;
 
@@ -37,9 +37,9 @@ class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
     setState(() => _isLoading = true);
     try {
       final res = await Supabase.instance.client
-          .from('machinery_inspections')
+          .from('instrument_inspections')
           .select()
-          .eq('project_machinery_id', widget.projectMachineryId)
+          .eq('project_instrument_id', widget.projectInstrumentId)
           .order('received_at', ascending: false);
           
       final data = List<Map<String, dynamic>>.from(res ?? []);
@@ -72,66 +72,14 @@ class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
     }
   }
 
-  Future<void> _demobilizeMachinery(String inspectionId) async {
-    final hmController = TextEditingController();
-    final result = await showDialog<bool>(
-      context: context,
-      barrierColor: Colors.black.withOpacity(0.5),
-      builder: (_) => AlertDialog(
-        title: Text('Demobilize Machine', style: GoogleFonts.manrope(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Enter the final hour meter reading (optional):', style: GoogleFonts.manrope(fontSize: 14)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: hmController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Final Hour Meter',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                await Supabase.instance.client
-                    .from('machinery_inspections')
-                    .update({
-                      'returned_at': DateTime.now().toUtc().toIso8601String(),
-                      if (hmController.text.isNotEmpty) 'hour_meter_end': double.tryParse(hmController.text),
-                    })
-                    .eq('id', inspectionId);
-                if (mounted) Navigator.pop(context, true);
-              } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
-            child: const Text('Confirm Return', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-
-    if (result == true) {
-      _loadHistory();
-    }
-  }
-
   void _openEditDialog(String inspectionId) {
     showDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
-      builder: (_) => MachineryReceptionDialog(
+      builder: (_) => InstrumentReceptionDialog(
         projectId: widget.projectId,
-        projectMachineryId: widget.projectMachineryId,
-        machineryName: widget.machineryName,
+        projectInstrumentId: widget.projectInstrumentId,
+        instrumentName: widget.instrumentName,
         serviceName: widget.serviceName,
         inspectionId: inspectionId,
       ),
@@ -167,10 +115,10 @@ class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: AppTheme.primaryGreen.withOpacity(0.1),
+                      color: Colors.purple.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: const Icon(Icons.history, color: AppTheme.primaryGreen),
+                    child: const Icon(Icons.history, color: Colors.purple),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
@@ -178,7 +126,7 @@ class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('Reception History', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
-                        Text(widget.machineryName, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500)),
+                        Text(widget.instrumentName, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500)),
                       ],
                     ),
                   ),
@@ -221,29 +169,14 @@ class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(dateStr, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
-                                  Row(
-                                    children: [
-                                      if (item['returned_at'] == null)
-                                        TextButton.icon(
-                                          onPressed: () => _demobilizeMachinery(item['id']),
-                                          icon: const Icon(Icons.outbound_outlined, size: 16, color: Colors.orange),
-                                          label: Text('Return', style: GoogleFonts.manrope(color: Colors.orange, fontWeight: FontWeight.bold)),
-                                          style: TextButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                            backgroundColor: Colors.orange.withOpacity(0.05),
-                                          ),
-                                        ),
-                                      if (item['returned_at'] == null) const SizedBox(width: 8),
-                                      TextButton.icon(
-                                        onPressed: () => _openEditDialog(item['id']),
-                                        icon: const Icon(Icons.edit_outlined, size: 16, color: AppTheme.primaryGreen),
-                                        label: Text('Edit', style: GoogleFonts.manrope(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
-                                        style: TextButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                          backgroundColor: AppTheme.primaryGreen.withOpacity(0.05),
-                                        ),
-                                      ),
-                                    ],
+                                  TextButton.icon(
+                                    onPressed: () => _openEditDialog(item['id']),
+                                    icon: const Icon(Icons.edit_outlined, size: 16, color: Colors.purple),
+                                    label: Text('Edit', style: GoogleFonts.manrope(color: Colors.purple, fontWeight: FontWeight.bold)),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                      backgroundColor: Colors.purple.withOpacity(0.05),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -251,12 +184,6 @@ class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
                               Row(
                                 children: [
                                   _infoChip('Serial: ${item['internal_code'] ?? '-'}'),
-                                  const SizedBox(width: 8),
-                                  _infoChip('HM Start: ${item['hour_meter_start'] ?? '-'}'),
-                                  if (item['hour_meter_end'] != null) ...[
-                                    const SizedBox(width: 8),
-                                    _infoChip('HM End: ${item['hour_meter_end']}'),
-                                  ],
                                   const SizedBox(width: 8),
                                   _infoChip('Cond: ${item['condition_status'] ?? '-'}'),
                                 ],
@@ -266,10 +193,6 @@ class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
                               if (item['observations'] != null && item['observations'].toString().isNotEmpty) ...[
                                 const SizedBox(height: 8),
                                 Text('Notes: ${item['observations']}', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate600)),
-                              ],
-                              if (item['returned_at'] != null) ...[
-                                const SizedBox(height: 8),
-                                Text('Returned: ${DateFormat('MMM dd, yyyy - hh:mm a').format(DateTime.parse(item['returned_at']).toLocal())}', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.orange)),
                               ],
                               if (photos.isNotEmpty) ...[
                                 const SizedBox(height: 12),

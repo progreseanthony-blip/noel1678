@@ -1,0 +1,2 @@
+ALTER TABLE labor_roles 
+ADD COLUMN IF NOT EXISTS internal_cost_rate NUMERIC DEFAULT 0;

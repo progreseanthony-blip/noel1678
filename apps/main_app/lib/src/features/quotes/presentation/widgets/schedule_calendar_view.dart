@@ -33,6 +33,8 @@ class ScheduleCalendarView extends StatefulWidget {
 class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
   final Map<String, ScrollController> _controllers = {};
 
+  bool get _isPerfBased => widget.unit == 'AC' || widget.unit == 'LF';
+
   @override
   void dispose() {
     for (var controller in _controllers.values) {
@@ -71,8 +73,8 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
     double theoNormalProd = 0;
     for (var res in widget.resources) {
       final qty = (res['quantity'] as num?)?.toDouble() ?? 0;
-      final perf = (res['performance_per_day'] as num?)?.toDouble() ?? 0;
-      if (perf > 0) {
+      if (_isPerfBased) {
+        final perf = (res['performance_per_day'] as num?)?.toDouble() ?? 0;
         theoNormalProd += (qty * perf);
       } else {
         final trips = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
@@ -398,8 +400,10 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
       final qty = (res['quantity'] as num?)?.toDouble() ?? 1;
       final trips = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
       final cap = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0;
-      double rowTotalCY = 0;
+      final perfDay = (res['performance_per_day'] as num?)?.toDouble() ?? 0;
       double rowTotalTrips = 0;
+      double rowTotalCY = 0;
+      double rowTotalPerf = 0;
       
       columnWidgets.add(Row(
         children: [
@@ -408,11 +412,18 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
             final isSat = day['isSaturday'] == true;
             final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
             
+            double cellValue;
+            if (_isPerfBased) {
+              cellValue = perfDay * qty * f;
+            } else {
+              cellValue = trips * qty * f;
+            }
             final dTrips = trips * qty * f;
             final dCY = trips * qty * cap * f;
             
             rowTotalTrips += dTrips;
             rowTotalCY += dCY;
+            rowTotalPerf += cellValue;
             
             return Container(
               width: 40, height: 44, // Match Resource Row height
@@ -421,19 +432,27 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
                 color: (isSun || isSat) ? const Color(0xFFF8FAFC) : null,
                 border: const Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
               ),
-              child: Text(dTrips > 0 ? dTrips.toStringAsFixed(0) : '-', style: TextStyle(fontSize: 10, color: isSun ? Colors.grey[300] : Colors.black)),
+              child: Text(cellValue > 0 ? cellValue.toStringAsFixed(0) : '-', style: TextStyle(fontSize: 10, color: isSun ? Colors.grey[300] : Colors.black)),
             );
           }),
           Container(
             width: 70, height: 44, alignment: Alignment.center,
             decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(rowTotalTrips.toStringAsFixed(0), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
-                Text(NumberFormat.compact().format(rowTotalCY), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen)),
-              ],
-            ),
+            child: _isPerfBased
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(rowTotalPerf.toStringAsFixed(0), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
+                      Text(widget.unit, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen)),
+                    ],
+                  )
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(rowTotalTrips.toStringAsFixed(0), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
+                      Text(NumberFormat.compact().format(rowTotalCY), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen)),
+                    ],
+                  ),
           ),
         ],
       ));
@@ -442,6 +461,7 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
     // Grand Total Row
     double totalTrips = 0;
     double totalCY = 0;
+    double totalPerf = 0;
     columnWidgets.add(Row(
       children: [
         ...days.map((day) {
@@ -450,38 +470,61 @@ class _ScheduleCalendarViewState extends State<ScheduleCalendarView> {
           final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
           double dCY = 0;
           double dTrips = 0;
+          double dPerf = 0;
           for (var res in widget.resources) {
             final q = (res['quantity'] as num?)?.toDouble() ?? 1;
-            final t = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
-            final c = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0;
-            dTrips += (t * q * f);
-            dCY += (t * q * c * f);
+            if (_isPerfBased) {
+              final p = (res['performance_per_day'] as num?)?.toDouble() ?? 0;
+              dPerf += (p * q * f);
+            } else {
+              final t = (res['trips_per_day'] as num?)?.toDouble() ?? 0;
+              final c = (res['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+              dTrips += (t * q * f);
+              dCY += (t * q * c * f);
+            }
           }
           totalTrips += dTrips;
           totalCY += dCY;
+          totalPerf += dPerf;
           return Container(
             width: 40, height: 60, // Grand Total row height
             alignment: Alignment.center,
             color: Colors.grey[100],
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(dTrips > 0 ? dTrips.toStringAsFixed(0) : '-', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppTheme.slate500)),
-                Text(dCY > 0 ? NumberFormat.compact().format(dCY) : '-', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.slate900)),
-              ],
-            ),
+            child: _isPerfBased
+                ? Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(dPerf > 0 ? dPerf.toStringAsFixed(0) : '-', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppTheme.slate500)),
+                      Text(widget.unit, style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppTheme.slate900)),
+                    ],
+                  )
+                : Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(dTrips > 0 ? dTrips.toStringAsFixed(0) : '-', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppTheme.slate500)),
+                      Text(dCY > 0 ? NumberFormat.compact().format(dCY) : '-', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.slate900)),
+                    ],
+                  ),
           );
         }),
         Container(
           width: 70, height: 60, alignment: Alignment.center,
           color: Colors.grey[100],
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(totalTrips.toStringAsFixed(0), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
-              Text(NumberFormat.compact().format(totalCY), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppTheme.slate900)),
-            ],
-          ),
+          child: _isPerfBased
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(totalPerf.toStringAsFixed(0), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
+                    Text(widget.unit, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppTheme.slate900)),
+                  ],
+                )
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(totalTrips.toStringAsFixed(0), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppTheme.slate500)),
+                    Text(NumberFormat.compact().format(totalCY), style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppTheme.slate900)),
+                  ],
+                ),
         ),
       ],
     ));
@@ -694,6 +737,7 @@ class _MobileMonthView extends StatelessWidget {
         ...resources.map((res) => _MobileResourceItem(
           resource: res,
           days: days,
+          unit: unit,
         )),
         const SizedBox(height: 32),
       ],
@@ -771,10 +815,12 @@ class _MetricsCard extends StatelessWidget {
 class _MobileResourceItem extends StatefulWidget {
   final Map<String, dynamic> resource;
   final List<Map<String, dynamic>> days;
+  final String unit;
 
   const _MobileResourceItem({
     required this.resource,
     required this.days,
+    required this.unit,
   });
 
   @override
@@ -790,16 +836,23 @@ class _MobileResourceItemState extends State<_MobileResourceItem> {
     final qty = (widget.resource['quantity'] as num?)?.toDouble() ?? 1;
     final trips = (widget.resource['trips_per_day'] as num?)?.toDouble() ?? 0;
     final cap = (widget.resource['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+    final perfDay = (widget.resource['performance_per_day'] as num?)?.toDouble() ?? 0;
+    final isPerfBased = widget.unit == 'AC' || widget.unit == 'LF';
     
     double weeklyTotalCY = 0;
     double weeklyTotalTrips = 0;
+    double weeklyTotalPerf = 0;
     for (var i = 0; i < widget.days.length && i < 7; i++) {
       final day = widget.days[i];
       final isSun = day['isSunday'] == true;
       final isSat = day['isSaturday'] == true;
       final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
-      weeklyTotalTrips += (trips * qty * f);
-      weeklyTotalCY += (trips * qty * cap * f);
+      if (isPerfBased) {
+        weeklyTotalPerf += (perfDay * qty * f);
+      } else {
+        weeklyTotalTrips += (trips * qty * f);
+        weeklyTotalCY += (trips * qty * cap * f);
+      }
     }
 
     return Container(
@@ -874,7 +927,7 @@ class _MobileResourceItemState extends State<_MobileResourceItem> {
                         final isSun = day['isSunday'] == true;
                         final isSat = day['isSaturday'] == true;
                         final f = isSun ? 0.0 : (isSat ? 0.5 : 1.0);
-                        final dailyTrips = trips * qty * f;
+                        final dailyValue = isPerfBased ? perfDay * qty * f : trips * qty * f;
 
                         return Container(
                           width: 64,
@@ -899,7 +952,7 @@ class _MobileResourceItemState extends State<_MobileResourceItem> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                dailyTrips > 0 ? dailyTrips.toStringAsFixed(0) : '-',
+                                dailyValue > 0 ? dailyValue.toStringAsFixed(0) : '-',
                                 style: GoogleFonts.manrope(
                                   fontSize: 14,
                                   fontWeight: FontWeight.w800,
@@ -925,27 +978,36 @@ class _MobileResourceItemState extends State<_MobileResourceItem> {
                           letterSpacing: 1.0,
                         ),
                       ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            '${weeklyTotalTrips.toStringAsFixed(0)} TRIPS',
-                            style: GoogleFonts.manrope(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.slate500,
+                      isPerfBased
+                          ? Text(
+                              '${weeklyTotalPerf.toStringAsFixed(0)} ${widget.unit}',
+                              style: GoogleFonts.manrope(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w900,
+                                color: AppTheme.primaryGreen,
+                              ),
+                            )
+                          : Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text(
+                                  '${weeklyTotalTrips.toStringAsFixed(0)} TRIPS',
+                                  style: GoogleFonts.manrope(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.slate500,
+                                  ),
+                                ),
+                                Text(
+                                  '${NumberFormat('#,###').format(weeklyTotalCY)} CY',
+                                  style: GoogleFonts.manrope(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppTheme.primaryGreen,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                          Text(
-                            '${NumberFormat('#,###').format(weeklyTotalCY)} CY',
-                            style: GoogleFonts.manrope(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                              color: AppTheme.primaryGreen,
-                            ),
-                          ),
-                        ],
-                      ),
                     ],
                   ),
                 ],

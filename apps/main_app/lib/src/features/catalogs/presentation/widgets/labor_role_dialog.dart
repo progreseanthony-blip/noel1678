@@ -17,6 +17,7 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
   final _formKey = GlobalKey<FormState>();
   final _descriptionController = TextEditingController();
   final _rateController = TextEditingController();
+  final _internalCostController = TextEditingController();
   bool _isSaving = false;
 
   @override
@@ -25,6 +26,7 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
     if (widget.roleToEdit != null) {
       _descriptionController.text = widget.roleToEdit!['description'] ?? '';
       _rateController.text = widget.roleToEdit!['hourly_rate']?.toString() ?? '0';
+      _internalCostController.text = widget.roleToEdit!['internal_cost_rate']?.toString() ?? '0';
     }
   }
 
@@ -32,6 +34,7 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
   void dispose() {
     _descriptionController.dispose();
     _rateController.dispose();
+    _internalCostController.dispose();
     super.dispose();
   }
 
@@ -45,6 +48,7 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
       final data = {
         'description': _descriptionController.text.trim(),
         'hourly_rate': double.tryParse(_rateController.text) ?? 0,
+        'internal_cost_rate': double.tryParse(_internalCostController.text) ?? 0,
       };
 
       if (_isEditing) {
@@ -107,10 +111,18 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
                         ),
                         const SizedBox(height: 24),
                         _buildTextInput(
-                          label: 'Hourly Rate',
+                          label: 'Billing Rate (Sales)',
                           hint: '0.00',
                           icon: Icons.payments_outlined,
                           controller: _rateController,
+                          isNumber: true,
+                        ),
+                        const SizedBox(height: 24),
+                        _buildTextInput(
+                          label: 'Internal Cost (Rate)',
+                          hint: '0.00',
+                          icon: Icons.account_balance_wallet_outlined,
+                          controller: _internalCostController,
                           isNumber: true,
                         ),
                       ],

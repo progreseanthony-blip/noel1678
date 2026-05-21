@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
+import 'dart:typed_data';
 
 class MaterialReceptionDialog extends StatefulWidget {
   final String projectId;
@@ -40,8 +41,10 @@ class _MaterialReceptionDialogState extends State<MaterialReceptionDialog> {
   String _selectedCondition = 'good';
   final List<PlatformFile> _selectedFiles = [];
   final List<String> _existingPhotos = [];
+  DateTime _receptionDate = DateTime.now();
   bool _isLoading = false;
   bool _isSaving = false;
+  bool _showPhotoError = false;
 
   @override
   void initState() {
@@ -73,6 +76,9 @@ class _MaterialReceptionDialogState extends State<MaterialReceptionDialog> {
           _quantityController.text = (data['quantity_received']?.toString()) ?? '';
           _notesController.text = data['observations'] ?? '';
           _selectedCondition = data['condition_status'] ?? 'good';
+          if (data['reception_date'] != null) {
+            _receptionDate = DateTime.tryParse(data['reception_date']) ?? DateTime.now();
+          }
           
           final photos = data['evidence_photos'] as List?;
           if (photos != null) {
@@ -96,17 +102,38 @@ class _MaterialReceptionDialogState extends State<MaterialReceptionDialog> {
     super.dispose();
   }
 
-  Future<void> _pickFiles() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      allowMultiple: true,
-      withData: true,
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _receptionDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(primary: AppTheme.primaryGreen),
+        ),
+        child: child!,
+      ),
     );
+    if (picked != null) setState(() => _receptionDate = picked);
+  }
 
-    if (result != null) {
-      setState(() {
-        _selectedFiles.addAll(result.files);
-      });
+  Future<void> _pickFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: true,
+        withData: true,
+      );
+      if (result != null) {
+        setState(() => _selectedFiles.addAll(result.files));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error selecting images: $e')),
+        );
+      }
     }
   }
 
@@ -125,9 +152,10 @@ class _MaterialReceptionDialogState extends State<MaterialReceptionDialog> {
   Future<void> _saveReception() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedFiles.isEmpty && _existingPhotos.isEmpty) {
+      setState(() => _showPhotoError = true);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('At least one evidence photo (e.g. delivery note) is required.'),
+          content: Text('At least one evidence photo is required.'),
           backgroundColor: Colors.orange,
         ),
       );
@@ -178,6 +206,7 @@ class _MaterialReceptionDialogState extends State<MaterialReceptionDialog> {
         'condition_status': _selectedCondition,
         'observations': _notesController.text.trim(),
         'evidence_photos': photoUrls,
+        'reception_date': _receptionDate.toIso8601String().split('T')[0],
       };
 
       if (widget.receptionId != null) {
@@ -282,6 +311,33 @@ class _MaterialReceptionDialogState extends State<MaterialReceptionDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Reception Date
+                      Text('Reception Date', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+                      const SizedBox(height: 8),
+                      GestureDetector(
+                        onTap: _pickDate,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: AppTheme.slate200),
+                            borderRadius: BorderRadius.circular(10),
+                            color: Colors.white,
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.calendar_today_outlined, color: AppTheme.primaryGreen, size: 18),
+                              const SizedBox(width: 12),
+                              Text(
+                                '${_receptionDate.month.toString().padLeft(2,'0')}/${_receptionDate.day.toString().padLeft(2,'0')}/${_receptionDate.year}',
+                                style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900),
+                              ),
+                              const Spacer(),
+                              Text('Tap to change', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400)),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
                       Row(
                         children: [
                           Expanded(
@@ -349,95 +405,64 @@ class _MaterialReceptionDialogState extends State<MaterialReceptionDialog> {
                         required: false,
                       ),
                       const SizedBox(height: 24),
-                      
-                      // Evidence Photos
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Delivery Evidence Photos', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
-                          TextButton.icon(
-                            onPressed: _pickFiles,
-                            icon: const Icon(Icons.add_a_photo, size: 16),
-                            label: const Text('Add'),
-                            style: TextButton.styleFrom(
-                              foregroundColor: AppTheme.primaryGreen,
-                              backgroundColor: AppTheme.primaryGreen.withOpacity(0.05),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      
-                      if (_selectedFiles.isEmpty && _existingPhotos.isEmpty)
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            border: Border.all(color: AppTheme.slate200, style: BorderStyle.solid),
-                            borderRadius: BorderRadius.circular(12),
-                            color: const Color(0xFFF8FAFC),
-                          ),
-                          child: Column(
-                            children: [
-                              const Icon(Icons.photo_library_outlined, color: AppTheme.slate400, size: 32),
-                              const SizedBox(height: 8),
-                              Text('No photos uploaded yet', style: GoogleFonts.manrope(color: AppTheme.slate500)),
-                            ],
-                          ),
-                        )
-                      else
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: [
-                            ..._existingPhotos.asMap().entries.map((entry) {
-                              final idx = entry.key;
-                              final url = entry.value;
-                              return Container(
-                                width: 80, height: 80,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: AppTheme.slate200),
-                                  image: DecorationImage(image: NetworkImage(url), fit: BoxFit.cover),
-                                ),
-                                child: Align(
-                                  alignment: Alignment.topRight,
-                                  child: GestureDetector(
-                                    onTap: () => _removeExistingPhoto(idx),
-                                    child: Container(
-                                      margin: const EdgeInsets.all(4),
-                                      decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-                                      child: const Icon(Icons.close, size: 14, color: Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }),
-                            ..._selectedFiles.asMap().entries.map((entry) {
-                              final idx = entry.key;
-                              final file = entry.value;
-                              return Container(
-                                width: 80, height: 80,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(color: AppTheme.slate200),
-                                  image: DecorationImage(image: MemoryImage(file.bytes!), fit: BoxFit.cover),
-                                ),
-                                child: Align(
-                                  alignment: Alignment.topRight,
-                                  child: GestureDetector(
-                                    onTap: () => _removeFile(idx),
-                                    child: Container(
-                                      margin: const EdgeInsets.all(4),
-                                      decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-                                      child: const Icon(Icons.close, size: 14, color: Colors.white),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }),
-                          ],
-                        ),
+                     
+                       // Evidence Photos
+                       Row(
+                         children: [
+                           Text('Evidence Photos', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+                           const SizedBox(width: 8),
+                           Container(
+                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                             decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                             child: Text('REQUIRED', style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.orange)),
+                           ),
+                         ],
+                       ),
+                       if (_showPhotoError && _selectedFiles.isEmpty && _existingPhotos.isEmpty)
+                         Padding(
+                           padding: const EdgeInsets.only(top: 8),
+                           child: Text('Please add at least one photo to continue',
+                               style: GoogleFonts.manrope(fontSize: 12, color: Colors.orange, fontWeight: FontWeight.w600)),
+                         ),
+                       const SizedBox(height: 12),
+                       Wrap(
+                         spacing: 12,
+                         runSpacing: 12,
+                         children: [
+                           ..._existingPhotos.asMap().entries.map((entry) => _buildPhotoThumb(
+                                 networkUrl: entry.value,
+                                 onRemove: () => _removeExistingPhoto(entry.key),
+                               )),
+                           ..._selectedFiles.asMap().entries.map((entry) => _buildPhotoThumb(
+                                 bytes: entry.value.bytes,
+                                 onRemove: () => _removeFile(entry.key),
+                               )),
+                           GestureDetector(
+                             onTap: _pickFiles,
+                             child: Container(
+                               width: 80, height: 80,
+                               decoration: BoxDecoration(
+                                 color: AppTheme.primaryGreen.withOpacity(0.05),
+                                 borderRadius: BorderRadius.circular(10),
+                                 border: Border.all(
+                                   color: _showPhotoError && _selectedFiles.isEmpty && _existingPhotos.isEmpty
+                                       ? Colors.orange
+                                       : AppTheme.primaryGreen.withOpacity(0.3),
+                                   width: 2,
+                                 ),
+                               ),
+                               child: const Column(
+                                 mainAxisAlignment: MainAxisAlignment.center,
+                                 children: [
+                                   Icon(Icons.add_a_photo, color: AppTheme.primaryGreen),
+                                   SizedBox(height: 4),
+                                   Text('Add Photo', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppTheme.primaryGreen)),
+                                 ],
+                               ),
+                             ),
+                           ),
+                         ],
+                       ),
                     ],
                   ),
                 ),
@@ -476,6 +501,30 @@ class _MaterialReceptionDialogState extends State<MaterialReceptionDialog> {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhotoThumb({String? networkUrl, Uint8List? bytes, required VoidCallback onRemove}) {
+    return Container(
+      width: 80, height: 80,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.slate200),
+        image: networkUrl != null
+            ? DecorationImage(image: NetworkImage(networkUrl), fit: BoxFit.cover)
+            : (bytes != null ? DecorationImage(image: MemoryImage(bytes), fit: BoxFit.cover) : null),
+      ),
+      child: Align(
+        alignment: Alignment.topRight,
+        child: GestureDetector(
+          onTap: onRemove,
+          child: Container(
+            margin: const EdgeInsets.all(4),
+            decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+            child: const Icon(Icons.close, size: 14, color: Colors.white),
+          ),
         ),
       ),
     );
