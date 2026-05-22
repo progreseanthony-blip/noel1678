@@ -394,8 +394,12 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
     if (_selectedType == 'Labor') {
       final internalRate = (item['internal_cost_rate'] as num?)?.toDouble() ?? 0;
       final hourlyRate = (item['hourly_rate'] as num?)?.toDouble() ?? 0;
-      final rate = internalRate > 0 ? internalRate : hourlyRate;
-      _rentController.text = (rate * 8).toStringAsFixed(0);
+      // internal_cost_rate = daily; hourly_rate = hourly → convert to daily
+      if (internalRate > 0) {
+        _rentController.text = internalRate.toStringAsFixed(0);
+      } else {
+        _rentController.text = (hourlyRate * 8).toStringAsFixed(0);
+      }
     } else {
       _rentController.text = (item['daily_rate'] ?? item['rent_cost'] ?? '0').toString();
     }
@@ -670,7 +674,6 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
           'instrument_id': selectedItem['id'],
           'instrument_name': itemName,
           'expected_quantity': qty,
-          'is_principal': true,
         });
       }
 
