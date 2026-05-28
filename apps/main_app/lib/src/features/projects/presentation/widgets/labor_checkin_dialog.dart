@@ -274,32 +274,19 @@ class _LaborCheckInDialogState extends State<LaborCheckInDialog> {
                 ),
               )
             else
-              Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.slate200),
-                ),
-                child: DropdownButtonHideUnderline(
-                  child: DropdownButton<String>(
-                    value: _selectedWorkerId,
-                    hint: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text('Choose a worker...', style: GoogleFonts.manrope(color: AppTheme.slate400)),
-                    ),
-                    isExpanded: true,
-                    borderRadius: BorderRadius.circular(12),
-                    items: _workers.map((w) {
-                      return DropdownMenuItem<String>(
-                        value: w['id'],
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Text('${w['full_name']} (${w['id_number']})', style: GoogleFonts.manrope(fontWeight: FontWeight.w600)),
-                        ),
-                      );
-                    }).toList(),
-                    onChanged: (val) => setState(() => _selectedWorkerId = val),
-                  ),
-                ),
+              DropdownMenu<String>(
+                expandedInsets: EdgeInsets.zero,
+                enableSearch: true,
+                requestFocusOnTap: true,
+                hintText: 'Choose a worker...',
+                initialSelection: _selectedWorkerId,
+                dropdownMenuEntries: _workers.map((w) {
+                  return DropdownMenuEntry<String>(
+                    value: w['id'],
+                    label: '${w['full_name']} (${w['id_number']})',
+                  );
+                }).toList(),
+                onSelected: (val) => setState(() => _selectedWorkerId = val),
               ),
             const SizedBox(height: 32),
             SizedBox(

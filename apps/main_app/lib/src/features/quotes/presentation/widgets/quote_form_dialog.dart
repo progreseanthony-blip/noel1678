@@ -194,6 +194,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   DateTime _quoteDate = DateTime.now();
   String _selectedStatus = 'draft';
   String _quoteType = 'standard';
+  String? _selectedClientAddress;
 
   // Catalogs for step 1+
   List<Map<String, dynamic>> _catalogServices = [];
@@ -227,6 +228,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     }
     _selectedStatus = widget.quoteToEdit?['status'] ?? 'draft';
     _quoteType = widget.quoteToEdit?['quote_type'] ?? 'standard';
+    _selectedClientAddress = widget.quoteToEdit?['client_address'];
 
     _loadCatalogs();
     if (_isEditing) {
@@ -803,6 +805,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             .update({
               'title': _titleController.text.trim(),
               'client_name': _clientController.text.trim(),
+              'client_address': _selectedClientAddress,
               'total_amount': totalAmount,
               'quote_date': _quoteDate.toIso8601String().split('T')[0],
               'status': _selectedStatus,
@@ -820,6 +823,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             .insert({
               'title': _titleController.text.trim(),
               'client_name': _clientController.text.trim(),
+              'client_address': _selectedClientAddress,
               'total_amount': totalAmount,
               'quote_date': _quoteDate.toIso8601String().split('T')[0],
               'status': _selectedStatus,
@@ -1353,6 +1357,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                   initialValue: _clientController.text,
                   onSelected: (val, item) {
                     _clientController.text = val;
+                    _selectedClientAddress = item?['address'];
                   },
                   onAddNew: () => _openCatalogItemAdd('customers'),
                 ),
@@ -2315,7 +2320,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               spacing: 16,
               runSpacing: 8,
               children: [
-                _calcChip('Hours/Mo', l.hoursPerMonth),
+                _calcChip('Hours/Mo', l.hoursPerMonth, isCurrency: false),
                 _calcChip('Total Pay', l.totalPay),
                 _calcChip('Total PerDiem', l.totalPerDiem),
                 _calcChip('TOTAL', l.totalFinal, highlight: true),

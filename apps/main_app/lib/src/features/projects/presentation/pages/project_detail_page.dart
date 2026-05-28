@@ -20,6 +20,8 @@ import '../widgets/instrument_history_dialog.dart';
 import '../widgets/instrument_scheduling_dialog.dart';
 import '../widgets/labor_scheduling_dialog.dart';
 import 'package:flutter/gestures.dart';
+import 'package:printing/printing.dart';
+import '../utils/timeline_pdf_generator.dart';
 
 class ProjectDetailPage extends StatefulWidget {
   final String projectId;
@@ -2146,16 +2148,19 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
     return {'plannedStart': plannedStart, 'plannedEnd': plannedEnd};
   }
 
-  Widget _buildRowBackground(int totalDays, double dayWidth, bool isService) {
+  Widget _buildRowBackground(int totalDays, double dayWidth, bool isService, DateTime minVal) {
     return Row(
       children: List.generate(totalDays, (index) {
+        final day = minVal.add(Duration(days: index));
+        final isSunday = day.weekday == DateTime.sunday;
         return Container(
           width: dayWidth,
           height: isService ? 52 : 44,
           decoration: BoxDecoration(
+            color: isSunday ? const Color(0xFFFEF2F2).withOpacity(0.5) : null,
             border: Border(
               right: BorderSide(
-                color: const Color(0xFFE2E8F0).withOpacity(0.4),
+                color: isSunday ? const Color(0xFFFECACA) : const Color(0xFFE2E8F0).withOpacity(0.4),
                 width: 1,
               ),
             ),
@@ -2215,11 +2220,11 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
           width: dayWidth,
           height: 24,
           alignment: Alignment.center,
-          decoration: const BoxDecoration(
-            color: Color(0xFF0F172A),
+          decoration: BoxDecoration(
+            color: day.weekday == DateTime.sunday ? const Color(0xFF2D1515) : const Color(0xFF0F172A),
             border: Border(
-              right: BorderSide(color: Color(0xFF1E293B), width: 1),
-              bottom: BorderSide(color: Color(0xFF1E293B), width: 1),
+              right: const BorderSide(color: Color(0xFF1E293B), width: 1),
+              bottom: const BorderSide(color: Color(0xFF1E293B), width: 1),
             ),
           ),
           child: Text(
@@ -2227,7 +2232,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
             style: GoogleFonts.manrope(
               fontSize: 9,
               fontWeight: FontWeight.bold,
-              color: const Color(0xFF94A3B8),
+              color: day.weekday == DateTime.sunday ? const Color(0xFFFCA5A5) : const Color(0xFF94A3B8),
             ),
           ),
         ),
@@ -2541,7 +2546,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
           ),
           child: Stack(
             children: [
-              _buildRowBackground(totalDays, dayWidth, true),
+              _buildRowBackground(totalDays, dayWidth, true, minVal),
               // Ghost bar: original (uncompressed) duration
               if (hasCompression && sMin != null)
                 Positioned(
@@ -2708,7 +2713,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
               ),
               child: Stack(
                 children: [
-                  _buildRowBackground(totalDays, dayWidth, false),
+                  _buildRowBackground(totalDays, dayWidth, false, minVal),
                   // Ghost extension: original (uncompressed) segment
                   if (itemWasCompressed && start != null && end != null && originalEnd != null)
                     Positioned(
@@ -2876,6 +2881,17 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                   },
                   icon: const Icon(Icons.insights, size: 14, color: AppTheme.slate600),
                   label: Text('Baseline', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate600)),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                TextButton.icon(
+                  onPressed: () => _exportTimelinePdf(items, minVal, totalDays, serviceOriginalMax, serviceDaysSaved, compressedMaxDate),
+                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 14, color: AppTheme.slate600),
+                  label: Text('PDF', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate600)),
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     minimumSize: Size.zero,
@@ -3128,6 +3144,50 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         ),
       ),
     );
+  }
+
+  Future<void> _exportTimelinePdf(
+    List<Map<String, dynamic>> items,
+    DateTime minVal,
+    int totalDays,
+    Map<String, DateTime> serviceOriginalMax,
+    Map<String, double> serviceDaysSaved,
+    DateTime? compressedMaxDate,
+  ) async {
+    final extraCount = items.where((i) => i['isUnplanned'] == true).length;
+    final plannedCount = items.length - extraCount;
+
+    try {
+      final pdfBytes = await TimelinePdfGenerator.generate(
+        projectTitle: widget.project?['title'] ?? 'Resource Timeline',
+        projectId: widget.projectId,
+        items: items,
+        minVal: minVal,
+        totalDays: totalDays,
+        expandedServices: Map<String, bool>.from(_expandedServices),
+        selectedServiceFilter: _selectedServiceFilter,
+        serviceOriginalMax: serviceOriginalMax,
+        serviceDaysSaved: serviceDaysSaved,
+        compressedMaxDate: compressedMaxDate,
+        baselineOriginalTotalDays: _baselineOriginalTotalDays,
+        baselineTotalDaysSaved: _baselineTotalDaysSaved,
+        baselineDeviationCost: _baselineDeviationCost,
+        baselineTotalCompressionSavings: _baselineTotalCompressionSavings,
+        plannedCount: plannedCount,
+        extraCount: extraCount,
+      );
+
+      await Printing.layoutPdf(
+        onLayout: (format) async => pdfBytes,
+        name: 'Timeline_${widget.projectId.substring(0, 8)}',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generating PDF: $e'), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
   }
 
   Widget _buildLegendBox(String label, Color color) {

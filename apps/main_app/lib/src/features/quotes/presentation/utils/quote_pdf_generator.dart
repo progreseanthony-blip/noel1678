@@ -53,7 +53,7 @@ class QuotePdfGenerator {
                   children: [
                     if (logoImage != null)
                       pw.Container(
-                        height: 50,
+                        height: 75,
                         margin: const pw.EdgeInsets.only(bottom: 12),
                         child: pw.Image(logoImage, fit: pw.BoxFit.contain),
                       ),
@@ -68,7 +68,8 @@ class QuotePdfGenerator {
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.end,
                   children: [
-                    pw.Text('ESTIMATE', style: pw.TextStyle(font: fontBold, fontSize: 32, color: PdfColor.fromHex('#15803d'))),
+                    pw.SizedBox(height: 8),
+                    pw.Text('ESTIMATE', style: pw.TextStyle(font: fontBold, fontSize: 30, color: PdfColor.fromHex('#15803d'))),
                     pw.SizedBox(height: 12),
                     pw.Text('Estimate no.: $quoteId', style: pw.TextStyle(font: font, fontSize: 11)),
                     pw.SizedBox(height: 2),
@@ -79,6 +80,9 @@ class QuotePdfGenerator {
             ),
             pw.SizedBox(height: 20),
             
+            pw.Text(title, style: pw.TextStyle(font: fontBold, fontSize: 16, color: PdfColor.fromHex('#15803d'))),
+            pw.SizedBox(height: 8),
+
             // Bill To
             pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
