@@ -30,12 +30,30 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
   DateTime? _startDate;
   DateTime? _endDate;
   String? _limitError;
-  final Set<String> _processingWorkers = {}; 
+  final Set<String> _processingWorkers = {};
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<Map<String, dynamic>> get _filteredWorkers {
+    if (_searchQuery.isEmpty) return _allWorkers;
+    final q = _searchQuery.toLowerCase();
+    return _allWorkers.where((w) {
+      final name = (w['full_name'] ?? '').toString().toLowerCase();
+      final id = (w['id_number'] ?? '').toString().toLowerCase();
+      return name.contains(q) || id.contains(q);
+    }).toList();
   }
 
   DateTime _calculateEndDate(DateTime start, double duration) {
@@ -549,6 +567,42 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
               ),
 
             const Divider(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (v) => setState(() => _searchQuery = v),
+                style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+                decoration: InputDecoration(
+                  hintText: 'Search by name or ID...',
+                  hintStyle: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400),
+                  prefixIcon: const Icon(Icons.search, size: 18, color: AppTheme.slate400),
+                  suffixIcon: _searchQuery.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 16, color: AppTheme.slate400),
+                          onPressed: () {
+                            _searchController.clear();
+                            setState(() => _searchQuery = '');
+                          },
+                        )
+                      : null,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 1.5),
+                  ),
+                ),
+              ),
+            ),
             const SizedBox(height: 16),
             
             if (_isLoading)
@@ -557,9 +611,9 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
               Flexible(
                 child: ListView.builder(
                   shrinkWrap: true,
-                  itemCount: _allWorkers.length,
+                  itemCount: _filteredWorkers.length,
                   itemBuilder: (context, index) {
-                    final worker = _allWorkers[index];
+                    final worker = _filteredWorkers[index];
                     final workerId = worker['id'].toString();
                     final isAssignedHere = _assignedWorkerIds.contains(workerId);
                     final busyProject = _globalBusyWorkers[workerId];
