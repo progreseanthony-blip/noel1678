@@ -575,7 +575,7 @@ class TimelinePdfGenerator {
                 width: ghostWidth * _dayWidthPdf,
                 height: 12,
                 decoration: pw.BoxDecoration(
-                  color: barColors[0].withAlpha(0.15),
+                  color: _ghostColor.withAlpha(0.12),
                   borderRadius: const pw.BorderRadius.only(
                     topRight: pw.Radius.circular(3),
                     bottomRight: pw.Radius.circular(3),
@@ -585,7 +585,7 @@ class TimelinePdfGenerator {
                 child: ghostWidth * _dayWidthPdf > 18
                     ? pw.Text(
                         '-$savedAmount d',
-                        style: pw.TextStyle(font: font, fontSize: 5, color: barColors[0].withAlpha(0.45)),
+                        style: pw.TextStyle(font: font, fontSize: 5, color: PdfColor.fromHex('#94A3B8')),
                       )
                     : null,
               ),
