@@ -774,7 +774,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   }
 
   // ── Save to Supabase ──
-  Future<void> _saveQuote() async {
+  Future<void> _persistQuote({required bool closeDialog}) async {
     if (_titleController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1006,13 +1006,17 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _isEditing ? 'Estimation updated!' : 'Estimation created!',
+              closeDialog
+                  ? (_isEditing ? 'Estimation updated!' : 'Estimation created!')
+                  : 'Draft saved!',
               style: GoogleFonts.manrope(color: Colors.white),
             ),
             backgroundColor: AppTheme.primaryGreen,
           ),
         );
-        Navigator.of(context).pop(true);
+        if (closeDialog) {
+          Navigator.of(context).pop(true);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -3144,7 +3148,14 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 () => Navigator.of(context).pop(),
               ),
               const SizedBox(width: 12),
-              if (_currentStep < 5)
+              if (_currentStep < 5) ...[
+                _footerBtn(
+                  _isSaving ? 'Saving...' : 'Save Draft',
+                  Icons.save_outlined,
+                  false,
+                  _isSaving ? null : () => _persistQuote(closeDialog: false),
+                ),
+                const SizedBox(width: 12),
                 _footerBtn(
                   'Next',
                   Icons.arrow_forward,
@@ -3156,13 +3167,14 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                       _currentStep++;
                     }
                   }),
-                )
+                ),
+              ]
               else
                 _footerBtn(
                   _isSaving ? 'Saving...' : (_isEditing ? 'Save Estimate' : 'Create Estimate'),
                   Icons.check,
                   true,
-                  _isSaving ? null : _saveQuote,
+                  _isSaving ? null : () => _persistQuote(closeDialog: true),
                 ),
             ],
           ),
