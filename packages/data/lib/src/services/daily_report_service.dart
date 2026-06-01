@@ -54,6 +54,17 @@ class DailyReportService {
   }
 
   Future<Map<String, dynamic>> getOrCreateTodayReport(String projectId) async {
+    final recent = await _supabase
+        .from('daily_reports')
+        .select()
+        .eq('project_id', projectId)
+        .eq('status', 'draft')
+        .order('report_date', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (recent != null) return recent;
+
     final today = DateTime.now().toIso8601String().split('T')[0];
     final existing = await getReportByDate(projectId, today);
     if (existing != null) return existing;
@@ -186,19 +197,36 @@ class DailyReportService {
     return result;
   }
 
-  Future<List<Map<String, dynamic>>> getPlannedMachineryForProject(String projectId) async {
+  Future<List<Map<String, dynamic>>> getPlannedMachineryForProject(
+      String projectId, String date) async {
     final response = await _supabase
         .from('project_machinery')
-        .select('*, machinery(description, fuel_gallons)')
+        .select('*, machinery(description, fuel_gallons, machinery_type, operator_role_id, capacity_yards), machinery_inspections(internal_id), quote_services(name, unit_of_measure)')
         .eq('project_id', projectId)
         .order('machinery_name');
-    return List<Map<String, dynamic>>.from(response ?? []);
+    final result = List<Map<String, dynamic>>.from(response ?? []);
+    result.retainWhere((pm) {
+      final start = pm['start_date'] as String?;
+      final end = pm['end_date'] as String?;
+      if (start == null) return true;
+      if (end == null) return true;
+      try {
+        final sd = DateTime.parse(start.split(' ')[0]);
+        final ed = DateTime.parse(end.split(' ')[0]);
+        final rd = DateTime.parse(date);
+        return !rd.isBefore(sd) && !rd.isAfter(ed);
+      } catch (_) {
+        return true;
+      }
+    });
+    return result;
   }
 
-  Future<List<Map<String, dynamic>>> getPlannedMaterialsForProject(String projectId) async {
+  Future<List<Map<String, dynamic>>> getPlannedMaterialsForProject(
+      String projectId, String date) async {
     final response = await _supabase
         .from('project_materials')
-        .select('*, materials(description, unit)')
+        .select('*, materials(description, unit), quote_services(name)')
         .eq('project_id', projectId)
         .order('material_name');
     return List<Map<String, dynamic>>.from(response ?? []);

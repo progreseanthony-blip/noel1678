@@ -12,6 +12,7 @@ import '../features/projects/presentation/pages/projects_list_page.dart';
 import '../features/projects/presentation/pages/project_detail_page.dart';
 import '../features/projects/presentation/pages/project_baseline_page.dart';
 import '../features/field_operations/presentation/pages/daily_report_wizard_page.dart';
+import '../features/field_operations/presentation/pages/daily_reports_list_page.dart';
 final goRouter = GoRouter(
   initialLocation: '/signin',
   routes: [
@@ -52,8 +53,15 @@ final goRouter = GoRouter(
       builder: (context, state) => ProjectBaselinePage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
+      path: '/projects/:id/daily-reports',
+      builder: (context, state) => DailyReportsListPage(projectId: state.pathParameters['id']!),
+    ),
+    GoRoute(
       path: '/projects/:id/daily-report',
-      builder: (context, state) => DailyReportWizardPage(projectId: state.pathParameters['id']!),
+      builder: (context, state) => DailyReportWizardPage(
+        projectId: state.pathParameters['id']!,
+        reportId: state.uri.queryParameters['reportId'],
+      ),
     ),
     GoRoute(
       path: '/catalogs',
