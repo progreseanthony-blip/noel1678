@@ -68,6 +68,7 @@ class ProjectService {
         machineriesToInsert.add({
           'project_id': projectId,
           'quote_service_machinery_id': mach['id'],
+          'quote_service_id': service['id'],
           'machinery_name': mach['machine_name'] ?? 'Unknown Machine',
           'expected_quantity': mach['quantity'] ?? 1,
           'received_quantity': 0,
@@ -82,6 +83,7 @@ class ProjectService {
         materialsToInsert.add({
           'project_id': projectId,
           'quote_service_material_id': mat['id'],
+          'quote_service_id': service['id'],
           'material_name': mat['material_name'] ?? 'Unknown Material',
           'unit_name': mat['unit_name'] ?? 'units',
           'expected_quantity': mat['quantity'] ?? 0,
@@ -95,6 +97,7 @@ class ProjectService {
         laborToInsert.add({
           'project_id': projectId,
           'quote_service_labor_id': lab['id'],
+          'quote_service_id': service['id'],
           'role_name': lab['role_name'] ?? 'General Worker',
           'expected_employees': (lab['employees_quantity'] as num?)?.toInt() ?? 1,
           'active_employees': 0,
@@ -108,6 +111,7 @@ class ProjectService {
         instrumentsToInsert.add({
           'project_id': projectId,
           'quote_service_instrument_id': inst['id'],
+          'quote_service_id': service['id'],
           'instrument_name': inst['instrument_name'] ?? 'Unknown Instrument',
           'expected_quantity': inst['quantity'] ?? 1,
           'received_quantity': 0,
