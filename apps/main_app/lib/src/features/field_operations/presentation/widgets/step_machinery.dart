@@ -142,27 +142,59 @@ class _StepMachineryState extends State<StepMachinery> {
 
   List<Map<String, dynamic>> _getOperatorsForMachine(Map<String, dynamic> pm) {
     final svcId = pm['quote_service_id'] as String?;
-    var opRoleId = pm['machinery']?['operator_role_id'] as String?;
     final machId = pm['machinery_id'] as String?;
+    final machName = pm['machinery_name'] ?? pm['machinery']?['description'] ?? machId;
+
+    var opRoleId = pm['machinery']?['operator_role_id'] as String?;
 
     if (opRoleId == null && machId != null) {
-      final catalogEntry = widget.machineryCatalog.firstWhere(
+      final cat = widget.machineryCatalog.firstWhere(
         (m) => m['id'] == machId,
         orElse: () => <String, dynamic>{},
       );
-      opRoleId = catalogEntry['operator_role_id'] as String?;
+      opRoleId = cat['operator_role_id'] as String?;
+      debugPrint('[OpFilter] $machName: got opRoleId=$opRoleId from catalog (machId=$machId found=${cat.isNotEmpty})');
     }
 
-    if (svcId == null || opRoleId == null) return _activeWorkers;
+    debugPrint('[OpFilter] $machName: svcId=$svcId opRoleId=$opRoleId');
 
-    final matchingPlannedLabor = widget.plannedLabor.where((pl) {
+    if (svcId == null || opRoleId == null) {
+      debugPrint('[OpFilter] $machName: svcId or opRoleId is null, returning all workers');
+      return _activeWorkers;
+    }
+
+    var matchingLabor = widget.plannedLabor.where((pl) {
       return pl['quote_service_id'] == svcId && pl['role_id'] == opRoleId;
     }).toList();
 
-    if (matchingPlannedLabor.isEmpty) return _activeWorkers;
+    if (matchingLabor.isEmpty) {
+      String? roleName;
+      for (final pl in widget.plannedLabor) {
+        if (pl['role_id'] == opRoleId) {
+          roleName = pl['labor_roles']?['description'] as String? ?? pl['role_name'] as String?;
+          break;
+        }
+      }
+      debugPrint('[OpFilter] $machName: no match by UUID, trying by role name=$roleName');
+
+      if (roleName != null) {
+        matchingLabor = widget.plannedLabor.where((pl) {
+          return pl['quote_service_id'] == svcId &&
+              (pl['role_name'] == roleName ||
+                  pl['labor_roles']?['description'] == roleName);
+        }).toList();
+      }
+    }
+
+    debugPrint('[OpFilter] $machName: matchingLabor count=${matchingLabor.length} (total planned=${widget.plannedLabor.length})');
+
+    if (matchingLabor.isEmpty) {
+      debugPrint('[OpFilter] $machName: no matching labor found, returning all workers');
+      return _activeWorkers;
+    }
 
     final crewWorkerIds = <String>{};
-    for (final pl in matchingPlannedLabor) {
+    for (final pl in matchingLabor) {
       final assignments = pl['project_labor_assignments'] as List? ?? [];
       for (final a in assignments) {
         final w = a['workers'] as Map<String, dynamic>?;
@@ -170,9 +202,16 @@ class _StepMachineryState extends State<StepMachinery> {
       }
     }
 
-    if (crewWorkerIds.isEmpty) return _activeWorkers;
+    debugPrint('[OpFilter] $machName: crewWorkerIds count=${crewWorkerIds.length}');
 
-    return _activeWorkers.where((w) => crewWorkerIds.contains(w['id'] as String?)).toList();
+    if (crewWorkerIds.isEmpty) {
+      debugPrint('[OpFilter] $machName: no workers assigned, returning all workers');
+      return _activeWorkers;
+    }
+
+    final filtered = _activeWorkers.where((w) => crewWorkerIds.contains(w['id'] as String?)).toList();
+    debugPrint('[OpFilter] $machName: returning ${filtered.length} operators');
+    return filtered;
   }
 
   List<Map<String, dynamic>> _filteredMachinery() {
