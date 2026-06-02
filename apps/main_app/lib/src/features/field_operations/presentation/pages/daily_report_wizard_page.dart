@@ -311,6 +311,7 @@ class _DailyReportWizardPageState
               deviationReasons: _deviationReasons,
               laborLogs: _laborLogs,
               plannedLabor: _unfilteredPlannedLabor,
+              machineryCatalog: _machineryCatalog,
               isReadOnly: _reportData['status'] == 'approved',
               onLogsChanged: _onMachineryLogsChanged,
             ),

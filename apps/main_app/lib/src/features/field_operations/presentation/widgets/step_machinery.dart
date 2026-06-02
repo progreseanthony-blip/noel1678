@@ -9,6 +9,7 @@ class StepMachinery extends StatefulWidget {
   final List<Map<String, dynamic>> deviationReasons;
   final List<Map<String, dynamic>> laborLogs;
   final List<Map<String, dynamic>> plannedLabor;
+  final List<Map<String, dynamic>> machineryCatalog;
   final bool isReadOnly;
   final ValueChanged<List<Map<String, dynamic>>> onLogsChanged;
 
@@ -20,6 +21,7 @@ class StepMachinery extends StatefulWidget {
     required this.deviationReasons,
     required this.laborLogs,
     required this.plannedLabor,
+    required this.machineryCatalog,
     required this.isReadOnly,
     required this.onLogsChanged,
   });
@@ -140,7 +142,16 @@ class _StepMachineryState extends State<StepMachinery> {
 
   List<Map<String, dynamic>> _getOperatorsForMachine(Map<String, dynamic> pm) {
     final svcId = pm['quote_service_id'] as String?;
-    final opRoleId = pm['machinery']?['operator_role_id'] as String?;
+    var opRoleId = pm['machinery']?['operator_role_id'] as String?;
+    final machId = pm['machinery_id'] as String?;
+
+    if (opRoleId == null && machId != null) {
+      final catalogEntry = widget.machineryCatalog.firstWhere(
+        (m) => m['id'] == machId,
+        orElse: () => <String, dynamic>{},
+      );
+      opRoleId = catalogEntry['operator_role_id'] as String?;
+    }
 
     if (svcId == null || opRoleId == null) return _activeWorkers;
 
