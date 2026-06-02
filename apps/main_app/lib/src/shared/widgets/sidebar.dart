@@ -51,56 +51,33 @@ class Sidebar extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Column(
                 children: [
-                  _NavItem(
-                    icon: Icons.group_outlined, 
-                    label: 'User Management', 
-                    isActive: currentPath.startsWith('/users') || currentPath == '/', 
-                    onTap: () => context.go('/users')
+                  _NavItem(icon: Icons.group_outlined, label: 'User Management', isActive: currentPath.startsWith('/users') || currentPath == '/', onTap: () => context.go('/users')),
+                  const SizedBox(height: 4),
+                  _NavItem(icon: Icons.request_quote_rounded, label: 'Estimates', isActive: currentPath.startsWith('/quotes'), onTap: () => context.go('/quotes')),
+                  const SizedBox(height: 4),
+                  _ExpandableNavItem(
+                    icon: Icons.rocket_launch_outlined,
+                    label: 'Projects',
+                    isActive: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports'),
+                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports'),
+                    children: [
+                      _SubNavItem(icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')), onTap: () => context.go('/projects')),
+                      _SubNavItem(icon: Icons.assignment, label: 'Daily Reports', isActive: currentPath.startsWith('/daily-reports') || currentPath.contains('/daily-reports') || currentPath.contains('/daily-report'), onTap: () => context.go('/daily-reports')),
+                    ],
                   ),
                   const SizedBox(height: 4),
-                  _NavItem(
-                    icon: Icons.request_quote_rounded, 
-                    label: 'Estimates', 
-                    isActive: currentPath.startsWith('/quotes'), 
-                    onTap: () => context.go('/quotes')
-                  ),
+                  _NavItem(icon: Icons.person_search_outlined, label: 'Customers', isActive: currentPath.startsWith('/customers'), onTap: () => context.go('/customers')),
                   const SizedBox(height: 4),
-                  _NavItem(
-                    icon: Icons.rocket_launch_outlined, 
-                    label: 'Projects', 
-                    isActive: currentPath.startsWith('/projects'), 
-                    onTap: () => context.go('/projects')
-                  ),
+                  _NavItem(icon: Icons.folder_copy_outlined, label: 'Catalogs', isActive: currentPath.startsWith('/catalogs'), onTap: () => context.go('/catalogs')),
                   const SizedBox(height: 4),
-                  _NavItem(
-                    icon: Icons.person_search_outlined, 
-                    label: 'Customers', 
-                    isActive: currentPath.startsWith('/customers'), 
-                    onTap: () => context.go('/customers')
-                  ),
-                  const SizedBox(height: 4),
-                  _NavItem(
-                    icon: Icons.folder_copy_outlined, 
-                    label: 'Catalogs', 
-                    isActive: currentPath.startsWith('/catalogs'), 
-                    onTap: () => context.go('/catalogs')
-                  ),
-                  const SizedBox(height: 4),
-                  _NavItem(
-                    icon: Icons.engineering_outlined, 
-                    label: 'Workers', 
-                    isActive: currentPath.startsWith('/workers'), 
-                    onTap: () => context.go('/workers')
-                  ),
+                  _NavItem(icon: Icons.engineering_outlined, label: 'Workers', isActive: currentPath.startsWith('/workers'), onTap: () => context.go('/workers')),
                 ],
               ),
             ),
           ),
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: Color(0xFF1E293B), width: 1)),
-            ),
+            decoration: const BoxDecoration(border: Border(top: BorderSide(color: Color(0xFF1E293B), width: 1))),
             child: Column(
               children: [
                 _NavItem(icon: Icons.settings_outlined, label: 'Settings', isActive: false, onTap: () {}),
@@ -150,12 +127,7 @@ class _NavItem extends StatefulWidget {
   final bool isActive;
   final VoidCallback onTap;
 
-  const _NavItem({
-    required this.icon, 
-    required this.label, 
-    required this.isActive, 
-    required this.onTap
-  });
+  const _NavItem({required this.icon, required this.label, required this.isActive, required this.onTap});
 
   @override
   State<_NavItem> createState() => _NavItemState();
@@ -180,20 +152,112 @@ class _NavItemState extends State<_NavItem> {
             color: widget.isActive ? AppTheme.primaryGreen.withOpacity(0.1) : (_isHovered ? Colors.white.withOpacity(0.03) : Colors.transparent),
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Row(
-            children: [
+          child: Row(children: [
+            Icon(widget.icon, color: color, size: 20),
+            const SizedBox(width: 14),
+            Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 14, fontWeight: widget.isActive ? FontWeight.w700 : FontWeight.w600)),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExpandableNavItem extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final bool isActive;
+  final bool initiallyExpanded;
+  final List<Widget> children;
+
+  const _ExpandableNavItem({required this.icon, required this.label, required this.isActive, required this.initiallyExpanded, required this.children});
+
+  @override
+  State<_ExpandableNavItem> createState() => _ExpandableNavItemState();
+}
+
+class _ExpandableNavItemState extends State<_ExpandableNavItem> {
+  bool _isHovered = false;
+  late bool _isExpanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _isExpanded = widget.initiallyExpanded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.isActive ? AppTheme.primaryGreen : (_isHovered ? Colors.white : AppTheme.slate400);
+    return Column(children: [
+      MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () => setState(() => _isExpanded = !_isExpanded),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: widget.isActive ? AppTheme.primaryGreen.withOpacity(0.1) : (_isHovered ? Colors.white.withOpacity(0.03) : Colors.transparent),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(children: [
               Icon(widget.icon, color: color, size: 20),
               const SizedBox(width: 14),
-              Text(
-                widget.label, 
-                style: GoogleFonts.manrope(
-                  color: color, 
-                  fontSize: 14, 
-                  fontWeight: widget.isActive ? FontWeight.w700 : FontWeight.w600
-                )
-              ),
-            ],
+              Expanded(child: Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 14, fontWeight: widget.isActive ? FontWeight.w700 : FontWeight.w600))),
+              AnimatedRotation(duration: const Duration(milliseconds: 200), turns: _isExpanded ? 0.5 : 0.0, child: Icon(Icons.expand_more, color: color, size: 18)),
+            ]),
           ),
+        ),
+      ),
+      AnimatedCrossFade(
+        duration: const Duration(milliseconds: 200),
+        crossFadeState: _isExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+        firstChild: Padding(padding: const EdgeInsets.only(left: 16), child: Column(children: widget.children)),
+        secondChild: const SizedBox.shrink(),
+      ),
+    ]);
+  }
+}
+
+class _SubNavItem extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _SubNavItem({required this.icon, required this.label, required this.isActive, required this.onTap});
+
+  @override
+  State<_SubNavItem> createState() => _SubNavItemState();
+}
+
+class _SubNavItemState extends State<_SubNavItem> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.isActive ? AppTheme.primaryGreen : (_isHovered ? Colors.white : AppTheme.slate400);
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.only(left: 36, right: 16, top: 10, bottom: 10),
+          decoration: BoxDecoration(
+            color: widget.isActive ? AppTheme.primaryGreen.withOpacity(0.08) : (_isHovered ? Colors.white.withOpacity(0.03) : Colors.transparent),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(children: [
+            Icon(widget.icon, color: color, size: 16),
+            const SizedBox(width: 12),
+            Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 13, fontWeight: widget.isActive ? FontWeight.w700 : FontWeight.w500)),
+          ]),
         ),
       ),
     );

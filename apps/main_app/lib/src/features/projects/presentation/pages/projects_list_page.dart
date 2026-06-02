@@ -30,7 +30,7 @@ void _showProjectMenu(BuildContext context, Map<String, dynamic> project) {
                   context.go('/projects/$pid');
                 },
                 icon: const Icon(Icons.build_circle, size: 20),
-                label: Text('Planificar Recursos', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 14)),
+                label: Text('Resource Planning', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 14)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.slate900,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -47,7 +47,7 @@ void _showProjectMenu(BuildContext context, Map<String, dynamic> project) {
                   context.go('/projects/$pid/daily-reports');
                 },
                 icon: const Icon(Icons.assignment, size: 20),
-                label: Text('Reporte Diario', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 14)),
+                label: Text('Daily Report', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 14)),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF22C55E),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
