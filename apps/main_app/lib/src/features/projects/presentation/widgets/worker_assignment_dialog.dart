@@ -88,7 +88,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       // 1. Get role and stipulated duration
       final laborData = await supabase
           .from('project_labor')
-          .select('project_id, quote_service_labors(role_id, quote_services(quote_service_estimations(total_working_days)))')
+          .select('project_id, role_id, quote_service_labors(role_id, quote_services(quote_service_estimations(total_working_days)))')
           .eq('id', widget.projectLaborId)
           .maybeSingle();
       
@@ -98,8 +98,8 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       dynamic roleId;
       try {
         final qsl = laborData['quote_service_labors'];
+        roleId = qsl?['role_id'] ?? laborData['role_id'];
         if (qsl != null) {
-          roleId = qsl['role_id'];
           final qs = qsl['quote_services'];
           if (qs != null) {
             final est = qs['quote_service_estimations'];
@@ -119,7 +119,9 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       // 2. Load all workers with that role
       var workersQuery = supabase
           .from('workers')
-          .select('id, full_name, id_number')
+          .select(''', id, full_name, id_number,
+            role:labor_roles(id, description)
+          '''.replaceAll('\n', ' '))
           .eq('status', 'Active');
       
       if (roleId != null) {
@@ -650,28 +652,39 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
                               }
                               _toggleAssignment(workerId, val ?? false);
                             },
-                            title: Row(
+                            title: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: Text(
-                                    worker['full_name'],
-                                    style: GoogleFonts.manrope(
-                                      fontWeight: FontWeight.w700,
-                                      color: isBusyElsewhere ? AppTheme.slate400 : AppTheme.slate900,
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        worker['full_name'],
+                                        style: GoogleFonts.manrope(
+                                          fontWeight: FontWeight.w700,
+                                          color: isBusyElsewhere ? AppTheme.slate400 : AppTheme.slate900,
+                                        ),
+                                      ),
                                     ),
+                                    if (isBusyElsewhere) _buildBusyBadge(busyProject),
+                                    if (isAssignedHere)
+                                      IconButton(
+                                        icon: const Icon(Icons.edit_calendar, size: 20, color: Colors.blue),
+                                        onPressed: () => _editIndividualDates(workerId),
+                                        tooltip: 'Edit individual dates',
+                                      ),
+                                  ],
+                                ),
+                                Text(
+                                  'ID: ${worker['id_number'] ?? '-'}  \u2022  ${worker['role']?['description'] ?? 'No role'}',
+                                  style: GoogleFonts.manrope(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                    color: AppTheme.slate500,
                                   ),
                                 ),
-                                if (isBusyElsewhere)
-                                  _buildBusyBadge(busyProject),
-                                if (isAssignedHere)
-                                  IconButton(
-                                    icon: const Icon(Icons.edit_calendar, size: 20, color: Colors.blue),
-                                    onPressed: () => _editIndividualDates(workerId),
-                                    tooltip: 'Edit individual dates',
-                                  ),
                               ],
                             ),
-                            subtitle: Text('ID: ${worker['id_number']}', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500)),
                             activeColor: AppTheme.primaryGreen,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
