@@ -133,7 +133,9 @@ class _StepMachineryState extends State<StepMachinery> {
   String _workerName(String? wid) {
     if (wid == null) return 'Select operator...';
     final w = widget.workers.firstWhere((x) => x['id'] == wid, orElse: () => <String, dynamic>{});
-    return '${w['full_name'] ?? '?'} (${w['id_number'] ?? '-'})';
+    final role = w['role']?['description'] as String? ?? '';
+    final name = '${w['full_name'] ?? '?'} (${w['id_number'] ?? '-'})';
+    return role.isNotEmpty ? '$name — $role' : name;
   }
 
   List<Map<String, dynamic>> _getOperatorsForMachine(Map<String, dynamic> pm) {
@@ -410,7 +412,7 @@ class _StepMachineryState extends State<StepMachinery> {
                 value: entry['operator_id'],
                 decoration: const InputDecoration(labelText: 'Operator', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10)),
                 items: operators.map<DropdownMenuItem<String>>((w) =>
-                  DropdownMenuItem(value: w['id'] as String?, child: Text('${w['full_name']} (${w['id_number'] ?? '-'})', style: _t(fontSize: 12)))).toList(),
+                  DropdownMenuItem(value: w['id'] as String?, child: Text(_workerName(w['id'] as String?), style: _t(fontSize: 12)))).toList(),
                 onChanged: (v) => _updateEntry(index, 'operator_id', v),
               ),
             ),

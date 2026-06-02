@@ -170,7 +170,7 @@ class DailyReportService {
   // ── Planned Resources (read-only from existing planning tables) ──
 
   Future<List<Map<String, dynamic>>> getPlannedLaborForProject(
-      String projectId, String date) async {
+      String projectId, String date, {bool filterByDate = true}) async {
     final response = await _supabase
         .from('project_labor')
         .select('*, quote_services(name), labor_roles(description, hourly_rate, internal_cost_rate), '
@@ -178,6 +178,7 @@ class DailyReportService {
         .eq('project_id', projectId)
         .order('role_name');
     final result = List<Map<String, dynamic>>.from(response ?? []);
+    if (!filterByDate) return result;
     for (final pl in result) {
       final List assignments = pl['project_labor_assignments'] ?? [];
       pl['project_labor_assignments'] = assignments.where((a) {

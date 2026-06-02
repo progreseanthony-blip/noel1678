@@ -163,7 +163,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       for (var row in projectAssignments as List) {
         final wId = row['worker_id'].toString();
         final roleName = row['project_labor']?['role_name'] ?? 'Other Role';
-        if (wId != null) {
+        if (wId != null && !assignedIds.contains(wId)) {
           busyWorkerIds.add(wId);
           busyReasons[wId] = 'Already assigned to this project as $roleName';
         }

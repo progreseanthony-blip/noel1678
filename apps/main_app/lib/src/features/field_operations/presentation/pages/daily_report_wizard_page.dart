@@ -36,6 +36,8 @@ class _DailyReportWizardPageState
   // ignore: unused_field
   List<Map<String, dynamic>> _materialUsage = [];
   List<Map<String, dynamic>> _plannedLabor = [];
+  // ignore: unused_field - used by StepMachinery for unfiltered operator assignments
+  List<Map<String, dynamic>> _unfilteredPlannedLabor = [];
   // ignore: unused_field
   List<Map<String, dynamic>> _plannedMachinery = [];
   // ignore: unused_field
@@ -75,6 +77,7 @@ class _DailyReportWizardPageState
         service.getMachineryLogsForReport(reportId),
         service.getMaterialUsageForReport(reportId),
         service.getPlannedLaborForProject(widget.projectId, reportDate),
+        service.getPlannedLaborForProject(widget.projectId, reportDate, filterByDate: false),
         service.getPlannedMachineryForProject(widget.projectId, reportDate),
         service.getPlannedMaterialsForProject(widget.projectId, reportDate),
         service.getProjectTasks(widget.projectId),
@@ -94,13 +97,14 @@ class _DailyReportWizardPageState
         _machineryLogs = List<Map<String, dynamic>>.from(results[1] as List);
         _materialUsage = List<Map<String, dynamic>>.from(results[2] as List);
         _plannedLabor = List<Map<String, dynamic>>.from(results[3] as List);
-        _plannedMachinery = List<Map<String, dynamic>>.from(results[4] as List);
-        _plannedMaterials = List<Map<String, dynamic>>.from(results[5] as List);
-        _projectTasks = List<Map<String, dynamic>>.from(results[6] as List);
-        _deviationReasons = List<Map<String, dynamic>>.from(results[7] as List);
-        _workers = List<Map<String, dynamic>>.from(results[8] as List);
-        _machineryCatalog = List<Map<String, dynamic>>.from(results[9] as List);
-        _materialsCatalog = List<Map<String, dynamic>>.from(results[10] as List);
+        _unfilteredPlannedLabor = List<Map<String, dynamic>>.from(results[4] as List);
+        _plannedMachinery = List<Map<String, dynamic>>.from(results[5] as List);
+        _plannedMaterials = List<Map<String, dynamic>>.from(results[6] as List);
+        _projectTasks = List<Map<String, dynamic>>.from(results[7] as List);
+        _deviationReasons = List<Map<String, dynamic>>.from(results[8] as List);
+        _workers = List<Map<String, dynamic>>.from(results[9] as List);
+        _machineryCatalog = List<Map<String, dynamic>>.from(results[10] as List);
+        _materialsCatalog = List<Map<String, dynamic>>.from(results[11] as List);
         _isInitializing = false;
       });
     } catch (e) {
@@ -155,14 +159,16 @@ class _DailyReportWizardPageState
       final service = ref.read(dailyReportServiceProvider);
       final results = await Future.wait([
         service.getPlannedLaborForProject(widget.projectId, date),
+        service.getPlannedLaborForProject(widget.projectId, date, filterByDate: false),
         service.getPlannedMachineryForProject(widget.projectId, date),
         service.getPlannedMaterialsForProject(widget.projectId, date),
       ]);
       if (!mounted) return;
       setState(() {
         _plannedLabor = results[0] as List<Map<String, dynamic>>;
-        _plannedMachinery = results[1] as List<Map<String, dynamic>>;
-        _plannedMaterials = results[2] as List<Map<String, dynamic>>;
+        _unfilteredPlannedLabor = results[1] as List<Map<String, dynamic>>;
+        _plannedMachinery = results[2] as List<Map<String, dynamic>>;
+        _plannedMaterials = results[3] as List<Map<String, dynamic>>;
       });
     } catch (e) {
       debugPrint('Error reloading planned labor: $e');
@@ -304,7 +310,7 @@ class _DailyReportWizardPageState
               workers: _workers,
               deviationReasons: _deviationReasons,
               laborLogs: _laborLogs,
-              plannedLabor: _plannedLabor,
+              plannedLabor: _unfilteredPlannedLabor,
               isReadOnly: _reportData['status'] == 'approved',
               onLogsChanged: _onMachineryLogsChanged,
             ),
