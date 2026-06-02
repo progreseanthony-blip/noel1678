@@ -919,18 +919,6 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                       minimumSize: const Size(0, 36),
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: () => context.push('/projects/${widget.projectId}/daily-reports'),
-                    icon: const Icon(Icons.assignment, size: 16, color: Colors.white),
-                    label: Text('Daily Report', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF22C55E),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                      minimumSize: const Size(0, 36),
-                    ),
-                  ),
                 ],
               ),
               const SizedBox(height: 4),

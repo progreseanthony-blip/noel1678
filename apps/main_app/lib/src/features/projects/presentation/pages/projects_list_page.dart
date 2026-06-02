@@ -6,6 +6,66 @@ import 'package:intl/intl.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
 
+void _showProjectMenu(BuildContext context, Map<String, dynamic> project) {
+  final title = project['title'] ?? 'Project';
+  final pid = project['id'] as String;
+
+  showDialog(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(title, style: GoogleFonts.manrope(fontWeight: FontWeight.w800, fontSize: 18, color: AppTheme.slate900)),
+      content: Text('What would you like to do with this project?',
+          style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 13)),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      actions: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  context.go('/projects/$pid');
+                },
+                icon: const Icon(Icons.build_circle, size: 20),
+                label: Text('Planificar Recursos', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 14)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.slate900,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  context.go('/projects/$pid/daily-reports');
+                },
+                icon: const Icon(Icons.assignment, size: 20),
+                label: Text('Reporte Diario', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 14)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF22C55E),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Cancel', style: GoogleFonts.manrope(color: AppTheme.slate400, fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
 class ProjectsListPage extends StatefulWidget {
   const ProjectsListPage({super.key});
 
@@ -326,7 +386,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
 
     if (isMobile) {
       return InkWell(
-        onTap: () => context.go('/projects/${project['id']}'),
+        onTap: () => _showProjectMenu(context, project),
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: const BoxDecoration(
@@ -355,7 +415,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () => context.go('/projects/${project['id']}'),
+        onTap: () => _showProjectMenu(context, project),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           decoration: const BoxDecoration(

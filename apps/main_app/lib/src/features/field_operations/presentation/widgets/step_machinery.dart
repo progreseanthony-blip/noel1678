@@ -171,7 +171,13 @@ class _StepMachineryState extends State<StepMachinery> {
   }
 
   List<Map<String, dynamic>> _filteredExtras() {
-    return _entries.where((e) => e['is_unplanned'] == true && e['project_machinery_id'] == null).toList();
+    final visibleIds = _filteredMachinery().map((pm) => pm['id'] as String).toSet();
+    return _entries.where((e) {
+      if (e['is_unplanned'] == true && e['project_machinery_id'] == null) return true;
+      final pid = e['project_machinery_id'] as String?;
+      if (pid != null && !visibleIds.contains(pid)) return true;
+      return false;
+    }).toList();
   }
 
   List<String> _allServices() {
