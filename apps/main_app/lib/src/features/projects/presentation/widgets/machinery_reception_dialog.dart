@@ -155,19 +155,21 @@ class _MachineryReceptionDialogState extends State<MachineryReceptionDialog> {
       final inspectionId = widget.inspectionId;
       final hasInspectionId = inspectionId != null && inspectionId.isNotEmpty;
       final activeInspection = hasInspectionId
-          ? await supabase
+          ? (await supabase
               .from('machinery_inspections')
               .select('id, brand_model, project_machinery(project_id, projects(title))')
               .eq('internal_code', _serialController.text.trim())
               .is_('returned_at', null)
               .neq('id', inspectionId!)
-              .maybeSingle()
-          : await supabase
+              .limit(2)
+          ).firstOrNull
+          : (await supabase
               .from('machinery_inspections')
               .select('id, brand_model, project_machinery(project_id, projects(title))')
               .eq('internal_code', _serialController.text.trim())
               .is_('returned_at', null)
-              .maybeSingle();
+              .limit(2)
+          ).firstOrNull;
 
       if (activeInspection != null) {
         final otherProjectName = activeInspection['project_machinery']?['projects']?['title'] ?? 'another project';
