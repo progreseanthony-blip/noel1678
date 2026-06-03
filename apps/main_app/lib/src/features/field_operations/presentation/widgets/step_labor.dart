@@ -48,20 +48,25 @@ class _StepLaborState extends State<StepLabor> {
 
   String? _getRoleIdForEntry(Map<String, dynamic> entry) {
     final plId = entry['project_labor_id'] as String?;
-    debugPrint('[StepLabor] _getRoleIdForEntry: plId=$plId, plannedCount=${widget.plannedLabor.length}');
-    if (plId == null) {
-      debugPrint('[StepLabor] -> no project_labor_id, returning null (no filter)');
-      return null;
-    }
+    if (plId == null) return null;
     for (final pl in widget.plannedLabor) {
       if (pl['id'] == plId) {
-        final roleId = pl['role_id'] as String?;
-        final roleName = pl['role_name'] as String?;
-        debugPrint('[StepLabor] -> found match! role_id=$roleId, role_name=$roleName');
-        return roleId;
+        return pl['role_id'] as String?
+            ?? pl['labor_roles']?['id'] as String?;
       }
     }
-    debugPrint('[StepLabor] -> no matching planned labor found for plId=$plId, returning null');
+    return null;
+  }
+
+  String? _getRoleNameForEntry(Map<String, dynamic> entry) {
+    final plId = entry['project_labor_id'] as String?;
+    if (plId == null) return null;
+    for (final pl in widget.plannedLabor) {
+      if (pl['id'] == plId) {
+        return pl['role_name'] as String?
+            ?? pl['labor_roles']?['description'] as String?;
+      }
+    }
     return null;
   }
 
@@ -186,18 +191,17 @@ class _StepLaborState extends State<StepLabor> {
   Widget _buildWorkerSwapper(int idx, Map<String, dynamic> entry, String? dr) {
     final cwid = entry['worker_id'] as String?;
     final roleId = _getRoleIdForEntry(entry);
+    final roleName = _getRoleNameForEntry(entry);
     final takenIds = _entries.where((x) => x != entry).map((x) => x['worker_id'] as String?).where((id) => id != null).toSet();
     final avail = _activeWorkers.where((w) {
       if (takenIds.contains(w['id'])) return false;
-      if (roleId != null && w['role_id'] != roleId) return false;
+      if (roleId != null) return w['role_id'] == roleId || w['role']?['id'] == roleId;
+      if (roleName != null) {
+        final wRoleName = w['role']?['description'] as String? ?? '';
+        return wRoleName.toUpperCase() == roleName.toUpperCase();
+      }
       return true;
     }).toList();
-    debugPrint('[StepLabor] Swapper: roleId=$roleId, activeWorkers=${_activeWorkers.length}, avail=${avail.length}, cwid=$cwid');
-    if (roleId != null) {
-      for (final w in _activeWorkers) {
-        debugPrint('[StepLabor]   worker ${w['full_name']} role_id=${w['role_id']} (expected=$roleId) -> ${w['role_id'] == roleId ? "MATCH" : "SKIP"}');
-      }
-    }
     if (cwid != null && !avail.any((w) => w['id'] == cwid)) { final cw = _activeWorkers.firstWhere((w) => w['id'] == cwid, orElse: () => <String, dynamic>{}); if (cw.isNotEmpty) avail.insert(0, cw); }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       DropdownButtonHideUnderline(child: DropdownButton<String>(value: cwid, isExpanded: true, isDense: true, style: _t(fs: 12, w: FontWeight.w700, c: AppTheme.slate900), hint: Text('Select...', style: _t(fs: 12, c: AppTheme.slate400)), items: avail.map((w) => DropdownMenuItem<String>(value: w['id'] as String?, child: Text(_workerName(w), style: _t(fs: 12, w: FontWeight.w600), overflow: TextOverflow.ellipsis))).toList(), onChanged: (v) => _swapWorker(idx, v))),

@@ -14,26 +14,14 @@ class WorkersService {
   WorkersService(this._client);
 
   Future<List<Map<String, dynamic>>> getWorkers() async {
-    final workersResponse = await _client
+    final response = await _client
         .from('workers')
-        .select()
+        .select('''
+          *,
+          role:labor_roles(id, description, hourly_rate)
+        ''')
         .order('full_name');
-    final workers = List<Map<String, dynamic>>.from(workersResponse ?? []);
-
-    final rolesResponse = await _client
-        .from('labor_roles')
-        .select('id, description, hourly_rate');
-    final rolesMap = <String, Map<String, dynamic>>{};
-    for (final r in List<Map<String, dynamic>>.from(rolesResponse ?? [])) {
-      rolesMap[r['id'] as String] = r;
-    }
-
-    for (final w in workers) {
-      final roleId = w['role_id'] as String?;
-      w['role'] = roleId != null ? rolesMap[roleId] : null;
-    }
-
-    return workers;
+    return List<Map<String, dynamic>>.from(response ?? []);
   }
 
   Future<Map<String, dynamic>> getWorkerDetails(String id) async {
