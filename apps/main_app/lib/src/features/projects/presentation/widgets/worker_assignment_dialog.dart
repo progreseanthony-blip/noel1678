@@ -88,17 +88,19 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       // 1. Get role and stipulated duration
       final laborData = await supabase
           .from('project_labor')
-          .select('project_id, role_id, quote_service_labors(role_id, quote_services(quote_service_estimations(total_working_days)))')
+          .select('project_id, role_id, role_name, quote_service_labors(role_id, quote_services(quote_service_estimations(total_working_days)))')
           .eq('id', widget.projectLaborId)
           .maybeSingle();
       
       if (laborData == null) return;
 
+      final roleId = laborData['role_id'];
+      final roleName = laborData['role_name'] as String?;
+      debugPrint('[WorkerDialog] roleId=$roleId roleName=$roleName');
+
       dynamic duration;
-      dynamic roleId;
       try {
         final qsl = laborData['quote_service_labors'];
-        roleId = qsl?['role_id'] ?? laborData['role_id'];
         if (qsl != null) {
           final qs = qsl['quote_services'];
           if (qs != null) {
@@ -111,27 +113,36 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
           }
         }
       } catch (e) {
-        debugPrint('Error parsing labor duration path: $e');
+        debugPrint('[WorkerDialog] Error parsing duration: $e');
       }
 
       final double? durationValue = duration != null ? (duration as num).toDouble() : null;
 
-      // 2. Load all workers with that role
-      var workersQuery = supabase
+      // 2. Load all workers, filter by role in Dart
+      final workersResult = await supabase
           .from('workers')
-          .select(''', id, full_name, id_number,
+          .select('''
+            *,
             role:labor_roles(id, description)
-          '''.replaceAll('\n', ' '))
-          .eq('status', 'Active');
-      
+          ''')
+          .eq('status', 'Active')
+          .order('full_name');
+
+      var allWorkers = List<Map<String, dynamic>>.from(workersResult ?? []);
       if (roleId != null) {
-        debugPrint('Filtering workers by role_id: $roleId');
-        workersQuery = workersQuery.eq('role_id', roleId);
+        debugPrint('[WorkerDialog] Filtering by role_id=$roleId from ${allWorkers.length} total');
+        allWorkers = allWorkers.where((w) => w['role_id'] == roleId).toList();
+        debugPrint('[WorkerDialog] After role_id filter: ${allWorkers.length} workers');
+      } else if (roleName != null) {
+        debugPrint('[WorkerDialog] Filtering by role_name="$roleName" from ${allWorkers.length} total');
+        allWorkers = allWorkers.where((w) {
+          final wRole = w['role']?['description'] as String? ?? '';
+          return wRole.toUpperCase() == roleName.toUpperCase();
+        }).toList();
+        debugPrint('[WorkerDialog] After role_name filter: ${allWorkers.length} workers');
       } else {
-        debugPrint('Warning: roleId is null, showing all active workers');
+        debugPrint('[WorkerDialog] No roleId or roleName, showing ${allWorkers.length} workers');
       }
-      
-      final workersResult = await workersQuery.order('full_name');
 
       // 3. Load current assignments with dates
       final assignmentsResult = await supabase
@@ -193,7 +204,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       if (mounted) {
         setState(() {
           _stipulatedDays = durationValue;
-          _allWorkers = List<Map<String, dynamic>>.from(workersResult ?? []);
+          _allWorkers = allWorkers;
           _assignedWorkerIds = assignedIds;
           _workerDates = workerDatesMap;
           _globalBusyWorkers = Map.fromIterable(busyWorkerIds, value: (id) => busyReasons[id] ?? 'Busy');

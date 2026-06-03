@@ -35,15 +35,34 @@ class _StepLaborState extends State<StepLabor> {
   int _entryIndex(String workerId) => _entries.indexWhere((e) => e['worker_id'] == workerId);
 
   String _workerName(Map<String, dynamic> w) {
-    final role = w['role']?['description'] as String? ?? '';
+    final role = w['role']?['description'] as String? ?? 'Sin rol';
     final name = '${w['full_name'] ?? '?'} (${w['id_number'] ?? '-'})';
-    return role.isNotEmpty ? '$name \u2014 $role' : name;
+    return '$name \u2014 $role';
   }
 
   String _workerNameById(String? wid) {
     if (wid == null) return '-';
     final w = widget.workers.firstWhere((x) => x['id'] == wid, orElse: () => <String, dynamic>{});
     return _workerName(w);
+  }
+
+  String? _getRoleIdForEntry(Map<String, dynamic> entry) {
+    final plId = entry['project_labor_id'] as String?;
+    debugPrint('[StepLabor] _getRoleIdForEntry: plId=$plId, plannedCount=${widget.plannedLabor.length}');
+    if (plId == null) {
+      debugPrint('[StepLabor] -> no project_labor_id, returning null (no filter)');
+      return null;
+    }
+    for (final pl in widget.plannedLabor) {
+      if (pl['id'] == plId) {
+        final roleId = pl['role_id'] as String?;
+        final roleName = pl['role_name'] as String?;
+        debugPrint('[StepLabor] -> found match! role_id=$roleId, role_name=$roleName');
+        return roleId;
+      }
+    }
+    debugPrint('[StepLabor] -> no matching planned labor found for plId=$plId, returning null');
+    return null;
   }
 
   void _addEntry(String workerId, {String? plannedLaborId, bool isUnplanned = false}) {
@@ -166,8 +185,19 @@ class _StepLaborState extends State<StepLabor> {
 
   Widget _buildWorkerSwapper(int idx, Map<String, dynamic> entry, String? dr) {
     final cwid = entry['worker_id'] as String?;
+    final roleId = _getRoleIdForEntry(entry);
     final takenIds = _entries.where((x) => x != entry).map((x) => x['worker_id'] as String?).where((id) => id != null).toSet();
-    final avail = _activeWorkers.where((w) => !takenIds.contains(w['id'])).toList();
+    final avail = _activeWorkers.where((w) {
+      if (takenIds.contains(w['id'])) return false;
+      if (roleId != null && w['role_id'] != roleId) return false;
+      return true;
+    }).toList();
+    debugPrint('[StepLabor] Swapper: roleId=$roleId, activeWorkers=${_activeWorkers.length}, avail=${avail.length}, cwid=$cwid');
+    if (roleId != null) {
+      for (final w in _activeWorkers) {
+        debugPrint('[StepLabor]   worker ${w['full_name']} role_id=${w['role_id']} (expected=$roleId) -> ${w['role_id'] == roleId ? "MATCH" : "SKIP"}');
+      }
+    }
     if (cwid != null && !avail.any((w) => w['id'] == cwid)) { final cw = _activeWorkers.firstWhere((w) => w['id'] == cwid, orElse: () => <String, dynamic>{}); if (cw.isNotEmpty) avail.insert(0, cw); }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       DropdownButtonHideUnderline(child: DropdownButton<String>(value: cwid, isExpanded: true, isDense: true, style: _t(fs: 12, w: FontWeight.w700, c: AppTheme.slate900), hint: Text('Select...', style: _t(fs: 12, c: AppTheme.slate400)), items: avail.map((w) => DropdownMenuItem<String>(value: w['id'] as String?, child: Text(_workerName(w), style: _t(fs: 12, w: FontWeight.w600), overflow: TextOverflow.ellipsis))).toList(), onChanged: (v) => _swapWorker(idx, v))),

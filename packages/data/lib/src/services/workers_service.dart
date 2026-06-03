@@ -14,26 +14,47 @@ class WorkersService {
   WorkersService(this._client);
 
   Future<List<Map<String, dynamic>>> getWorkers() async {
-    final response = await _client
+    final workersResponse = await _client
         .from('workers')
-        .select('''
-          *,
-          role:labor_roles(id, description, hourly_rate)
-        ''')
+        .select()
         .order('full_name');
-    return List<Map<String, dynamic>>.from(response);
+    final workers = List<Map<String, dynamic>>.from(workersResponse ?? []);
+
+    final rolesResponse = await _client
+        .from('labor_roles')
+        .select('id, description, hourly_rate');
+    final rolesMap = <String, Map<String, dynamic>>{};
+    for (final r in List<Map<String, dynamic>>.from(rolesResponse ?? [])) {
+      rolesMap[r['id'] as String] = r;
+    }
+
+    for (final w in workers) {
+      final roleId = w['role_id'] as String?;
+      w['role'] = roleId != null ? rolesMap[roleId] : null;
+    }
+
+    return workers;
   }
 
   Future<Map<String, dynamic>> getWorkerDetails(String id) async {
     final response = await _client
         .from('workers')
-        .select('''
-          *,
-          role:labor_roles(id, description, hourly_rate)
-        ''')
+        .select()
         .eq('id', id)
         .single();
-    return response as Map<String, dynamic>;
+    final worker = Map<String, dynamic>.from(response as Map<String, dynamic>);
+
+    final roleId = worker['role_id'] as String?;
+    if (roleId != null) {
+      final roleResponse = await _client
+          .from('labor_roles')
+          .select('id, description, hourly_rate')
+          .eq('id', roleId)
+          .maybeSingle();
+      worker['role'] = roleResponse;
+    }
+
+    return worker;
   }
 
   Future<List<Map<String, dynamic>>> getWorkerHistory(String workerId) async {

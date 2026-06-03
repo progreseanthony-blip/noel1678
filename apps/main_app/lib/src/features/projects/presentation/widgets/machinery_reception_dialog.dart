@@ -154,22 +154,16 @@ class _MachineryReceptionDialogState extends State<MachineryReceptionDialog> {
       // Overbooking conflict check
       final inspectionId = widget.inspectionId;
       final hasInspectionId = inspectionId != null && inspectionId.isNotEmpty;
-      final activeInspection = hasInspectionId
-          ? (await supabase
-              .from('machinery_inspections')
-              .select('id, brand_model, project_machinery(project_id, projects(title))')
-              .eq('internal_code', _serialController.text.trim())
-              .is_('returned_at', null)
-              .neq('id', inspectionId!)
-              .limit(2)
-          ).firstOrNull
-          : (await supabase
-              .from('machinery_inspections')
-              .select('id, brand_model, project_machinery(project_id, projects(title))')
-              .eq('internal_code', _serialController.text.trim())
-              .is_('returned_at', null)
-              .limit(2)
-          ).firstOrNull;
+      final baseQuery = supabase
+          .from('machinery_inspections')
+          .select('id, brand_model, project_machinery(project_id, projects(title))')
+          .eq('internal_code', _serialController.text.trim())
+          .is_('returned_at', null);
+      final filteredQuery = hasInspectionId
+          ? baseQuery.neq('id', inspectionId!)
+          : baseQuery;
+      final results = await filteredQuery.limit(1);
+      final activeInspection = results.isEmpty ? null : results.first;
 
       if (activeInspection != null) {
         final otherProjectName = activeInspection['project_machinery']?['projects']?['title'] ?? 'another project';
