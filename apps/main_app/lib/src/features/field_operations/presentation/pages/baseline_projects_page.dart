@@ -148,7 +148,7 @@ class _BaselineProjectsPageState extends State<BaselineProjectsPage> {
         return Card(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: AppTheme.slate200)),
           child: InkWell(
-            onTap: () => context.go('/projects/${p['id']}/daily-reports'),
+            onTap: () => context.push('/projects/${p['id']}/daily-reports'),
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding: const EdgeInsets.all(20),

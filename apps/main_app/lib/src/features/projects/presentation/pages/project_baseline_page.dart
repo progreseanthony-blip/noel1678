@@ -423,8 +423,7 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
               ),
               TextButton.icon(
                 onPressed: () {
-                  debugPrint('Baseline View Timeline button pressed');
-                  context.pop('show_gantt');
+                  context.pop(true);
                 },
                 icon: const Icon(Icons.calendar_month, size: 16, color: AppTheme.primaryGreen),
                 label: Text('View Timeline', style: GoogleFonts.manrope(color: AppTheme.primaryGreen, fontWeight: FontWeight.w700, fontSize: 13)),

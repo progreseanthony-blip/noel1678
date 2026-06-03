@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 
@@ -236,6 +237,10 @@ class _DailyReportWizardPageState
 
     return Scaffold(
       appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.pop(),
+          ),
           title: Text(
             _projectName.isNotEmpty
                 ? 'Daily Report — $_projectName — ${_reportData['report_date'] ?? ''}'
@@ -244,10 +249,20 @@ class _DailyReportWizardPageState
           ),
         actions: [
           if (_reportData['status'] == 'draft')
-            TextButton.icon(
-              onPressed: _saveDraft,
-              icon: const Icon(Icons.save_outlined, color: Colors.white70, size: 18),
-              label: Text('Save Draft', style: GoogleFonts.manrope(color: Colors.white70, fontSize: 13)),
+            Container(
+              margin: const EdgeInsets.only(right: 8),
+              child: ElevatedButton.icon(
+                onPressed: _saveDraft,
+                icon: const Icon(Icons.save, size: 16),
+                label: Text('Save Draft', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 12)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.amber.shade600,
+                  foregroundColor: Colors.black87,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  elevation: 2,
+                ),
+              ),
             ),
         ],
       ),

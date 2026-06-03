@@ -113,6 +113,10 @@ class _DailyReportsListPageState extends ConsumerState<DailyReportsListPage> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+            onPressed: () => context.pop(),
+        ),
         title: Text('Daily Reports — $projectName', style: GoogleFonts.manrope(fontSize: 14)),
       ),
       body: _isLoading

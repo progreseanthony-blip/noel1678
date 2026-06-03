@@ -885,26 +885,9 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                     onPressed: () async {
                       final result = await context.push('/projects/${widget.projectId}/baseline');
                       if (mounted) {
-                        if (result == 'show_gantt') {
+                        if (result == true || result == 'show_gantt') {
                           debugPrint('Baseline → Gantt navigation triggered');
-                          _loadProjectData().then((_) {
-                            if (mounted) {
-                              showDialog(
-                                context: context,
-                                barrierColor: Colors.black.withOpacity(0.4),
-                                builder: (ctx) => _FullscreenTimelineDialog(
-                                  projectId: widget.projectId,
-                                  project: _project,
-                                  machinery: _machinery,
-                                  labor: _labor,
-                                  instruments: _instruments,
-                                  selectedServiceFilter: _selectedServiceFilter,
-                                  onSaveBaseline: _saveBaselinePlanning,
-                                  isSavingBaseline: _isSavingBaseline,
-                                ),
-                              );
-                            }
-                          });
+                          _showGanttDialog();
                         } else {
                           _loadProjectData();
                         }
@@ -1849,6 +1832,26 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
     );
   }
 
+  void _showGanttDialog() {
+    _loadProjectData().then((_) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierColor: Colors.black.withOpacity(0.4),
+        builder: (ctx) => _FullscreenTimelineDialog(
+          projectId: widget.projectId,
+          project: _project,
+          machinery: _machinery,
+          labor: _labor,
+          instruments: _instruments,
+          selectedServiceFilter: _selectedServiceFilter,
+          onSaveBaseline: _saveBaselinePlanning,
+          isSavingBaseline: _isSavingBaseline,
+        ),
+      );
+    });
+  }
+
   bool _isSavingBaseline = false;
 
   Future<void> _saveBaselinePlanning() async {
@@ -2568,7 +2571,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: Text(
                       '${originalSDuration}d orig',
-                      style: GoogleFonts.manrope(fontSize: 8, fontWeight: FontWeight.w600, color: const Color(0xFF94A3B8)),
+                      style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w600, color: const Color(0xFF94A3B8)),
                     ),
                   ),
                 ),
@@ -2591,7 +2594,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                     padding: const EdgeInsets.symmetric(horizontal: 10),
                     child: Text(
                       '$sDuration d',
-                      style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.white),
+                      style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
                     ),
                   ),
                 ),
@@ -2661,7 +2664,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                                 child: Text(
                                   'EXTRA',
                                   style: GoogleFonts.manrope(
-                                    fontSize: 7,
+                            fontSize: 9,
                                     fontWeight: FontWeight.w900,
                                     color: Colors.orange,
                                   ),
@@ -2766,7 +2769,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                         alignment: Alignment.center,
                         child: Text(
                           '$itemDuration d',
-                          style: GoogleFonts.manrope(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.white),
+                          style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
                         ),
                       ),
                     ),
