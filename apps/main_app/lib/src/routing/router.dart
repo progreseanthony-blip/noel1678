@@ -18,6 +18,7 @@ import '../features/field_operations/presentation/pages/pending_approvals_page.d
 import '../features/payroll/presentation/pages/payroll_list_page.dart';
 import '../features/payroll/presentation/pages/payroll_period_page.dart';
 import '../features/payroll/presentation/pages/labor_cost_projects_page.dart';
+import '../features/production_measurement/presentation/pages/production_measurement_page.dart';
 final goRouter = GoRouter(
   initialLocation: '/signin',
   routes: [
@@ -56,6 +57,10 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/projects/:id/baseline',
       builder: (context, state) => ProjectBaselinePage(projectId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/projects/:id/production-measurement',
+      builder: (context, state) => ProductionMeasurementPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/daily-reports',
