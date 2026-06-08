@@ -70,6 +70,8 @@ class Sidebar extends StatelessWidget {
                   const SizedBox(height: 4),
                   _NavItem(icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), onTap: () => context.go('/daily-reports/pending')),
                   const SizedBox(height: 4),
+                  _NavItem(icon: Icons.speed, label: 'Production Metrics', isActive: currentPath.startsWith('/production-measurement'), onTap: () => context.go('/production-measurement')),
+                  const SizedBox(height: 4),
                   _NavItem(icon: Icons.person_search_outlined, label: 'Customers', isActive: currentPath.startsWith('/customers'), onTap: () => context.go('/customers')),
                   const SizedBox(height: 4),
                   _NavItem(icon: Icons.folder_copy_outlined, label: 'Catalogs', isActive: currentPath.startsWith('/catalogs'), onTap: () => context.go('/catalogs')),
