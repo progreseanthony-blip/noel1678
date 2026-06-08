@@ -15,9 +15,12 @@ import '../features/field_operations/presentation/pages/daily_report_wizard_page
 import '../features/field_operations/presentation/pages/daily_reports_list_page.dart';
 import '../features/field_operations/presentation/pages/baseline_projects_page.dart';
 import '../features/field_operations/presentation/pages/pending_approvals_page.dart';
+import '../features/field_operations/presentation/pages/report_review_page.dart';
 import '../features/payroll/presentation/pages/payroll_list_page.dart';
 import '../features/payroll/presentation/pages/payroll_period_page.dart';
 import '../features/payroll/presentation/pages/labor_cost_projects_page.dart';
+import '../features/production_measurement/presentation/pages/production_measurement_page.dart';
+import '../features/production_measurement/presentation/pages/production_measurement_projects_page.dart';
 final goRouter = GoRouter(
   initialLocation: '/signin',
   routes: [
@@ -58,6 +61,14 @@ final goRouter = GoRouter(
       builder: (context, state) => ProjectBaselinePage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
+      path: '/production-measurement',
+      builder: (context, state) => const ProductionMeasurementProjectsPage(),
+    ),
+    GoRoute(
+      path: '/projects/:id/production-measurement',
+      builder: (context, state) => ProductionMeasurementPage(projectId: state.pathParameters['id']!),
+    ),
+    GoRoute(
       path: '/daily-reports',
       builder: (context, state) => const BaselineProjectsPage(),
     ),
@@ -72,6 +83,13 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/projects/:id/daily-reports',
       builder: (context, state) => DailyReportsListPage(projectId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/projects/:id/daily-report/:reportId/review',
+      builder: (context, state) => ReportReviewPage(
+        projectId: state.pathParameters['id']!,
+        reportId: state.pathParameters['reportId']!,
+      ),
     ),
     GoRoute(
       path: '/projects/:id/daily-report',

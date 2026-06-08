@@ -59,16 +59,37 @@ class Sidebar extends StatelessWidget {
                   _ExpandableNavItem(
                     icon: Icons.rocket_launch_outlined,
                     label: 'Projects',
-                    isActive: currentPath.startsWith('/projects') || currentPath == '/daily-reports' || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost'),
-                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath == '/daily-reports' || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost'),
+                    isActive: currentPath.startsWith('/projects') || currentPath == '/daily-reports' || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement'),
+                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath == '/daily-reports' || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement'),
                     children: [
-                      _SubNavItem(icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')), onTap: () => context.go('/projects')),
-                      _SubNavItem(icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), onTap: () => context.go('/daily-reports')),
-                      _SubNavItem(icon: Icons.attach_money, label: 'Labor Cost', isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost'), onTap: () => context.go('/labor-cost')),
+                      _SubExpandableNavItem(
+                        label: 'Planning',
+                        isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')),
+                        initiallyExpanded: true,
+                        children: [
+                          _SubNavItem(icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')), left: 52, onTap: () => context.go('/projects')),
+                        ],
+                      ),
+                      _SubExpandableNavItem(
+                        label: 'Field Execution',
+                        isActive: currentPath.startsWith('/daily-reports'),
+                        initiallyExpanded: currentPath.startsWith('/daily-reports'),
+                        children: [
+                          _SubNavItem(icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), left: 52, onTap: () => context.go('/daily-reports')),
+                          _SubNavItem(icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), left: 52, onTap: () => context.go('/daily-reports/pending')),
+                        ],
+                      ),
+                      _SubExpandableNavItem(
+                        label: 'Monitoring',
+                        isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement'),
+                        initiallyExpanded: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement'),
+                        children: [
+                          _SubNavItem(icon: Icons.attach_money, label: 'Labor Cost', isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost'), left: 52, onTap: () => context.go('/labor-cost')),
+                          _SubNavItem(icon: Icons.speed, label: 'Production Metrics', isActive: currentPath.startsWith('/production-measurement'), left: 52, onTap: () => context.go('/production-measurement')),
+                        ],
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  _NavItem(icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), onTap: () => context.go('/daily-reports/pending')),
                   const SizedBox(height: 4),
                   _NavItem(icon: Icons.person_search_outlined, label: 'Customers', isActive: currentPath.startsWith('/customers'), onTap: () => context.go('/customers')),
                   const SizedBox(height: 4),
@@ -227,13 +248,76 @@ class _ExpandableNavItemState extends State<_ExpandableNavItem> {
   }
 }
 
+class _SubExpandableNavItem extends StatefulWidget {
+  final String label;
+  final bool isActive;
+  final bool initiallyExpanded;
+  final List<Widget> children;
+
+  const _SubExpandableNavItem({
+    required this.label,
+    required this.isActive,
+    required this.initiallyExpanded,
+    required this.children,
+  });
+
+  @override
+  State<_SubExpandableNavItem> createState() => _SubExpandableNavItemState();
+}
+
+class _SubExpandableNavItemState extends State<_SubExpandableNavItem> {
+  bool _isHovered = false;
+  late bool _isExpanded;
+
+  @override
+  void initState() {
+    super.initState();
+    _isExpanded = widget.initiallyExpanded;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = widget.isActive ? AppTheme.primaryGreen : (_isHovered ? Colors.white : AppTheme.slate500);
+    return Column(children: [
+      MouseRegion(
+        onEnter: (_) => setState(() => _isHovered = true),
+        onExit: (_) => setState(() => _isHovered = false),
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () => setState(() => _isExpanded = !_isExpanded),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.only(left: 36, right: 16, top: 8, bottom: 8),
+            decoration: BoxDecoration(
+              color: _isHovered ? Colors.white.withOpacity(0.03) : Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(children: [
+              Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+              const Spacer(),
+              AnimatedRotation(duration: const Duration(milliseconds: 200), turns: _isExpanded ? 0.5 : 0.0, child: Icon(Icons.expand_more, color: color, size: 16)),
+            ]),
+          ),
+        ),
+      ),
+      AnimatedCrossFade(
+        duration: const Duration(milliseconds: 200),
+        crossFadeState: _isExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
+        firstChild: Padding(padding: const EdgeInsets.only(left: 16), child: Column(children: widget.children)),
+        secondChild: const SizedBox.shrink(),
+      ),
+    ]);
+  }
+}
+
 class _SubNavItem extends StatefulWidget {
   final IconData icon;
   final String label;
   final bool isActive;
   final VoidCallback onTap;
+  final double left;
 
-  const _SubNavItem({required this.icon, required this.label, required this.isActive, required this.onTap});
+  const _SubNavItem({required this.icon, required this.label, required this.isActive, required this.onTap, this.left = 36});
 
   @override
   State<_SubNavItem> createState() => _SubNavItemState();
@@ -253,7 +337,7 @@ class _SubNavItemState extends State<_SubNavItem> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.only(left: 36, right: 16, top: 10, bottom: 10),
+          padding: EdgeInsets.only(left: widget.left, right: 16, top: 10, bottom: 10),
           decoration: BoxDecoration(
             color: widget.isActive ? AppTheme.primaryGreen.withOpacity(0.08) : (_isHovered ? Colors.white.withOpacity(0.03) : Colors.transparent),
             borderRadius: BorderRadius.circular(8),
