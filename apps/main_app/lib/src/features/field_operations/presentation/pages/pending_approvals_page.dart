@@ -200,7 +200,10 @@ class _PendingApprovalsPageState extends ConsumerState<PendingApprovalsPage> {
 
         return Card(
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: BorderSide(color: AppTheme.slate200)),
-          child: Padding(
+          child: InkWell(
+            onTap: () => context.push('/projects/${r['project_id']}/daily-report/${r['id']}/review'),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
             padding: const EdgeInsets.all(20),
             child: Row(children: [
               Container(
@@ -253,6 +256,7 @@ class _PendingApprovalsPageState extends ConsumerState<PendingApprovalsPage> {
                 ),
               ),
             ]),
+          ),
           ),
         );
       },

@@ -97,10 +97,21 @@ class DailyReportService {
     }).eq('id', id);
   }
 
-  Future<void> rejectReport(String id) async {
-    await _supabase.from('daily_reports').update({
+  Future<void> rejectReport(String id, {String? reason}) async {
+    final currentUserId = _supabase.auth.currentUser?.id;
+    final updates = <String, dynamic>{
       'status': 'rejected',
-    }).eq('id', id);
+      'approved_by': currentUserId,
+      'approved_at': DateTime.now().toIso8601String(),
+    };
+    if (reason != null && reason.isNotEmpty) {
+      final current = await _supabase.from('daily_reports').select('general_notes').eq('id', id).maybeSingle();
+      final existing = current?['general_notes'] as String? ?? '';
+      updates['general_notes'] = existing.isNotEmpty
+          ? '$existing\n\nRejection reason: $reason'
+          : 'Rejection reason: $reason';
+    }
+    await _supabase.from('daily_reports').update(updates).eq('id', id);
   }
 
   Future<List<Map<String, dynamic>>> getSubmittedReports() async {
