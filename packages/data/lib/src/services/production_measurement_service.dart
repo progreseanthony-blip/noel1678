@@ -40,10 +40,10 @@ class ProductionMeasurementService {
           production_value, total_hours,
           machinery!inner(capacity_yards),
           project_machinery!inner(quote_service_id, project_id),
-          daily_report!inner(status)
+          daily_reports!inner(status)
         ''')
         .eq('project_machinery.project_id', projectId)
-        .in_('daily_report.status', ['submitted', 'approved']);
+        .in_('daily_reports.status', ['submitted', 'approved']);
     final machLogs = List<Map<String, dynamic>>.from(machResult ?? []);
 
     // Actual labor hours per service
@@ -52,10 +52,10 @@ class ProductionMeasurementService {
         .select('''
           regular_hours, overtime_hours,
           project_labor!inner(quote_service_id, project_id),
-          daily_report!inner(status)
+          daily_reports!inner(status)
         ''')
         .eq('project_labor.project_id', projectId)
-        .in_('daily_report.status', ['submitted', 'approved']);
+        .in_('daily_reports.status', ['submitted', 'approved']);
     final laborLogs = List<Map<String, dynamic>>.from(laborResult ?? []);
 
     // Actual material usage per service
@@ -64,10 +64,10 @@ class ProductionMeasurementService {
         .select('''
           quantity_used,
           project_material!inner(quote_service_id, project_id),
-          daily_report!inner(status)
+          daily_reports!inner(status)
         ''')
         .eq('project_material.project_id', projectId)
-        .in_('daily_report.status', ['submitted', 'approved']);
+        .in_('daily_reports.status', ['submitted', 'approved']);
     final matLogs = List<Map<String, dynamic>>.from(matResult ?? []);
 
     // Aggregate actual by quote_service_id

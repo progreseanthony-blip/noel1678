@@ -67,7 +67,7 @@ class Sidebar extends StatelessWidget {
                         isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')),
                         initiallyExpanded: true,
                         children: [
-                          _SubNavItem(icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')), left: 52, onTap: () => context.go('/projects')),
+                          _SubNavItem(icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')), left: 44, onTap: () => context.go('/projects')),
                         ],
                       ),
                       _SubExpandableNavItem(
@@ -75,8 +75,8 @@ class Sidebar extends StatelessWidget {
                         isActive: currentPath.startsWith('/daily-reports'),
                         initiallyExpanded: currentPath.startsWith('/daily-reports'),
                         children: [
-                          _SubNavItem(icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), left: 52, onTap: () => context.go('/daily-reports')),
-                          _SubNavItem(icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), left: 52, onTap: () => context.go('/daily-reports/pending')),
+                          _SubNavItem(icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), left: 44, onTap: () => context.go('/daily-reports')),
+                          _SubNavItem(icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), left: 44, onTap: () => context.go('/daily-reports/pending')),
                         ],
                       ),
                       _SubExpandableNavItem(
@@ -84,8 +84,8 @@ class Sidebar extends StatelessWidget {
                         isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement'),
                         initiallyExpanded: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement'),
                         children: [
-                          _SubNavItem(icon: Icons.attach_money, label: 'Labor Cost', isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost'), left: 52, onTap: () => context.go('/labor-cost')),
-                          _SubNavItem(icon: Icons.speed, label: 'Production Metrics', isActive: currentPath.startsWith('/production-measurement'), left: 52, onTap: () => context.go('/production-measurement')),
+                          _SubNavItem(icon: Icons.attach_money, label: 'Labor Cost', isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost'), left: 44, onTap: () => context.go('/labor-cost')),
+                          _SubNavItem(icon: Icons.speed, label: 'Production Metrics', isActive: currentPath.startsWith('/production-measurement'), left: 44, onTap: () => context.go('/production-measurement')),
                         ],
                       ),
                     ],

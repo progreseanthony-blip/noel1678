@@ -366,7 +366,7 @@ class _ProductionMeasurementPageState extends State<ProductionMeasurementPage> {
 
           // KPI Cards
           if (isMobile)
-            Column(children: [
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               EvmKpiCard(title: 'PHYSICAL PROGRESS', value: '${progress.toStringAsFixed(1)}%', subtitle: '${_fmtCurrency(m['total_actual_units'])} / ${_fmtCurrency(m['total_planned_units'])} ${m['total_planned_units'] > 0 ? 'units' : ''}', icon: Icons.speed, color: progress >= 50 ? AppTheme.primaryGreen : Colors.orange, progress: progress / 100),
               const SizedBox(height: 12),
               EvmKpiCard(title: 'CPI (COST INDEX)', value: cpi.toStringAsFixed(2), subtitle: cpi >= 1 ? 'Under budget (EV > AC)' : 'Over budget (EV < AC)', icon: Icons.account_balance, color: cpi >= 0.95 ? AppTheme.primaryGreen : Colors.redAccent, progress: cpi.clamp(0.0, 2.0) / 2),
