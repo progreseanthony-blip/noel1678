@@ -97,6 +97,21 @@ class DailyReportService {
     }).eq('id', id);
   }
 
+  Future<void> rejectReport(String id) async {
+    await _supabase.from('daily_reports').update({
+      'status': 'rejected',
+    }).eq('id', id);
+  }
+
+  Future<List<Map<String, dynamic>>> getSubmittedReports() async {
+    final response = await _supabase
+        .from('daily_reports')
+        .select('*, projects(title)')
+        .eq('status', 'submitted')
+        .order('report_date', ascending: false);
+    return List<Map<String, dynamic>>.from(response ?? []);
+  }
+
   Future<void> deleteReport(String id) async {
     await _supabase.from('daily_reports').delete().eq('id', id);
   }
@@ -112,13 +127,20 @@ class DailyReportService {
     return List<Map<String, dynamic>>.from(response ?? []);
   }
 
+  static const _laborColumns = [
+    'id', 'daily_report_id', 'worker_id', 'project_labor_id', 'project_task_id',
+    'check_in_time', 'check_out_time', 'regular_hours', 'overtime_hours',
+    'is_unplanned', 'deviation_reason_id', 'notes', 'created_at',
+  ];
+
   Future<void> saveLaborLogs(String reportId, List<Map<String, dynamic>> logs) async {
     await _supabase.from('report_labor_logs').delete().eq('daily_report_id', reportId);
     if (logs.isEmpty) return;
     await _supabase.from('report_labor_logs').insert(
-      logs.map((log) => {
-        ...log,
-        'daily_report_id': reportId,
+      logs.map((log) {
+        final clean = {for (final k in _laborColumns) if (log.containsKey(k)) k: log[k]};
+        clean['daily_report_id'] = reportId;
+        return clean;
       }).toList(),
     );
   }
@@ -134,13 +156,24 @@ class DailyReportService {
     return List<Map<String, dynamic>>.from(response ?? []);
   }
 
+  static const _machineryColumns = [
+    'id', 'daily_report_id', 'machinery_id', 'project_machinery_id', 'operator_id',
+    'start_meter', 'end_meter', 'total_hours', 'fuel_added',
+    'is_unplanned', 'deviation_reason_id', 'notes', 'created_at',
+    'production_value', 'production_unit', 'start_shift_photos', 'end_shift_photos',
+  ];
+
   Future<void> saveMachineryLogs(String reportId, List<Map<String, dynamic>> logs) async {
-    await _supabase.from('report_machinery_logs').delete().eq('daily_report_id', reportId);
+    if (logs.any((l) => l['operator_id'] == null || l['machinery_id'] == null)) {
+      throw Exception('All machinery logs must have operator_id and machinery_id');
+    }
     if (logs.isEmpty) return;
+    await _supabase.from('report_machinery_logs').delete().eq('daily_report_id', reportId);
     await _supabase.from('report_machinery_logs').insert(
-      logs.map((log) => {
-        ...log,
-        'daily_report_id': reportId,
+      logs.map((log) {
+        final clean = {for (final k in _machineryColumns) if (log.containsKey(k)) k: log[k]};
+        clean['daily_report_id'] = reportId;
+        return clean;
       }).toList(),
     );
   }
@@ -156,13 +189,19 @@ class DailyReportService {
     return List<Map<String, dynamic>>.from(response ?? []);
   }
 
+  static const _materialColumns = [
+    'id', 'daily_report_id', 'material_id', 'project_material_id',
+    'quantity_used', 'area_installed', 'unit', 'notes', 'created_at',
+  ];
+
   Future<void> saveMaterialUsage(String reportId, List<Map<String, dynamic>> usage) async {
     await _supabase.from('report_material_usage').delete().eq('daily_report_id', reportId);
     if (usage.isEmpty) return;
     await _supabase.from('report_material_usage').insert(
-      usage.map((u) => {
-        ...u,
-        'daily_report_id': reportId,
+      usage.map((u) {
+        final clean = {for (final k in _materialColumns) if (u.containsKey(k)) k: u[k]};
+        clean['daily_report_id'] = reportId;
+        return clean;
       }).toList(),
     );
   }

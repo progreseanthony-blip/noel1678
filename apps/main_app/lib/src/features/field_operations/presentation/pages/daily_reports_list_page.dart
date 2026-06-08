@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DailyReportsListPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -18,6 +19,7 @@ class _DailyReportsListPageState extends ConsumerState<DailyReportsListPage> {
   List<Map<String, dynamic>> _reports = [];
   Map<String, dynamic>? _project;
   bool _isLoading = true;
+  bool _isAdmin = false;
   String? _error;
 
   @override
@@ -36,10 +38,23 @@ class _DailyReportsListPageState extends ConsumerState<DailyReportsListPage> {
           .select('title')
           .eq('id', widget.projectId)
           .single();
+
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      bool admin = false;
+      if (userId != null) {
+        final profile = await Supabase.instance.client
+            .from('profiles')
+            .select('role')
+            .eq('id', userId)
+            .single();
+        admin = profile['role'] == 'Admin';
+      }
+
       if (!mounted) return;
       setState(() {
         _reports = reports;
         _project = project as Map<String, dynamic>;
+        _isAdmin = admin;
         _isLoading = false;
       });
     } catch (e) {
@@ -73,6 +88,58 @@ class _DailyReportsListPageState extends ConsumerState<DailyReportsListPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error deleting: $e', style: GoogleFonts.manrope())),
       );
+    }
+  }
+
+  Future<void> _approveReport(String id) async {
+    try {
+      await ref.read(dailyReportServiceProvider).approveReport(id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Report approved'), backgroundColor: Colors.green),
+        );
+        _loadData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectReport(String id) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Reject Report'),
+        content: const Text('Send back for revisions?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.errorRed),
+            child: const Text('Reject'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+    try {
+      await ref.read(dailyReportServiceProvider).rejectReport(id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Report rejected'), backgroundColor: Colors.orange),
+        );
+        _loadData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.errorRed),
+        );
+      }
     }
   }
 
@@ -201,19 +268,42 @@ class _DailyReportsListPageState extends ConsumerState<DailyReportsListPage> {
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                IconButton(
-                  icon: const Icon(Icons.edit, size: 18, color: AppTheme.primaryGreen),
-                  tooltip: isDraft ? 'Edit' : 'View',
-                  onPressed: () async {
-                    await context.push('/projects/${widget.projectId}/daily-report?reportId=${r['id']}');
-                    if (mounted) _loadData();
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.errorRed),
-                  tooltip: 'Delete',
-                  onPressed: () => _deleteReport(r['id'] as String),
-                ),
+                if (status == 'submitted' && _isAdmin) ...[
+                  IconButton(
+                    icon: const Icon(Icons.check_circle, size: 20, color: AppTheme.primaryGreen),
+                    tooltip: 'Approve',
+                    onPressed: () => _approveReport(r['id'] as String),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.cancel, size: 20, color: AppTheme.errorRed),
+                    tooltip: 'Reject',
+                    onPressed: () => _rejectReport(r['id'] as String),
+                  ),
+                ],
+                if (isDraft || status == 'rejected')
+                  IconButton(
+                    icon: const Icon(Icons.edit, size: 18, color: AppTheme.primaryGreen),
+                    tooltip: 'Edit',
+                    onPressed: () async {
+                      await context.push('/projects/${widget.projectId}/daily-report?reportId=${r['id']}');
+                      if (mounted) _loadData();
+                    },
+                  ),
+                if (status == 'submitted' || status == 'approved')
+                  IconButton(
+                    icon: const Icon(Icons.visibility, size: 18, color: AppTheme.slate500),
+                    tooltip: 'View',
+                    onPressed: () async {
+                      await context.push('/projects/${widget.projectId}/daily-report?reportId=${r['id']}');
+                      if (mounted) _loadData();
+                    },
+                  ),
+                if (isDraft)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.errorRed),
+                    tooltip: 'Delete',
+                    onPressed: () => _deleteReport(r['id'] as String),
+                  ),
               ],
             ),
           ),

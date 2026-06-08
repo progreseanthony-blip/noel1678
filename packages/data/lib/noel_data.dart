@@ -9,4 +9,5 @@ export 'src/services/catalogs_service.dart';
 export 'src/services/workers_service.dart';
 export 'src/services/customers_service.dart';
 export 'src/services/daily_report_service.dart';
+export 'src/services/payroll_service.dart';
 export 'package:supabase_flutter/supabase_flutter.dart';

@@ -188,21 +188,41 @@ class _DailyReportWizardPageState
     setState(() => _materialUsage = usage);
   }
 
-  Future<void> _saveMachineryLogs() async {
-    if (_reportId == null) return;
+  Future<bool> _saveMachineryLogs() async {
+    if (_reportId == null) return true;
     try {
-      await ref.read(dailyReportServiceProvider).saveMachineryLogs(_reportId!, _machineryLogs);
+      final valid = _machineryLogs
+          .where((log) => log['operator_id'] != null && log['machinery_id'] != null)
+          .toList();
+      await ref.read(dailyReportServiceProvider).saveMachineryLogs(_reportId!, valid);
+      return true;
     } catch (e) {
       debugPrint('Error saving machinery logs: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving machinery: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed),
+        );
+      }
+      return false;
     }
   }
 
-  Future<void> _saveMaterialUsage() async {
-    if (_reportId == null) return;
+  Future<bool> _saveMaterialUsage() async {
+    if (_reportId == null) return true;
     try {
-      await ref.read(dailyReportServiceProvider).saveMaterialUsage(_reportId!, _materialUsage);
+      final valid = _materialUsage
+          .where((u) => u['material_id'] != null)
+          .toList();
+      await ref.read(dailyReportServiceProvider).saveMaterialUsage(_reportId!, valid);
+      return true;
     } catch (e) {
       debugPrint('Error saving material usage: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error saving materials: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed),
+        );
+      }
+      return false;
     }
   }
 
@@ -311,7 +331,7 @@ class _DailyReportWizardPageState
               laborLogs: _laborLogs,
               workers: _workers,
               deviationReasons: _deviationReasons,
-              isReadOnly: _reportData['status'] == 'approved',
+              isReadOnly: _reportData['status'] == 'approved' || _reportData['status'] == 'submitted',
               onLogsChanged: _onLaborLogsChanged,
             ),
           ),
@@ -327,7 +347,7 @@ class _DailyReportWizardPageState
               laborLogs: _laborLogs,
               plannedLabor: _unfilteredPlannedLabor,
               machineryCatalog: _machineryCatalog,
-              isReadOnly: _reportData['status'] == 'approved',
+              isReadOnly: _reportData['status'] == 'approved' || _reportData['status'] == 'submitted',
               onLogsChanged: _onMachineryLogsChanged,
             ),
           ),
@@ -338,7 +358,7 @@ class _DailyReportWizardPageState
             content: StepMaterials(
               plannedMaterials: _plannedMaterials,
               materialUsage: _materialUsage,
-              isReadOnly: _reportData['status'] == 'approved',
+              isReadOnly: _reportData['status'] == 'approved' || _reportData['status'] == 'submitted',
               onUsageChanged: _onMaterialUsageChanged,
             ),
           ),
@@ -351,7 +371,7 @@ class _DailyReportWizardPageState
               laborLogs: _laborLogs,
               machineryLogs: _machineryLogs,
               materialUsage: _materialUsage,
-              isReadOnly: _reportData['status'] == 'approved',
+              isReadOnly: _reportData['status'] == 'approved' || _reportData['status'] == 'submitted',
               onSubmit: _handleSubmit,
             ),
           ),
@@ -372,17 +392,24 @@ class _DailyReportWizardPageState
   void _onStepContinue() async {
     if (_currentStep == 0) await _saveReportHeader();
     if (_currentStep == 1) await _saveLaborLogs();
-    if (_currentStep == 2) await _saveMachineryLogs();
-    if (_currentStep == 3) await _saveMaterialUsage();
+    if (_currentStep == 2) {
+      final ok = await _saveMachineryLogs();
+      if (!ok) return;
+    }
+    if (_currentStep == 3) {
+      final ok = await _saveMaterialUsage();
+      if (!ok) return;
+    }
     setState(() => _currentStep++);
   }
 
   void _saveDraft() async {
     await _saveReportHeader();
     await _saveLaborLogs();
-    await _saveMachineryLogs();
-    await _saveMaterialUsage();
+    final machOk = await _saveMachineryLogs();
+    final matOk = await _saveMaterialUsage();
     if (!mounted) return;
+    if (!machOk || !matOk) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Draft saved', style: GoogleFonts.manrope()),
@@ -396,8 +423,9 @@ class _DailyReportWizardPageState
     if (_reportId == null) return;
     await _saveReportHeader();
     await _saveLaborLogs();
-    await _saveMachineryLogs();
-    await _saveMaterialUsage();
+    final machOk = await _saveMachineryLogs();
+    final matOk = await _saveMaterialUsage();
+    if (!machOk || !matOk) return;
     try {
       await ref.read(dailyReportServiceProvider).submitReport(_reportId!);
       if (!mounted) return;
@@ -407,6 +435,8 @@ class _DailyReportWizardPageState
           backgroundColor: AppTheme.primaryGreen,
         ),
       );
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) context.pop();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

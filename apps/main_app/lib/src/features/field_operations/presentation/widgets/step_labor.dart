@@ -35,9 +35,7 @@ class _StepLaborState extends State<StepLabor> {
   int _entryIndex(String workerId) => _entries.indexWhere((e) => e['worker_id'] == workerId);
 
   String _workerName(Map<String, dynamic> w) {
-    final role = w['role']?['description'] as String? ?? 'Sin rol';
-    final name = '${w['full_name'] ?? '?'} (${w['id_number'] ?? '-'})';
-    return '$name \u2014 $role';
+    return '${w['full_name'] ?? '?'} (${w['id_number'] ?? '-'})';
   }
 
   String _workerNameById(String? wid) {

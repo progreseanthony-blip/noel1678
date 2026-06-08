@@ -49,7 +49,8 @@ class Sidebar extends StatelessWidget {
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
+              child: SingleChildScrollView(
+                child: Column(
                 children: [
                   _NavItem(icon: Icons.group_outlined, label: 'User Management', isActive: currentPath.startsWith('/users') || currentPath == '/', onTap: () => context.go('/users')),
                   const SizedBox(height: 4),
@@ -58,13 +59,16 @@ class Sidebar extends StatelessWidget {
                   _ExpandableNavItem(
                     icon: Icons.rocket_launch_outlined,
                     label: 'Projects',
-                    isActive: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports'),
-                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports'),
+                    isActive: currentPath.startsWith('/projects') || currentPath == '/daily-reports' || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost'),
+                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath == '/daily-reports' || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost'),
                     children: [
                       _SubNavItem(icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')), onTap: () => context.go('/projects')),
-                      _SubNavItem(icon: Icons.assignment, label: 'Daily Reports', isActive: currentPath.startsWith('/daily-reports') || currentPath.contains('/daily-reports') || currentPath.contains('/daily-report'), onTap: () => context.go('/daily-reports')),
+                      _SubNavItem(icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), onTap: () => context.go('/daily-reports')),
+                      _SubNavItem(icon: Icons.attach_money, label: 'Labor Cost', isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost'), onTap: () => context.go('/labor-cost')),
                     ],
                   ),
+                  const SizedBox(height: 4),
+                  _NavItem(icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), onTap: () => context.go('/daily-reports/pending')),
                   const SizedBox(height: 4),
                   _NavItem(icon: Icons.person_search_outlined, label: 'Customers', isActive: currentPath.startsWith('/customers'), onTap: () => context.go('/customers')),
                   const SizedBox(height: 4),
@@ -73,6 +77,7 @@ class Sidebar extends StatelessWidget {
                   _NavItem(icon: Icons.engineering_outlined, label: 'Workers', isActive: currentPath.startsWith('/workers'), onTap: () => context.go('/workers')),
                 ],
               ),
+            ),
             ),
           ),
           Container(

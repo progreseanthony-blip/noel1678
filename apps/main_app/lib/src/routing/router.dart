@@ -14,6 +14,10 @@ import '../features/projects/presentation/pages/project_baseline_page.dart';
 import '../features/field_operations/presentation/pages/daily_report_wizard_page.dart';
 import '../features/field_operations/presentation/pages/daily_reports_list_page.dart';
 import '../features/field_operations/presentation/pages/baseline_projects_page.dart';
+import '../features/field_operations/presentation/pages/pending_approvals_page.dart';
+import '../features/payroll/presentation/pages/payroll_list_page.dart';
+import '../features/payroll/presentation/pages/payroll_period_page.dart';
+import '../features/payroll/presentation/pages/labor_cost_projects_page.dart';
 final goRouter = GoRouter(
   initialLocation: '/signin',
   routes: [
@@ -58,6 +62,14 @@ final goRouter = GoRouter(
       builder: (context, state) => const BaselineProjectsPage(),
     ),
     GoRoute(
+      path: '/daily-reports/pending',
+      builder: (context, state) => const PendingApprovalsPage(),
+    ),
+    GoRoute(
+      path: '/labor-cost',
+      builder: (context, state) => const LaborCostProjectsPage(),
+    ),
+    GoRoute(
       path: '/projects/:id/daily-reports',
       builder: (context, state) => DailyReportsListPage(projectId: state.pathParameters['id']!),
     ),
@@ -66,6 +78,17 @@ final goRouter = GoRouter(
       builder: (context, state) => DailyReportWizardPage(
         projectId: state.pathParameters['id']!,
         reportId: state.uri.queryParameters['reportId'],
+      ),
+    ),
+    GoRoute(
+      path: '/projects/:id/payroll',
+      builder: (context, state) => PayrollListPage(projectId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/projects/:id/payroll/:periodId',
+      builder: (context, state) => PayrollPeriodPage(
+        projectId: state.pathParameters['id']!,
+        periodId: state.pathParameters['periodId']!,
       ),
     ),
     GoRoute(
