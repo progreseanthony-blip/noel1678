@@ -22,9 +22,8 @@ class EvmKpiCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = MediaQuery.of(context).size.width < 768;
     return Container(
-      width: isMobile ? double.infinity : 240,
+      width: 240,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: const Color(0xFF1E293B),

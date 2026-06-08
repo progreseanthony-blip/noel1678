@@ -65,10 +65,10 @@ class _ProductionMeasurementPageState extends State<ProductionMeasurementPage> {
             production_value, total_hours,
             machinery!inner(capacity_yards),
             project_machinery!inner(quote_service_id),
-            daily_report!inner(status)
+            daily_reports!inner(status)
           ''')
           .eq('project_machinery.project_id', widget.projectId)
-          .in_('daily_report.status', ['submitted', 'approved']);
+          .in_('daily_reports.status', ['submitted', 'approved']);
       final machLogs = List<Map<String, dynamic>>.from(machResult ?? []);
 
       // Actual labor hours
@@ -77,10 +77,10 @@ class _ProductionMeasurementPageState extends State<ProductionMeasurementPage> {
           .select('''
             regular_hours, overtime_hours,
             project_labor!inner(quote_service_id),
-            daily_report!inner(status)
+            daily_reports!inner(status)
           ''')
           .eq('project_labor.project_id', widget.projectId)
-          .in_('daily_report.status', ['submitted', 'approved']);
+          .in_('daily_reports.status', ['submitted', 'approved']);
       final laborLogs = List<Map<String, dynamic>>.from(laborResult ?? []);
 
       // Aggregate by quote_service_id
@@ -364,60 +364,24 @@ class _ProductionMeasurementPageState extends State<ProductionMeasurementPage> {
             const SizedBox(height: 16),
           ],
 
-          // KPI Cards Row
-          Wrap(
-            spacing: 16,
-            runSpacing: 16,
-            children: [
-              SizedBox(
-                width: 240,
-                child: EvmKpiCard(
-                  title: 'PHYSICAL PROGRESS',
-                  value: '${progress.toStringAsFixed(1)}%',
-                  subtitle: '${_fmtCurrency(m['total_actual_units'])} / ${_fmtCurrency(m['total_planned_units'])} ${m['total_planned_units'] > 0 ? 'units' : ''}',
-                  icon: Icons.speed,
-                  color: progress >= 50 ? AppTheme.primaryGreen : Colors.orange,
-                  progress: progress / 100,
-                ),
-              ),
-              SizedBox(
-                width: 240,
-                child: EvmKpiCard(
-                  title: 'CPI (COST INDEX)',
-                  value: cpi.toStringAsFixed(2),
-                  subtitle: cpi >= 1
-                      ? 'Under budget (EV > AC)'
-                      : 'Over budget (EV < AC)',
-                  icon: Icons.account_balance,
-                  color: cpi >= 0.95 ? AppTheme.primaryGreen : Colors.redAccent,
-                  progress: cpi.clamp(0.0, 2.0) / 2,
-                ),
-              ),
-              SizedBox(
-                width: 240,
-                child: EvmKpiCard(
-                  title: 'SPI (SCHEDULE INDEX)',
-                  value: spi.toStringAsFixed(2),
-                  subtitle: spi >= 1
-                      ? 'Ahead of schedule'
-                      : 'Behind schedule',
-                  icon: Icons.schedule,
-                  color: spi >= 0.9 ? AppTheme.primaryGreen : Colors.redAccent,
-                  progress: spi.clamp(0.0, 2.0) / 2,
-                ),
-              ),
-              SizedBox(
-                width: 240,
-                child: EvmKpiCard(
-                  title: 'COST VARIANCE',
-                  value: '${costDev >= 0 ? '+' : ''}${costDev.toStringAsFixed(1)}%',
-                  subtitle: 'EAC: ${_fmtCurrency(eac)}',
-                  icon: Icons.trending_up,
-                  color: costDev <= 5 ? AppTheme.primaryGreen : Colors.redAccent,
-                ),
-              ),
-            ],
-          ),
+          // KPI Cards
+          if (isMobile)
+            Column(children: [
+              EvmKpiCard(title: 'PHYSICAL PROGRESS', value: '${progress.toStringAsFixed(1)}%', subtitle: '${_fmtCurrency(m['total_actual_units'])} / ${_fmtCurrency(m['total_planned_units'])} ${m['total_planned_units'] > 0 ? 'units' : ''}', icon: Icons.speed, color: progress >= 50 ? AppTheme.primaryGreen : Colors.orange, progress: progress / 100),
+              const SizedBox(height: 12),
+              EvmKpiCard(title: 'CPI (COST INDEX)', value: cpi.toStringAsFixed(2), subtitle: cpi >= 1 ? 'Under budget (EV > AC)' : 'Over budget (EV < AC)', icon: Icons.account_balance, color: cpi >= 0.95 ? AppTheme.primaryGreen : Colors.redAccent, progress: cpi.clamp(0.0, 2.0) / 2),
+              const SizedBox(height: 12),
+              EvmKpiCard(title: 'SPI (SCHEDULE INDEX)', value: spi.toStringAsFixed(2), subtitle: spi >= 1 ? 'Ahead of schedule' : 'Behind schedule', icon: Icons.schedule, color: spi >= 0.9 ? AppTheme.primaryGreen : Colors.redAccent, progress: spi.clamp(0.0, 2.0) / 2),
+              const SizedBox(height: 12),
+              EvmKpiCard(title: 'COST VARIANCE', value: '${costDev >= 0 ? '+' : ''}${costDev.toStringAsFixed(1)}%', subtitle: 'EAC: ${_fmtCurrency(eac)}', icon: Icons.trending_up, color: costDev <= 5 ? AppTheme.primaryGreen : Colors.redAccent),
+            ])
+          else
+            Wrap(spacing: 16, runSpacing: 16, children: [
+              SizedBox(width: 240, child: EvmKpiCard(title: 'PHYSICAL PROGRESS', value: '${progress.toStringAsFixed(1)}%', subtitle: '${_fmtCurrency(m['total_actual_units'])} / ${_fmtCurrency(m['total_planned_units'])} ${m['total_planned_units'] > 0 ? 'units' : ''}', icon: Icons.speed, color: progress >= 50 ? AppTheme.primaryGreen : Colors.orange, progress: progress / 100)),
+              SizedBox(width: 240, child: EvmKpiCard(title: 'CPI (COST INDEX)', value: cpi.toStringAsFixed(2), subtitle: cpi >= 1 ? 'Under budget (EV > AC)' : 'Over budget (EV < AC)', icon: Icons.account_balance, color: cpi >= 0.95 ? AppTheme.primaryGreen : Colors.redAccent, progress: cpi.clamp(0.0, 2.0) / 2)),
+              SizedBox(width: 240, child: EvmKpiCard(title: 'SPI (SCHEDULE INDEX)', value: spi.toStringAsFixed(2), subtitle: spi >= 1 ? 'Ahead of schedule' : 'Behind schedule', icon: Icons.schedule, color: spi >= 0.9 ? AppTheme.primaryGreen : Colors.redAccent, progress: spi.clamp(0.0, 2.0) / 2)),
+              SizedBox(width: 240, child: EvmKpiCard(title: 'COST VARIANCE', value: '${costDev >= 0 ? '+' : ''}${costDev.toStringAsFixed(1)}%', subtitle: 'EAC: ${_fmtCurrency(eac)}', icon: Icons.trending_up, color: costDev <= 5 ? AppTheme.primaryGreen : Colors.redAccent)),
+            ]),
 
           const SizedBox(height: 24),
 
@@ -433,27 +397,25 @@ class _ProductionMeasurementPageState extends State<ProductionMeasurementPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'BUDGET EXECUTION SUMMARY',
-                  style: GoogleFonts.manrope(
-                    color: AppTheme.slate400,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1,
-                  ),
-                ),
+                Text('BUDGET EXECUTION SUMMARY', style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1)),
                 const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(child: _buildBudgetMetric('Planned Budget', _fmtCurrency(totalPlanned), Colors.blue)),
-                    const SizedBox(width: 16),
-                    Expanded(child: _buildBudgetMetric('Actual Cost', _fmtCurrency(totalActual), Colors.orange)),
-                    const SizedBox(width: 16),
-                    Expanded(child: _buildBudgetMetric('Earned Value', _fmtCurrency(m['total_earned_value']), AppTheme.primaryGreen)),
-                    const SizedBox(width: 16),
-                    Expanded(child: _buildBudgetMetric('EAC', _fmtCurrency(eac), Colors.cyan)),
-                  ],
-                ),
+                if (isMobile)
+                  Column(children: [
+                    _buildBudgetMetric('Planned Budget', _fmtCurrency(totalPlanned), Colors.blue),
+                    const SizedBox(height: 8),
+                    _buildBudgetMetric('Actual Cost', _fmtCurrency(totalActual), Colors.orange),
+                    const SizedBox(height: 8),
+                    _buildBudgetMetric('Earned Value', _fmtCurrency(m['total_earned_value']), AppTheme.primaryGreen),
+                    const SizedBox(height: 8),
+                    _buildBudgetMetric('EAC', _fmtCurrency(eac), Colors.cyan),
+                  ])
+                else
+                  Wrap(spacing: 12, runSpacing: 12, children: [
+                    SizedBox(width: 200, child: _buildBudgetMetric('Planned Budget', _fmtCurrency(totalPlanned), Colors.blue)),
+                    SizedBox(width: 200, child: _buildBudgetMetric('Actual Cost', _fmtCurrency(totalActual), Colors.orange)),
+                    SizedBox(width: 200, child: _buildBudgetMetric('Earned Value', _fmtCurrency(m['total_earned_value']), AppTheme.primaryGreen)),
+                    SizedBox(width: 200, child: _buildBudgetMetric('EAC', _fmtCurrency(eac), Colors.cyan)),
+                  ]),
               ],
             ),
           ),
