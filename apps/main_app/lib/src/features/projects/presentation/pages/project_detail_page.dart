@@ -1942,8 +1942,11 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
       currentMeta['baseline_total_days'] = totalDays;
       currentMeta['baseline_resources_count'] = _machinery.length + _labor.length + _instruments.length;
 
+      currentMeta['hourly_operating_cost'] = (_dailyBurnRate / 8).toStringAsFixed(2);
+
       await supabase.from('projects').update({
-        'calculation_metadata': currentMeta
+        'calculation_metadata': currentMeta,
+        'hourly_operating_cost': (_dailyBurnRate / 8).toStringAsFixed(2),
       }).eq('id', widget.projectId);
 
       await _loadProjectData();

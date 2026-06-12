@@ -185,6 +185,17 @@ class _DailyReportsListPageState extends ConsumerState<DailyReportsListPage> {
             onPressed: () => context.pop(),
         ),
         title: Text('Daily Reports — $projectName', style: GoogleFonts.manrope(fontSize: 14)),
+        actions: [
+          TextButton.icon(
+            onPressed: () async {
+              await context.push('/projects/${widget.projectId}/incidents');
+              if (mounted) _loadData();
+            },
+            icon: const Icon(Icons.warning_amber_rounded, size: 18),
+            label: Text('Incidents', style: GoogleFonts.manrope(fontSize: 13)),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.errorRed),
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

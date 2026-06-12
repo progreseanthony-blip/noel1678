@@ -11,4 +11,5 @@ export 'src/services/customers_service.dart';
 export 'src/services/daily_report_service.dart';
 export 'src/services/payroll_service.dart';
 export 'src/services/production_measurement_service.dart';
+export 'src/services/incidents_service.dart';
 export 'package:supabase_flutter/supabase_flutter.dart';

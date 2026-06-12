@@ -21,6 +21,10 @@ import '../features/payroll/presentation/pages/payroll_period_page.dart';
 import '../features/payroll/presentation/pages/labor_cost_projects_page.dart';
 import '../features/production_measurement/presentation/pages/production_measurement_page.dart';
 import '../features/production_measurement/presentation/pages/production_measurement_projects_page.dart';
+import '../features/incidents/presentation/pages/incidents_list_page.dart';
+import '../features/incidents/presentation/pages/incident_detail_page.dart';
+import '../features/incidents/presentation/pages/incident_form_page.dart';
+import '../features/incidents/presentation/pages/incident_dashboard_page.dart';
 final goRouter = GoRouter(
   initialLocation: '/signin',
   routes: [
@@ -107,6 +111,28 @@ final goRouter = GoRouter(
       builder: (context, state) => PayrollPeriodPage(
         projectId: state.pathParameters['id']!,
         periodId: state.pathParameters['periodId']!,
+      ),
+    ),
+    GoRoute(
+      path: '/incidents',
+      builder: (context, state) => const IncidentsDashboardPage(),
+    ),
+    GoRoute(
+      path: '/projects/:id/incidents',
+      builder: (context, state) => IncidentsListPage(projectId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/projects/:id/incidents/new',
+      builder: (context, state) => IncidentFormPage(
+        projectId: state.pathParameters['id']!,
+        dailyReportId: state.uri.queryParameters['dailyReportId'],
+      ),
+    ),
+    GoRoute(
+      path: '/projects/:id/incidents/:incidentId',
+      builder: (context, state) => IncidentDetailPage(
+        projectId: state.pathParameters['id']!,
+        incidentId: state.pathParameters['incidentId']!,
       ),
     ),
     GoRoute(

@@ -50,7 +50,7 @@ class StepGeneralInfo extends StatelessWidget {
               context: context,
               initialDate: reportDate ?? DateTime.now(),
               firstDate: DateTime(2024),
-              lastDate: DateTime.now().add(const Duration(days: 30)),
+              lastDate: DateTime.now().add(const Duration(days: 730)),
             );
             if (picked != null) {
               _update('report_date', DateFormat('yyyy-MM-dd').format(picked));

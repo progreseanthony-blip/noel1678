@@ -77,6 +77,7 @@ class Sidebar extends StatelessWidget {
                         children: [
                           _SubNavItem(icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), left: 44, onTap: () => context.go('/daily-reports')),
                           _SubNavItem(icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), left: 44, onTap: () => context.go('/daily-reports/pending')),
+                          _SubNavItem(icon: Icons.warning_amber_rounded, label: 'Incidents', isActive: currentPath.startsWith('/incidents') || currentPath.contains('/incidents'), left: 44, onTap: () => context.go('/incidents')),
                         ],
                       ),
                       _SubExpandableNavItem(

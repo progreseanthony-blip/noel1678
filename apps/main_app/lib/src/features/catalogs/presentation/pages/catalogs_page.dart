@@ -11,6 +11,7 @@ import '../widgets/machinery_tab.dart';
 import '../widgets/services_tab.dart';
 import '../widgets/logistics_tab.dart';
 import '../widgets/materials_tab.dart';
+import '../widgets/incident_categories_tab.dart';
 
 class CatalogsPage extends ConsumerStatefulWidget {
   const CatalogsPage({super.key});
@@ -26,7 +27,7 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
   }
 
   @override
@@ -111,6 +112,7 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
                             MaterialsTab(),
                             LogisticsTab(),
                             ServicesTab(),
+                            IncidentCategoriesTab(),
                           ],
                         ),
                       ),
@@ -145,6 +147,7 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
           Tab(text: 'MATERIALS'),
           Tab(text: 'INSTRUMENTS'),
           Tab(text: 'SERVICES'),
+          Tab(text: 'INCIDENT CATEGORIES'),
         ],
       ),
     );

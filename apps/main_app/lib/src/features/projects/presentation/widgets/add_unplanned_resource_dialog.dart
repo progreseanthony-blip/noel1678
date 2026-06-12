@@ -910,7 +910,7 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
             ),
           ],
           const SizedBox(height: 12),
-          Row(children: [Expanded(child: _buildTextField('Days', _daysController, isInt: true)), const SizedBox(width: 12), Expanded(child: _buildTextField('Transport (\$)', _transportController))]),
+          Row(children: [Expanded(child: _buildTextField('Days', _daysController, isInt: true)), const SizedBox(width: 12), Expanded(child: _buildTextField(_selectedType == 'Labor' ? 'Per Diem (\$)' : 'Transport (\$)', _transportController))]),
           if (_selectedType == 'Machinery') ...[
             const SizedBox(height: 12),
             Row(children: [Expanded(child: _buildTextField('Fuel GPH', _fuelGphController)), const SizedBox(width: 12), Expanded(child: _buildTextField('Hours/Day', _hoursPerDayController))]),
