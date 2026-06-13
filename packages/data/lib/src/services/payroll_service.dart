@@ -14,6 +14,84 @@ class PayrollService {
 
   PayrollService(this._supabase);
 
+  // ── ISO week helper (ISO 8601) ──
+
+  static int _isoWeek(DateTime date) {
+    final thursday = date.add(Duration(days: DateTime.thursday - date.weekday));
+    final jan1 = DateTime(thursday.year, 1, 1);
+    final dayOfYear = thursday.difference(jan1).inDays;
+    return (dayOfYear ~/ 7) + 1;
+  }
+
+  // ── Weekly OT calculator ──
+
+  static Map<String, dynamic> _calcWeeklyOT(List<Map<String, dynamic>> logs) {
+    // Group by worker_id, then by ISO week
+    final Map<String, Map<int, double>> workerWeeklyHours = {};
+    final Map<String, Map<String, dynamic>> workerInfo = {};
+
+    for (final log in logs) {
+      final wid = log['worker_id'] as String?;
+      if (wid == null) continue;
+
+      final dateStr = log['daily_reports']?['report_date'] as String?;
+      if (dateStr == null) continue;
+      final date = DateTime.parse(dateStr);
+      final week = _isoWeek(date);
+
+      workerWeeklyHours.putIfAbsent(wid, () => {});
+      final net = (log['total_net_hours'] as num?)?.toDouble() ?? 0;
+      workerWeeklyHours[wid]![week] = (workerWeeklyHours[wid]![week] ?? 0) + net;
+
+      if (!workerInfo.containsKey(wid)) {
+        final w = log['workers'] as Map<String, dynamic>? ?? {};
+        final role = w['labor_roles'] as Map<String, dynamic>? ?? {};
+        workerInfo[wid] = {
+          'worker_id': wid,
+          'full_name': w['full_name'] ?? '',
+          'role_id': role['id'],
+          'role_name': role['description'] ?? '',
+          'hourly_rate': (role['hourly_rate'] ?? 0).toDouble(),
+        };
+      }
+    }
+
+    double totalReg = 0, totalOT = 0, totalCost = 0;
+    final List<Map<String, dynamic>> entries = [];
+
+    for (final wid in workerInfo.keys) {
+      final info = workerInfo[wid]!;
+      final weeklyHours = workerWeeklyHours[wid] ?? {};
+      final rate = (info['hourly_rate'] as num).toDouble();
+
+      double workerReg = 0, workerOT = 0;
+      for (final weekHours in weeklyHours.values) {
+        workerReg += weekHours > 40 ? 40 : weekHours;
+        workerOT += weekHours > 40 ? weekHours - 40 : 0;
+      }
+
+      final cost = (workerReg * rate) + (workerOT * rate * 1.5);
+      info['regular_hours'] = workerReg;
+      info['overtime_hours'] = workerOT;
+      info['total_pay'] = cost;
+      entries.add(Map<String, dynamic>.from(info));
+
+      totalReg += workerReg;
+      totalOT += workerOT;
+      totalCost += cost;
+    }
+
+    return {
+      'entries': entries,
+      'total_regular_hours': totalReg,
+      'total_overtime_hours': totalOT,
+      'total_workers': entries.length,
+      'total_cost': totalCost,
+    };
+  }
+
+  // ── CRUD ──
+
   Future<List<Map<String, dynamic>>> getPeriods(String projectId) async {
     final response = await _supabase
         .from('payroll_periods')
@@ -49,6 +127,32 @@ class PayrollService {
     await _supabase.from('payroll_periods').delete().eq('id', id);
   }
 
+  // ── Period calculation ──
+
+  Future<List<Map<String, dynamic>>> _fetchLogs(String projectId, String startDate, String endDate) async {
+    final reports = await _supabase
+        .from('daily_reports')
+        .select('id')
+        .eq('project_id', projectId)
+        .gte('report_date', startDate)
+        .lte('report_date', endDate);
+
+    if (reports.isEmpty) return [];
+
+    final reportIds = (reports as List).map((r) => r['id'] as String).toList();
+
+    final logs = await _supabase
+        .from('report_labor_logs')
+        .select('''
+          total_net_hours, worker_id,
+          daily_reports!inner(report_date),
+          workers(full_name, role_id, labor_roles(id, description, hourly_rate))
+        ''')
+        .in_('daily_report_id', reportIds);
+
+    return List<Map<String, dynamic>>.from(logs ?? []);
+  }
+
   Future<List<Map<String, dynamic>>> calculatePeriod(String periodId) async {
     final period = await _supabase
         .from('payroll_periods')
@@ -59,14 +163,9 @@ class PayrollService {
     final startDate = period['start_date'] as String;
     final endDate = period['end_date'] as String;
 
-    final reports = await _supabase
-        .from('daily_reports')
-        .select('id')
-        .eq('project_id', projectId)
-        .gte('report_date', startDate)
-        .lte('report_date', endDate);
+    final logs = await _fetchLogs(projectId, startDate, endDate);
 
-    if (reports.isEmpty) {
+    if (logs.isEmpty) {
       await _supabase.from('payroll_periods').update({
         'total_regular_hours': 0,
         'total_overtime_hours': 0,
@@ -77,58 +176,14 @@ class PayrollService {
       return [];
     }
 
-    final reportIds = (reports as List).map((r) => r['id'] as String).toList();
-
-    final logs = await _supabase
-        .from('report_labor_logs')
-        .select('''
-          regular_hours, overtime_hours, worker_id,
-          workers(full_name, role_id, labor_roles(id, description, hourly_rate))
-        ''')
-        .in_('daily_report_id', reportIds);
-
-    final Map<String, Map<String, dynamic>> agg = {};
-    for (final log in logs) {
-      final wid = log['worker_id'] as String?;
-      if (wid == null) continue;
-      final w = log['workers'] as Map<String, dynamic>? ?? {};
-      final role = w['labor_roles'] as Map<String, dynamic>? ?? {};
-
-      agg.putIfAbsent(wid, () => {
-        'worker_id': wid,
-        'full_name': w['full_name'] ?? '',
-        'role_id': role['id'],
-        'role_name': role['description'] ?? '',
-        'hourly_rate': (role['hourly_rate'] ?? 0).toDouble(),
-        'regular_hours': 0.0,
-        'overtime_hours': 0.0,
-      });
-
-      agg[wid]!['regular_hours'] =
-          (agg[wid]!['regular_hours'] as num) + (log['regular_hours'] ?? 0);
-      agg[wid]!['overtime_hours'] =
-          (agg[wid]!['overtime_hours'] as num) + (log['overtime_hours'] ?? 0);
-    }
-
-    final entries = agg.values.toList();
-
-    num totalReg = 0, totalOT = 0, totalCost = 0;
-    for (final entry in entries) {
-      final reg = (entry['regular_hours'] as num);
-      final ot = (entry['overtime_hours'] as num);
-      final rate = (entry['hourly_rate'] as num);
-      final cost = (reg + ot) * rate;
-      entry['total_pay'] = cost;
-      totalReg += reg;
-      totalOT += ot;
-      totalCost += cost;
-    }
+    final result = _calcWeeklyOT(logs);
+    final entries = result['entries'] as List<Map<String, dynamic>>;
 
     await _supabase.from('payroll_periods').update({
-      'total_regular_hours': totalReg,
-      'total_overtime_hours': totalOT,
-      'total_workers': entries.length,
-      'total_cost': totalCost,
+      'total_regular_hours': result['total_regular_hours'],
+      'total_overtime_hours': result['total_overtime_hours'],
+      'total_workers': result['total_workers'],
+      'total_cost': result['total_cost'],
       'status': 'calculated',
     }).eq('id', periodId);
 
@@ -140,14 +195,9 @@ class PayrollService {
     String startDate,
     String endDate,
   ) async {
-    final reports = await _supabase
-        .from('daily_reports')
-        .select('id')
-        .eq('project_id', projectId)
-        .gte('report_date', startDate)
-        .lte('report_date', endDate);
+    final logs = await _fetchLogs(projectId, startDate, endDate);
 
-    if (reports.isEmpty) {
+    if (logs.isEmpty) {
       return {
         'entries': <Map<String, dynamic>>[],
         'total_regular_hours': 0,
@@ -157,60 +207,7 @@ class PayrollService {
       };
     }
 
-    final reportIds = (reports as List).map((r) => r['id'] as String).toList();
-
-    final logs = await _supabase
-        .from('report_labor_logs')
-        .select('''
-          regular_hours, overtime_hours, worker_id,
-          workers(full_name, role_id, labor_roles(id, description, hourly_rate))
-        ''')
-        .in_('daily_report_id', reportIds);
-
-    final Map<String, Map<String, dynamic>> agg = {};
-    for (final log in logs) {
-      final wid = log['worker_id'] as String?;
-      if (wid == null) continue;
-      final w = log['workers'] as Map<String, dynamic>? ?? {};
-      final role = w['labor_roles'] as Map<String, dynamic>? ?? {};
-
-      agg.putIfAbsent(wid, () => {
-        'worker_id': wid,
-        'full_name': w['full_name'] ?? '',
-        'role_id': role['id'],
-        'role_name': role['description'] ?? '',
-        'hourly_rate': (role['hourly_rate'] ?? 0).toDouble(),
-        'regular_hours': 0.0,
-        'overtime_hours': 0.0,
-      });
-
-      agg[wid]!['regular_hours'] =
-          (agg[wid]!['regular_hours'] as num) + (log['regular_hours'] ?? 0);
-      agg[wid]!['overtime_hours'] =
-          (agg[wid]!['overtime_hours'] as num) + (log['overtime_hours'] ?? 0);
-    }
-
-    final entries = agg.values.toList();
-
-    num totalReg = 0, totalOT = 0, totalCost = 0;
-    for (final entry in entries) {
-      final reg = (entry['regular_hours'] as num);
-      final ot = (entry['overtime_hours'] as num);
-      final rate = (entry['hourly_rate'] as num);
-      final cost = (reg + ot) * rate;
-      entry['total_pay'] = cost;
-      totalReg += reg;
-      totalOT += ot;
-      totalCost += cost;
-    }
-
-    return {
-      'entries': entries,
-      'total_regular_hours': totalReg,
-      'total_overtime_hours': totalOT,
-      'total_workers': entries.length,
-      'total_cost': totalCost,
-    };
+    return _calcWeeklyOT(logs);
   }
 
   Future<void> closePeriod(String id) async {

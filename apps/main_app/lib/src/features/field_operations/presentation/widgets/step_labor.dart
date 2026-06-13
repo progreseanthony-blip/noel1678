@@ -71,7 +71,7 @@ class _StepLaborState extends State<StepLabor> {
   void _addEntry(String workerId, {String? plannedLaborId, bool isUnplanned = false}) {
     final now = TimeOfDay.now();
     final ci = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:00';
-    setState(() { _entries.add({ 'worker_id': workerId, 'project_labor_id': plannedLaborId, 'check_in_time': isUnplanned ? ci : null, 'check_out_time': null, 'regular_hours': 0.0, 'overtime_hours': 0.0, 'is_unplanned': isUnplanned, 'deviation_reason_id': null, 'notes': '' }); });
+    setState(() { _entries.add({ 'worker_id': workerId, 'project_labor_id': plannedLaborId, 'check_in_time': isUnplanned ? ci : null, 'check_out_time': null, 'regular_hours': 0.0, 'overtime_hours': 0.0, 'break_minutes': 30, 'total_net_hours': 0.0, 'is_unplanned': isUnplanned, 'deviation_reason_id': null, 'notes': '' }); });
     _emit();
   }
 
@@ -99,8 +99,19 @@ class _StepLaborState extends State<StepLabor> {
   void _recalcHours(int index) {
     final e = _entries[index];
     final ci = e['check_in_time'] as String?; final co = e['check_out_time'] as String?;
-    if (ci == null || ci.isEmpty || co == null || co.isEmpty) { e['regular_hours'] = 0.0; e['overtime_hours'] = 0.0; return; }
-    try { final ip = ci.split(':'); final op = co.split(':'); final im = int.parse(ip[0]) * 60 + int.parse(ip[1]); final om = int.parse(op[0]) * 60 + int.parse(op[1]); double total = (om - im) / 60.0; if (total < 0) total = 0; e['regular_hours'] = total > 8 ? 8.0 : total; e['overtime_hours'] = total > 8 ? total - 8.0 : 0.0; } catch (_) { e['regular_hours'] = 0.0; e['overtime_hours'] = 0.0; }
+    if (ci == null || ci.isEmpty || co == null || co.isEmpty) { e['regular_hours'] = 0.0; e['overtime_hours'] = 0.0; e['total_net_hours'] = 0.0; return; }
+    try {
+      final ip = ci.split(':'); final op = co.split(':');
+      final im = int.parse(ip[0]) * 60 + int.parse(ip[1]); final om = int.parse(op[0]) * 60 + int.parse(op[1]);
+      double span = (om - im) / 60.0; if (span < 0) span = 0;
+      const breakMin = 30; const threshold = 6.0;
+      final breakHr = span >= threshold ? breakMin / 60.0 : 0.0;
+      final net = span - breakHr;
+      e['break_minutes'] = breakHr > 0 ? breakMin : 0;
+      e['total_net_hours'] = net;
+      e['regular_hours'] = net > 8 ? 8.0 : net;
+      e['overtime_hours'] = net > 8 ? net - 8.0 : 0.0;
+    } catch (_) { e['regular_hours'] = 0.0; e['overtime_hours'] = 0.0; e['total_net_hours'] = 0.0; }
   }
 
   List<Map<String, dynamic>> _filteredLabor() { if (_serviceFilter == null) return widget.plannedLabor; return widget.plannedLabor.where((pl) => (pl['quote_services']?['name'] as String?) == _serviceFilter).toList(); }
@@ -209,6 +220,7 @@ class _StepLaborState extends State<StepLabor> {
   Widget _buildExpandedRow(int idx, Map<String, dynamic> e, String wName, String? dr, {bool isUnplanned = false, Map<String, dynamic>? w}) {
     final ci = e['check_in_time'] as String?; final co = e['check_out_time'] as String?;
     final ciD = ci != null && ci.isNotEmpty ? ci.substring(0, 5) : '--:--'; final coD = co != null && co.isNotEmpty ? co.substring(0, 5) : '--:--';
+    final bm = e['break_minutes'] as int? ?? 0; final tn = e['total_net_hours'] as double? ?? 0;
     return Padding(padding: const EdgeInsets.only(left: 44, top: 4, bottom: 6), child: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: AppTheme.primaryGreen.withAlpha(10), borderRadius: BorderRadius.circular(8), border: Border.all(color: AppTheme.primaryGreen.withAlpha(40))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [const Icon(Icons.check_circle, size: 16, color: AppTheme.primaryGreen), const SizedBox(width: 8),
         Expanded(child: widget.isReadOnly ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(wName, style: _t(fs: 12, w: FontWeight.w700, c: AppTheme.slate900)), if (dr != null) Text(dr, style: _t(fs: 10, w: FontWeight.w500, c: AppTheme.slate400))]) : _buildWorkerSwapper(idx, e, dr)),
@@ -217,9 +229,17 @@ class _StepLaborState extends State<StepLabor> {
       if (!widget.isReadOnly) ...[
         Row(children: [Expanded(child: InkWell(onTap: () => _pickTime(context, ci, (v) => _updateEntryField(idx, 'check_in_time', v)), child: _timeBox('Check-in', ciD, Icons.login, AppTheme.primaryGreen))), const SizedBox(width: 8), Icon(Icons.arrow_forward, size: 14, color: AppTheme.slate400), const SizedBox(width: 8), Expanded(child: InkWell(onTap: () => _pickTime(context, co, (v) => _updateEntryField(idx, 'check_out_time', v)), child: _timeBox('Check-out', coD, Icons.logout, AppTheme.errorRed)))]),
         const SizedBox(height: 8),
-        Row(children: [_hoursBadge(e['regular_hours'] as double? ?? 0, AppTheme.primaryGreen), const SizedBox(width: 6), _hoursBadge(e['overtime_hours'] as double? ?? 0, Colors.orange), const Spacer(), if (isUnplanned) SizedBox(width: 160, child: DropdownButtonFormField<String>(value: e['deviation_reason_id'], decoration: const InputDecoration(labelText: 'Reason', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)), items: _laborReasons.map((r) => DropdownMenuItem<String>(value: r['id'] as String?, child: Text(r['description'] ?? '', style: _t(fs: 10)))).toList(), onChanged: (v) => _updateEntryField(idx, 'deviation_reason_id', v)))]),
+        Row(children: [
+          _hoursBadge(e['regular_hours'] as double? ?? 0, AppTheme.primaryGreen),
+          const SizedBox(width: 6),
+          _hoursBadge(e['overtime_hours'] as double? ?? 0, Colors.orange),
+          if (bm > 0) ...[const SizedBox(width: 6), _hoursBadge(-(bm / 60.0), AppTheme.slate400)],
+          const SizedBox(width: 6),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(12)), child: Text('Net ${tn.toStringAsFixed(1)}h', style: _t(fs: 10, w: FontWeight.w700, c: AppTheme.slate600))),
+          const Spacer(),
+          if (isUnplanned) SizedBox(width: 160, child: DropdownButtonFormField<String>(value: e['deviation_reason_id'], decoration: const InputDecoration(labelText: 'Reason', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)), items: _laborReasons.map((r) => DropdownMenuItem<String>(value: r['id'] as String?, child: Text(r['description'] ?? '', style: _t(fs: 10)))).toList(), onChanged: (v) => _updateEntryField(idx, 'deviation_reason_id', v)))]),
       ] else ...[
-        Row(children: [_roField('In', ciD), const SizedBox(width: 16), _roField('Out', coD), const SizedBox(width: 16), _hoursBadge(e['regular_hours'] as double? ?? 0, AppTheme.primaryGreen), _hoursBadge(e['overtime_hours'] as double? ?? 0, Colors.orange)]),
+        Row(children: [_roField('In', ciD), const SizedBox(width: 16), _roField('Out', coD), const SizedBox(width: 16), _hoursBadge(e['regular_hours'] as double? ?? 0, AppTheme.primaryGreen), _hoursBadge(e['overtime_hours'] as double? ?? 0, Colors.orange), if (bm > 0) ...[const SizedBox(width: 6), _hoursBadge(-(bm / 60.0), AppTheme.slate400)], const SizedBox(width: 6), Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(12)), child: Text('Net ${tn.toStringAsFixed(1)}h', style: _t(fs: 10, w: FontWeight.w700, c: AppTheme.slate600)))]),
       ]])));
   }
 
