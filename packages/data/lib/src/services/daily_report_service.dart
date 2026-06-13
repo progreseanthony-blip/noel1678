@@ -141,6 +141,7 @@ class DailyReportService {
   static const _laborColumns = [
     'id', 'daily_report_id', 'worker_id', 'project_labor_id', 'project_task_id',
     'check_in_time', 'check_out_time', 'regular_hours', 'overtime_hours',
+    'break_minutes', 'total_net_hours',
     'is_unplanned', 'deviation_reason_id', 'notes', 'created_at',
   ];
 

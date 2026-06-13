@@ -266,15 +266,24 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF334155))),
               child: Column(children: [
-                ..._laborLogs.map((l) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(children: [
-                    Expanded(flex: 3, child: Text(l['workers']?['full_name'] ?? 'Worker ${l['worker_id']?.toString().substring(0, 6)}', style: GoogleFonts.manrope(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600))),
-                    Text('${(l['regular_hours'] as num?)?.toDouble() ?? 0}h', style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 13)),
-                    if ((l['overtime_hours'] as num?)?.toDouble() != 0)
-                      Text(' + ${(l['overtime_hours'] as num?)?.toDouble()}h OT', style: GoogleFonts.manrope(color: Colors.orange, fontSize: 13)),
-                  ]),
-                )),
+                ..._laborLogs.map((l) {
+                  final bm = l['break_minutes'] as int? ?? 0;
+                  final tn = (l['total_net_hours'] as num?)?.toDouble() ?? 0;
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(children: [
+                      Expanded(flex: 3, child: Text(l['workers']?['full_name'] ?? 'Worker ${l['worker_id']?.toString().substring(0, 6)}', style: GoogleFonts.manrope(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600))),
+                      Text('${tn.toStringAsFixed(1)}h', style: GoogleFonts.manrope(color: AppTheme.slate200, fontSize: 13)),
+                      if (bm > 0) Text(' (-${bm}m)', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 11)),
+                      if ((l['regular_hours'] as num?)?.toDouble() != 0 || (l['overtime_hours'] as num?)?.toDouble() != 0) ...[
+                        const SizedBox(width: 8),
+                        Text('${(l['regular_hours'] as num?)?.toDouble() ?? 0}h', style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 13)),
+                        if ((l['overtime_hours'] as num?)?.toDouble() != 0)
+                          Text(' + ${(l['overtime_hours'] as num?)?.toDouble()}h OT', style: GoogleFonts.manrope(color: Colors.orange, fontSize: 13)),
+                      ],
+                    ]),
+                  );
+                }),
               ]),
             ),
             const SizedBox(height: 20),
