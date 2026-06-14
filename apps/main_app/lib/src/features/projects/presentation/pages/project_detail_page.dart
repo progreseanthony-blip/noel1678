@@ -1867,8 +1867,6 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
   bool _isUpdatingRight = false;
   String _selectedServiceFilter = 'All Services';
   final Map<String, bool> _expandedServices = {};
-  bool _localIsSaving = false;
-
   // Baseline metrics
   double _baselineOriginalCost = 0;
   double _baselineDeviationCost = 0;
@@ -2798,21 +2796,19 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                 const SizedBox(width: 8),
                 if (!isFrozen)
                   ElevatedButton.icon(
-                    onPressed: _localIsSaving
+                    onPressed: widget.isSavingBaseline
                         ? null
                         : () async {
-                            setState(() => _localIsSaving = true);
                             await widget.onSaveBaseline();
-                            setState(() => _localIsSaving = false);
                           },
-                    icon: _localIsSaving
+                    icon: widget.isSavingBaseline
                         ? const SizedBox(
                             width: 14, height: 14,
                             child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                           )
                         : const Icon(Icons.lock_outline, size: 14, color: Colors.white),
                     label: Text(
-                      _localIsSaving ? 'Saving...' : 'Lock Baseline',
+                      widget.isSavingBaseline ? 'Saving...' : 'Lock Baseline',
                       style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white),
                     ),
                     style: ElevatedButton.styleFrom(
@@ -2823,21 +2819,19 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                   )
                 else
                   ElevatedButton.icon(
-                    onPressed: _localIsSaving
+                    onPressed: widget.isSavingBaseline
                         ? null
                         : () async {
-                            setState(() => _localIsSaving = true);
                             await widget.onSaveBaseline();
-                            setState(() => _localIsSaving = false);
                           },
-                    icon: _localIsSaving
+                    icon: widget.isSavingBaseline
                         ? const SizedBox(
                             width: 14, height: 14,
                             child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                           )
                         : const Icon(Icons.add_box_outlined, size: 14, color: Colors.white),
                     label: Text(
-                      _localIsSaving ? 'Saving...' : 'New Revision',
+                      widget.isSavingBaseline ? 'Saving...' : 'New Revision',
                       style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white),
                     ),
                     style: ElevatedButton.styleFrom(

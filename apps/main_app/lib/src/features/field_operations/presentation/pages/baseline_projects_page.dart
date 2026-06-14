@@ -36,7 +36,7 @@ class _BaselineProjectsPageState extends State<BaselineProjectsPage> {
         setState(() {
           _projects = all.where((p) {
             final meta = p['calculation_metadata'] as Map<String, dynamic>?;
-            return meta?['baseline_frozen'] == true;
+            return meta?['baseline_latest_version'] != null || meta?['baseline_frozen'] == true;
           }).toList();
           _isLoading = false;
         });
