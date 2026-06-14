@@ -8,11 +8,13 @@ import 'package:noel_data/noel_data.dart';
 class AddUnplannedResourceDialog extends ConsumerStatefulWidget {
   final String projectId;
   final Map<String, dynamic>? initialData;
+  final String changeType;
 
   AddUnplannedResourceDialog({
     super.key, 
     required this.projectId,
     this.initialData,
+    this.changeType = 'planning',
   });
 
   @override
@@ -641,6 +643,7 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
         'is_unplanned': true,
         'unplanned_cost': cost,
         'calculation_metadata': metadata,
+        'change_type': widget.changeType,
       };
 
       String table = '';

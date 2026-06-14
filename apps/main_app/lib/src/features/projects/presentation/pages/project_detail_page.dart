@@ -5,18 +5,11 @@ import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:noel_data/noel_data.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
-import '../widgets/machinery_reception_dialog.dart';
-import '../widgets/machinery_history_dialog.dart';
-import '../widgets/material_reception_dialog.dart';
-import '../widgets/material_history_dialog.dart';
-import '../widgets/labor_checkin_dialog.dart';
-import '../widgets/labor_history_dialog.dart';
 import '../widgets/worker_assignment_dialog.dart';
 import '../widgets/machinery_scheduling_dialog.dart';
-import '../widgets/instrument_reception_dialog.dart';
-import '../widgets/instrument_history_dialog.dart';
 import '../widgets/instrument_scheduling_dialog.dart';
 import '../widgets/labor_scheduling_dialog.dart';
 import 'package:flutter/gestures.dart';
@@ -46,6 +39,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
   List<String> _projectServices = [];
   double _dailyBurnRate = 1500.0;
   final Map<String, bool> _expandedServices = {};
+  Map<String, dynamic>? _latestSnapshot;
+  int? _baselineVersion;
 
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -97,7 +92,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
       // 5. Labor
       final labResult = await supabase
           .from('project_labor')
-          .select('*, quote_services(name, quote_service_estimations(total_working_days)), quote_service_labors(quote_services(name, quote_service_estimations(total_working_days))), project_labor_assignments(start_date, end_date, workers(full_name)), labor_checkins(*)')
+          .select('*, quote_services(name, quote_service_estimations(total_working_days)), quote_service_labors(quote_services(name, quote_service_estimations(total_working_days))), project_labor_assignments(start_date, end_date, workers(full_name))')
           .eq('project_id', widget.projectId)
           .order('role_name');
 
@@ -188,6 +183,17 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
           double price = (i['price'] as num?)?.toDouble() ?? 0;
           int qty = (i['quantity'] as num?)?.toInt() ?? 1;
           calculatedBurnRate += price * qty;
+        }
+
+        // Load latest baseline snapshot
+        try {
+          final baselineService = BaselineService(Supabase.instance.client);
+          _latestSnapshot = await baselineService.getLatestSnapshot(widget.projectId);
+          _baselineVersion = _latestSnapshot?['version'] as int?;
+        } catch (e) {
+          debugPrint('Error loading baseline snapshot: $e');
+          _latestSnapshot = null;
+          _baselineVersion = null;
         }
 
         setState(() {
@@ -457,18 +463,17 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
 
   Map<String, dynamic> _calculateLaborEVMDetails(Map<String, dynamic> l) {
     final assignments = (l['project_labor_assignments'] as List?) ?? [];
-    final checkins = (l['labor_checkins'] as List?) ?? [];
-    
+
     DateTime? plannedStart;
     DateTime? plannedEnd;
-    
+
     if (l['start_date'] != null) {
       plannedStart = DateTime.tryParse(l['start_date']);
     }
     if (l['end_date'] != null) {
       plannedEnd = DateTime.tryParse(l['end_date']);
     }
-    
+
     if ((plannedStart == null || plannedEnd == null) && assignments.isNotEmpty) {
       for (var a in assignments) {
         final aStart = DateTime.tryParse(a['start_date'] ?? '');
@@ -481,60 +486,15 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
         }
       }
     }
-    
-    DateTime? actualStart;
-    DateTime? actualEnd;
-    bool isCompleted = false;
-    
-    if (checkins.isNotEmpty) {
-      for (var c in checkins) {
-        if (c['check_in'] != null) {
-          final ci = DateTime.tryParse(c['check_in']);
-          if (ci != null && (actualStart == null || ci.isBefore(actualStart!))) {
-            actualStart = ci;
-          }
-        }
-      }
-      
-      final hasActive = checkins.any((c) => c['status'] == 'active');
-      final hasCompleted = checkins.any((c) => c['status'] == 'completed');
-      
-      if (!hasActive && hasCompleted) {
-        isCompleted = true;
-        for (var c in checkins) {
-          if (c['check_out'] != null) {
-            final co = DateTime.tryParse(c['check_out']);
-            if (co != null && (actualEnd == null || co.isAfter(actualEnd!))) {
-              actualEnd = co;
-            }
-          }
-        }
-      }
-    }
-    
+
+    final DateTime? actualStart = null;
+    final DateTime? actualEnd = null;
     String status = 'scheduled';
     int deviationDays = 0;
-    
-    if (actualStart != null) {
-      if (isCompleted) {
-        status = 'completed';
-      } else {
-        status = 'in_progress';
-      }
-    } else {
-      if (plannedStart != null && DateTime.now().isAfter(plannedStart!)) {
-        status = 'delayed';
-      }
-    }
-    
-    if (plannedStart != null && plannedEnd != null) {
-      final plannedDur = plannedEnd.difference(plannedStart).inDays;
-      
-      if (actualStart != null) {
-        final currentEnd = actualEnd ?? DateTime.now();
-        final actualDur = currentEnd.difference(actualStart).inDays;
-        deviationDays = actualDur - plannedDur;
-      }
+    bool isCompleted = false;
+
+    if (plannedStart != null && DateTime.now().isAfter(plannedStart!)) {
+      status = 'delayed';
     }
     
     return {
@@ -864,6 +824,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                           selectedServiceFilter: _selectedServiceFilter,
                           onSaveBaseline: _saveBaselinePlanning,
                           isSavingBaseline: _isSavingBaseline,
+                          baselineVersion: _baselineVersion,
                         ),
                       );
                       if (result == 'navigate_to_baseline' && mounted) {
@@ -893,7 +854,13 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                         }
                       }
                     },
-                    icon: const Icon(Icons.analytics_outlined, size: 16, color: Colors.white),
+                    icon: _baselineVersion != null
+                        ? Badge(
+                            label: Text('v$_baselineVersion'),
+                            backgroundColor: AppTheme.primaryGreen,
+                            child: const Icon(Icons.analytics_outlined, size: 16, color: Colors.white),
+                          )
+                        : const Icon(Icons.analytics_outlined, size: 16, color: Colors.white),
                     label: Text('Baseline', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.slate900,
@@ -914,6 +881,34 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                       minimumSize: const Size(0, 36),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: () => context.push('/projects/${widget.projectId}/reception'),
+                    icon: const Icon(Icons.inventory, size: 16, color: Colors.white),
+                    label: Text('Reception', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                      minimumSize: const Size(0, 36),
+                    ),
+                  ),
+                  if (_baselineVersion != null) ...[
+                    const SizedBox(width: 8),
+                    ElevatedButton.icon(
+                      onPressed: _isSavingBaseline ? null : _createNewBaselineRevision,
+                      icon: _isSavingBaseline
+                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Icon(Icons.add_box_outlined, size: 16, color: Colors.white),
+                      label: Text(_isSavingBaseline ? '...' : 'New Revision', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6366F1),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                        minimumSize: const Size(0, 36),
+                      ),
+                    ),
+                  ],
                 ],
               ),
               const SizedBox(height: 4),
@@ -1128,56 +1123,6 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                         ],
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    if (received > 0)
-                      IconButton(
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => MachineryHistoryDialog(
-                              projectId: widget.projectId,
-                              projectMachineryId: m['id'],
-                              machineryName: mName,
-                              serviceName: sName,
-                            ),
-                          ).then((updated) {
-                            if (updated == true) _loadProjectData();
-                          });
-                        },
-                        icon: const Icon(Icons.history, color: Colors.orange),
-                        tooltip: 'View History & Edit',
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.orange.withOpacity(0.1),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    if (received > 0) const SizedBox(width: 8),
-                    if (!isComplete)
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => MachineryReceptionDialog(
-                              projectId: widget.projectId,
-                              projectMachineryId: m['id'],
-                              machineryName: mName,
-                              serviceName: sName,
-                            ),
-                          ).then((received) {
-                            if (received == true) _loadProjectData();
-                          });
-                        },
-                        icon: const Icon(Icons.add_box, size: 16, color: Colors.white),
-                        label: Text('Receive', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isComplete ? AppTheme.slate400 : Colors.orange,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                      ),
-                    if (!isComplete || received > 0) const SizedBox(width: 8),
                     ElevatedButton.icon(
                       onPressed: () {
                         showDialog(
@@ -1361,62 +1306,6 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                         ],
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    if (received > 0)
-                      IconButton(
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => MaterialHistoryDialog(
-                              projectId: widget.projectId,
-                              projectMaterialId: m['id'],
-                              materialName: mName,
-                              serviceName: sName,
-                              unitName: unitName,
-                              expectedQuantity: expected,
-                            ),
-                          ).then((updated) {
-                            if (updated == true) _loadProjectData();
-                          });
-                        },
-                        icon: const Icon(Icons.history, color: AppTheme.primaryGreen),
-                        tooltip: 'View History & Edit',
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.primaryGreen.withOpacity(0.1),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    if (received > 0) const SizedBox(width: 8),
-                    if (!isComplete)
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => MaterialReceptionDialog(
-                              projectId: widget.projectId,
-                              projectMaterialId: m['id'],
-                              materialName: mName,
-                              serviceName: sName,
-                              unitName: unitName,
-                              expectedQuantity: expected,
-                              currentReceived: received,
-                            ),
-                          ).then((received) {
-                            if (received == true) {
-                              _loadProjectData();
-                            }
-                          });
-                        },
-                        icon: const Icon(Icons.add_box, size: 16, color: Colors.white),
-                        label: Text('Receive', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isComplete ? AppTheme.slate400 : Colors.blue,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                      ),
                   ],
                 ),
               );
@@ -1527,31 +1416,6 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                         ],
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    if (received > 0)
-                      IconButton(
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => InstrumentHistoryDialog(
-                              projectId: widget.projectId,
-                              projectInstrumentId: m['id'],
-                              instrumentName: mName,
-                              serviceName: sName,
-                            ),
-                          ).then((updated) {
-                            if (updated == true) _loadProjectData();
-                          });
-                        },
-                        icon: const Icon(Icons.history, color: AppTheme.primaryGreen),
-                        tooltip: 'View History & Edit',
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.primaryGreen.withOpacity(0.1),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    if (received > 0) const SizedBox(width: 8),
                     IconButton(
                       onPressed: () {
                         showDialog(
@@ -1574,32 +1438,6 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                       ),
                     ),
                     const SizedBox(width: 8),
-                    if (!isComplete)
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => InstrumentReceptionDialog(
-                              projectId: widget.projectId,
-                              projectInstrumentId: m['id'],
-                              instrumentName: mName,
-                              serviceName: sName,
-                            ),
-                          ).then((received) {
-                            if (received == true) {
-                              _loadProjectData();
-                            }
-                          });
-                        },
-                        icon: const Icon(Icons.qr_code_scanner, size: 16, color: Colors.white),
-                        label: Text('Receive', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                      ),
                   ],
                 ),
               );
@@ -1789,50 +1627,6 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                       ),
                     ),
                     const SizedBox(width: 8),
-                    if (l['labor_checkins'] != null && (l['labor_checkins'] as List).isNotEmpty)
-                      IconButton(
-                        onPressed: () {
-                          showDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => LaborHistoryDialog(
-                              projectLaborId: l['id'],
-                              roleName: roleName,
-                            ),
-                          ).then((updated) {
-                            if (updated == true) _loadProjectData();
-                          });
-                        },
-                        icon: const Icon(Icons.history, color: AppTheme.primaryGreen),
-                        tooltip: 'View History',
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.primaryGreen.withOpacity(0.1),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    if (l['labor_checkins'] != null && (l['labor_checkins'] as List).isNotEmpty) const SizedBox(width: 8),
-                    IconButton(
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          barrierColor: Colors.black.withOpacity(0.5),
-                          builder: (_) => LaborCheckInDialog(
-                            projectId: widget.projectId,
-                            projectLaborId: l['id'],
-                            roleName: roleName,
-                            serviceName: sName,
-                          ),
-                        ).then((updated) {
-                          if (updated == true) _loadProjectData();
-                        });
-                      },
-                      icon: const Icon(Icons.login, color: Colors.teal),
-                      tooltip: 'Check-In Worker',
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.teal.withOpacity(0.1),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
                   ],
                 ),
               );
@@ -1859,12 +1653,63 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
           selectedServiceFilter: _selectedServiceFilter,
           onSaveBaseline: _saveBaselinePlanning,
           isSavingBaseline: _isSavingBaseline,
+          baselineVersion: _baselineVersion,
         ),
       );
     });
   }
 
   bool _isSavingBaseline = false;
+
+  Future<void> _createNewBaselineRevision() async {
+    if (_project == null || _isSavingBaseline) return;
+    setState(() => _isSavingBaseline = true);
+
+    try {
+      final supabase = Supabase.instance.client;
+      final currentMeta = Map<String, dynamic>.from(_project!['calculation_metadata'] ?? {});
+      currentMeta['baseline_daily_burn_rate'] = _dailyBurnRate;
+
+      final baselineService = BaselineService(supabase);
+      final snapshot = await baselineService.createSnapshot(
+        projectId: widget.projectId,
+        calculationMetadata: currentMeta,
+        label: null,
+        reason: 'New revision',
+        userId: supabase.auth.currentUser?.id,
+      );
+
+      currentMeta['baseline_latest_snapshot_id'] = snapshot['id'];
+      currentMeta['baseline_latest_version'] = snapshot['version'];
+
+      await supabase.from('projects').update({
+        'calculation_metadata': currentMeta,
+      }).eq('id', widget.projectId);
+
+      await _loadProjectData();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Baseline v${snapshot['version']} created!'),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error creating revision: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error creating revision: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingBaseline = false);
+    }
+  }
 
   Future<void> _saveBaselinePlanning() async {
     if (_project == null || _isSavingBaseline) return;
@@ -1873,9 +1718,6 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
     try {
       final supabase = Supabase.instance.client;
       final currentMeta = Map<String, dynamic>.from(_project!['calculation_metadata'] ?? {});
-      currentMeta['baseline_frozen'] = true;
-      currentMeta['baseline_frozen_at'] = DateTime.now().toIso8601String();
-      currentMeta['baseline_daily_burn_rate'] = _dailyBurnRate;
 
       DateTime? minDate;
       DateTime? maxDate;
@@ -1939,10 +1781,22 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
         totalDays = maxDate.difference(minDate).inDays + 1;
       }
 
+      currentMeta['baseline_daily_burn_rate'] = _dailyBurnRate;
       currentMeta['baseline_total_days'] = totalDays;
       currentMeta['baseline_resources_count'] = _machinery.length + _labor.length + _instruments.length;
-
       currentMeta['hourly_operating_cost'] = (_dailyBurnRate / 8).toStringAsFixed(2);
+
+      final baselineService = BaselineService(supabase);
+      final snapshot = await baselineService.createSnapshot(
+        projectId: widget.projectId,
+        calculationMetadata: currentMeta,
+        label: null,
+        reason: 'Initial baseline',
+        userId: supabase.auth.currentUser?.id,
+      );
+
+      currentMeta['baseline_latest_snapshot_id'] = snapshot['id'];
+      currentMeta['baseline_latest_version'] = snapshot['version'];
 
       await supabase.from('projects').update({
         'calculation_metadata': currentMeta,
@@ -1953,8 +1807,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Official Baseline saved successfully! 🚀'),
+          SnackBar(
+            content: Text('Baseline v${snapshot['version']} saved successfully!'),
             backgroundColor: AppTheme.primaryGreen,
           ),
         );
@@ -1986,6 +1840,7 @@ class _FullscreenTimelineDialog extends StatefulWidget {
   final String selectedServiceFilter;
   final Future<void> Function() onSaveBaseline;
   final bool isSavingBaseline;
+  final int? baselineVersion;
 
   const _FullscreenTimelineDialog({
     Key? key,
@@ -1997,6 +1852,7 @@ class _FullscreenTimelineDialog extends StatefulWidget {
     required this.selectedServiceFilter,
     required this.onSaveBaseline,
     required this.isSavingBaseline,
+    this.baselineVersion,
   }) : super(key: key);
 
   @override
@@ -2323,6 +2179,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         'plannedEnd': evm['plannedEnd'] as DateTime?,
         'isUnplanned': !isPlanned || m['calculation_metadata']?['is_unplanned'] == true,
         'calculationMetadata': m['calculation_metadata'] as Map<String, dynamic>?,
+        'changeType': m['change_type'] ?? 'planning',
       });
     }
 
@@ -2339,6 +2196,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         'plannedEnd': evm['plannedEnd'] as DateTime?,
         'isUnplanned': !isPlanned || l['calculation_metadata']?['is_unplanned'] == true,
         'calculationMetadata': l['calculation_metadata'] as Map<String, dynamic>?,
+        'changeType': l['change_type'] ?? 'planning',
       });
     }
 
@@ -2376,6 +2234,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         'plannedEnd': plannedEnd,
         'isUnplanned': !isPlanned || i['calculation_metadata']?['is_unplanned'] == true,
         'calculationMetadata': i['calculation_metadata'] as Map<String, dynamic>?,
+        'changeType': i['change_type'] ?? 'planning',
       });
     }
 
@@ -2468,7 +2327,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
     }
 
     final List<String> serviceNames = groupedItems.keys.toList()..sort();
-    final isFrozen = widget.project?['calculation_metadata']?['baseline_frozen'] == true;
+    final isFrozen = widget.baselineVersion != null;
 
     final List<Widget> leftRows = [];
     final List<Widget> rightRows = [];
@@ -2668,24 +2527,41 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
-                            if (isExtra) ...[
-                              const SizedBox(width: 4),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(3),
-                                ),
-                                child: Text(
-                                  'EXTRA',
-                                  style: GoogleFonts.manrope(
-                            fontSize: 9,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.orange,
-                                  ),
+                            if (item['changeType'] == 'change_order') ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF97316).withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: Text(
+                                'CHANGE ORDER',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  color: const Color(0xFFF97316),
                                 ),
                               ),
-                            ],
+                            ),
+                          ] else if (isExtra) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.orange.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(3),
+                              ),
+                              child: Text(
+                                'EXTRA',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.orange,
+                                ),
+                              ),
+                            ),
+                          ],
                           ],
                         ),
                         if (start != null && end != null)
@@ -2763,7 +2639,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                         ),
                       ),
                     ),
-                  if (start != null && end != null)
+                    if (start != null && end != null)
                     Positioned(
                       left: start.difference(minVal).inDays * dayWidth,
                       width: itemDuration * dayWidth,
@@ -2777,6 +2653,9 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                             end: Alignment.bottomRight,
                           ),
                           borderRadius: BorderRadius.circular(6),
+                          border: item['changeType'] == 'change_order'
+                              ? Border.all(color: const Color(0xFFF97316), width: 2)
+                              : null,
                           boxShadow: [
                             BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 3, offset: const Offset(0, 1)),
                           ],
@@ -2850,7 +2729,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                'Baseline Locked ✓',
+                                'Baseline v${widget.baselineVersion} Locked ✓',
                                 style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen),
                               ),
                             ),
@@ -2938,6 +2817,31 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryGreen,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  )
+                else
+                  ElevatedButton.icon(
+                    onPressed: _localIsSaving
+                        ? null
+                        : () async {
+                            setState(() => _localIsSaving = true);
+                            await widget.onSaveBaseline();
+                            setState(() => _localIsSaving = false);
+                          },
+                    icon: _localIsSaving
+                        ? const SizedBox(
+                            width: 14, height: 14,
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          )
+                        : const Icon(Icons.add_box_outlined, size: 14, color: Colors.white),
+                    label: Text(
+                      _localIsSaving ? 'Saving...' : 'New Revision',
+                      style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF6366F1),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                     ),

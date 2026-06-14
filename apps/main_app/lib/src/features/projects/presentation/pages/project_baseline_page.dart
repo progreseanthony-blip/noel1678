@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+import 'package:noel_data/noel_data.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
 import '../widgets/add_unplanned_resource_dialog.dart';
@@ -35,6 +37,8 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
   double _totalCompressionSavings = 0.0;
   List<Map<String, dynamic>> _unplannedResources = [];
   Map<String, double> _serviceOriginalDurations = {};
+  List<Map<String, dynamic>> _snapshots = [];
+  Map<String, dynamic>? _selectedSnapshot;
 
   Future<void> _loadData() async {
     setState(() {
@@ -90,6 +94,7 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
             'createdAt': DateTime.tryParse(r['created_at']?.toString() ?? '') ?? DateTime.now(),
             'quote_service_id': r['quote_service_id'],
             'linked_machinery_id': r is Map && r.containsKey('linked_machinery_id') ? r['linked_machinery_id'] : null,
+            'change_type': r['change_type'] ?? 'planning',
           });
         }
       }
@@ -176,6 +181,15 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
         }
       }
 
+      // Load baseline snapshots
+      List<Map<String, dynamic>> snapshots = [];
+      try {
+        final baselineService = BaselineService(supabase);
+        snapshots = await baselineService.getSnapshots(widget.projectId);
+      } catch (e) {
+        debugPrint('Error loading snapshots: $e');
+      }
+
       if (mounted) {
         setState(() {
           _project = pResult;
@@ -186,6 +200,8 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
           _originalTotalDays = originalTotalDays;
           _totalCompressionSavings = totalCompressionSavings;
           _serviceOriginalDurations = serviceOriginalDurations;
+          _snapshots = snapshots;
+          _selectedSnapshot = snapshots.isNotEmpty ? snapshots.first : null;
           _isLoading = false;
         });
       }
@@ -451,6 +467,47 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
               color: AppTheme.slate400,
             ),
           ),
+          const SizedBox(height: 8),
+          if (_snapshots.isNotEmpty)
+            Row(
+              children: [
+                const Icon(Icons.layers, size: 16, color: AppTheme.slate400),
+                const SizedBox(width: 8),
+                Text('Baseline Version:', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400, fontWeight: FontWeight.w600)),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFF334155)),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<int>(
+                      value: _selectedSnapshot?['version'] as int?,
+                      dropdownColor: const Color(0xFF1E293B),
+                      style: GoogleFonts.manrope(fontSize: 13, color: Colors.white, fontWeight: FontWeight.w700),
+                      items: _snapshots.map((s) {
+                        final v = s['version'] as int;
+                        final label = s['label'] ?? 'v$v';
+                        final date = s['frozen_at'] != null
+                            ? DateFormat('MMM dd').format(DateTime.parse(s['frozen_at'].toString()).toLocal())
+                            : '';
+                        return DropdownMenuItem<int>(
+                          value: v,
+                          child: Text('$label ($date)'),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        setState(() {
+                          _selectedSnapshot = _snapshots.firstWhere((s) => s['version'] == val);
+                        });
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
           const SizedBox(height: 20),
 
           // High-level Stats Row
@@ -672,10 +729,15 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
               ),
               ElevatedButton.icon(
                 onPressed: () {
+                  final isFrozen = _project?['calculation_metadata']?['baseline_latest_version'] != null
+                      || _project?['calculation_metadata']?['baseline_frozen'] == true;
                   showDialog(
                     context: context,
                     barrierColor: Colors.black.withOpacity(0.5),
-                    builder: (ctx) => AddUnplannedResourceDialog(projectId: widget.projectId),
+                    builder: (ctx) => AddUnplannedResourceDialog(
+                      projectId: widget.projectId,
+                      changeType: isFrozen ? 'change_order' : 'planning',
+                    ),
                   ).then((added) {
                     if (added == true) _loadData();
                   }).catchError((e, st) {
@@ -957,6 +1019,7 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
                                 builder: (_) => AddUnplannedResourceDialog(
                                   projectId: widget.projectId,
                                   initialData: res,
+                                  changeType: res['change_type'] ?? 'planning',
                                 ),
                               ).then((updated) {
                                 if (updated == true) _loadData();
