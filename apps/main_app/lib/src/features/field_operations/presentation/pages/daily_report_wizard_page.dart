@@ -333,6 +333,7 @@ class _DailyReportWizardPageState
               deviationReasons: _deviationReasons,
               isReadOnly: _reportData['status'] == 'approved' || _reportData['status'] == 'submitted',
               onLogsChanged: _onLaborLogsChanged,
+              onNavigateToBaseline: _navigateToBaseline,
             ),
           ),
           Step(
@@ -340,6 +341,7 @@ class _DailyReportWizardPageState
             isActive: _currentStep >= 2,
             state: _currentStep > 2 ? StepState.complete : StepState.indexed,
             content: StepMachinery(
+              projectId: widget.projectId,
               plannedMachinery: _plannedMachinery,
               machineryLogs: _machineryLogs,
               workers: _workers,
@@ -349,6 +351,8 @@ class _DailyReportWizardPageState
               machineryCatalog: _machineryCatalog,
               isReadOnly: _reportData['status'] == 'approved' || _reportData['status'] == 'submitted',
               onLogsChanged: _onMachineryLogsChanged,
+              onNavigateToBaseline: _navigateToBaseline,
+              reportDate: _reportData['report_date'] as String?,
             ),
           ),
           Step(
@@ -356,6 +360,7 @@ class _DailyReportWizardPageState
             isActive: _currentStep >= 3,
             state: _currentStep > 3 ? StepState.complete : StepState.indexed,
             content: StepMaterials(
+              projectId: widget.projectId,
               plannedMaterials: _plannedMaterials,
               materialUsage: _materialUsage,
               isReadOnly: _reportData['status'] == 'approved' || _reportData['status'] == 'submitted',
@@ -417,6 +422,62 @@ class _DailyReportWizardPageState
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  Future<void> _saveCurrentStep() async {
+    if (_currentStep == 0) await _saveReportHeader();
+    if (_currentStep == 1) await _saveLaborLogs();
+    if (_currentStep == 2) await _saveMachineryLogs();
+    if (_currentStep == 3) await _saveMaterialUsage();
+  }
+
+  Future<void> _navigateToBaseline() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add resource to baseline'),
+        content: const Text('The current progress will be saved as draft and the baseline module will open to add the resource.\n\nWhen you return, the planned resources will refresh.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Continue')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _saveCurrentStep();
+    if (!mounted) return;
+    final reportDate = _reportData['report_date'] as String? ?? DateTime.now().toIso8601String().split('T')[0];
+    await context.push('/projects/${widget.projectId}/baseline?reportDate=$reportDate');
+    if (!mounted) return;
+    await _refreshPlannedData();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Resources refreshed. Assign workers for the new resources.', style: GoogleFonts.manrope()),
+        backgroundColor: AppTheme.primaryGreen,
+      ),
+    );
+  }
+
+  Future<void> _refreshPlannedData() async {
+    try {
+      final service = ref.read(dailyReportServiceProvider);
+      final date = _reportData['report_date'] as String? ?? DateTime.now().toIso8601String().split('T')[0];
+      final results = await Future.wait([
+        service.getPlannedLaborForProject(widget.projectId, date),
+        service.getPlannedLaborForProject(widget.projectId, date, filterByDate: false),
+        service.getPlannedMachineryForProject(widget.projectId, date),
+        service.getPlannedMaterialsForProject(widget.projectId, date),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _plannedLabor = List<Map<String, dynamic>>.from(results[0] as List);
+        _unfilteredPlannedLabor = List<Map<String, dynamic>>.from(results[1] as List);
+        _plannedMachinery = List<Map<String, dynamic>>.from(results[2] as List);
+        _plannedMaterials = List<Map<String, dynamic>>.from(results[3] as List);
+      });
+    } catch (e) {
+      debugPrint('Error refreshing planned data: $e');
+    }
   }
 
   Future<void> _handleSubmit() async {

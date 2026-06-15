@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:noel_data/noel_data.dart';
 
 class StepMaterials extends StatefulWidget {
+  final String projectId;
   final List<Map<String, dynamic>> plannedMaterials;
   final List<Map<String, dynamic>> materialUsage;
   final bool isReadOnly;
@@ -10,6 +13,7 @@ class StepMaterials extends StatefulWidget {
 
   const StepMaterials({
     super.key,
+    required this.projectId,
     required this.plannedMaterials,
     required this.materialUsage,
     required this.isReadOnly,
@@ -24,6 +28,7 @@ class _StepMaterialsState extends State<StepMaterials> {
   List<Map<String, dynamic>> _entries = [];
   String? _serviceFilter;
   final Map<String, TextEditingController> _ctrls = {};
+  Map<String, double> _materialUsageTotal = {};
 
   @override
   void dispose() {
@@ -37,6 +42,18 @@ class _StepMaterialsState extends State<StepMaterials> {
   void initState() {
     super.initState();
     _entries = widget.materialUsage.map((m) => Map<String, dynamic>.from(m)).toList();
+    _loadMaterialUsage();
+  }
+
+  Future<void> _loadMaterialUsage() async {
+    try {
+      final usage = await ProjectBalanceHelper.getMaterialUsage(
+        Supabase.instance.client, widget.projectId,
+      );
+      if (mounted) setState(() => _materialUsageTotal = usage);
+    } catch (e) {
+      debugPrint('Error loading material usage: $e');
+    }
   }
 
   @override
@@ -179,7 +196,19 @@ class _StepMaterialsState extends State<StepMaterials> {
         ),
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(matName, style: _t(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
-          Text('Expected: $expected $unit', style: _t(fontSize: 11, fontWeight: FontWeight.w500, color: AppTheme.slate500)),
+          Row(children: [
+            Text('Exp: $expected $unit', style: _t(fontSize: 11, fontWeight: FontWeight.w500, color: AppTheme.slate500)),
+            if (_materialUsageTotal.containsKey(pmId)) ...[
+              const Text(' · ', style: TextStyle(fontSize: 11, color: AppTheme.slate400)),
+              Text('Used: ${_materialUsageTotal[pmId]!.toStringAsFixed(1)} $unit',
+                style: _t(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.slate600)),
+              const Text(' · ', style: TextStyle(fontSize: 11, color: AppTheme.slate400)),
+              Text('Rem: ${(expected - _materialUsageTotal[pmId]!).toStringAsFixed(1)} $unit',
+                style: _t(fontSize: 11, fontWeight: FontWeight.w700,
+                  color: (expected - _materialUsageTotal[pmId]!) <= 0
+                    ? AppTheme.errorRed : AppTheme.primaryGreen)),
+            ],
+          ]),
         ]),
         children: [
           if (!isAdded)

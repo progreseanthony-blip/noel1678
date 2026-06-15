@@ -4,8 +4,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:noel_data/noel_data.dart';
 
 class StepMachinery extends StatefulWidget {
+  final String projectId;
   final List<Map<String, dynamic>> plannedMachinery;
   final List<Map<String, dynamic>> machineryLogs;
   final List<Map<String, dynamic>> workers;
@@ -15,9 +17,12 @@ class StepMachinery extends StatefulWidget {
   final List<Map<String, dynamic>> machineryCatalog;
   final bool isReadOnly;
   final ValueChanged<List<Map<String, dynamic>>> onLogsChanged;
+  final VoidCallback? onNavigateToBaseline;
+  final String? reportDate;
 
   const StepMachinery({
     super.key,
+    required this.projectId,
     required this.plannedMachinery,
     required this.machineryLogs,
     required this.workers,
@@ -27,6 +32,8 @@ class StepMachinery extends StatefulWidget {
     required this.machineryCatalog,
     required this.isReadOnly,
     required this.onLogsChanged,
+    this.onNavigateToBaseline,
+    this.reportDate,
   });
 
   @override
@@ -37,6 +44,8 @@ class _StepMachineryState extends State<StepMachinery> {
   List<Map<String, dynamic>> _entries = [];
   String? _serviceFilter;
   final Map<String, TextEditingController> _ctrls = {};
+  Map<String, double> _machineryProduction = {};
+  Map<String, Map<String, Map<String, dynamic>>> _estimationTargets = {};
 
   @override
   void dispose() {
@@ -59,6 +68,24 @@ class _StepMachineryState extends State<StepMachinery> {
     super.initState();
     _entries = widget.machineryLogs.map((m) => Map<String, dynamic>.from(m)).toList();
     _enrichEntries();
+    _loadProduction();
+  }
+
+  Future<void> _loadProduction() async {
+    try {
+      final prod = await ProjectBalanceHelper.getMachineryProduction(
+        Supabase.instance.client, widget.projectId,
+      );
+      final est = await ProjectBalanceHelper.getMachineryEstimationTargets(
+        Supabase.instance.client, widget.projectId,
+      );
+      if (mounted) setState(() {
+        _machineryProduction = prod;
+        _estimationTargets = est;
+      });
+    } catch (e) {
+      debugPrint('Error loading machinery production: $e');
+    }
   }
 
   @override
@@ -176,6 +203,72 @@ class _StepMachineryState extends State<StepMachinery> {
     _emit();
   }
 
+  Future<void> _showMachineryReassignDialog(Map<String, dynamic> pm) async {
+    final machName = pm['machinery_name'] ?? pm['machinery']?['description'] ?? 'Machine';
+    final currentSvc = pm['quote_services']?['name'] as String?;
+
+    String? targetSvc;
+    Map<String, dynamic>? targetPm;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text('Reassign $machName', style: _t(fontSize: 15, fontWeight: FontWeight.w700)),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              if (currentSvc != null) ...[
+                Text('Current service:', style: TextStyle(fontSize: 11, color: AppTheme.slate400)),
+                Text(currentSvc!, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 12),
+              ],
+              Text('Target service', style: TextStyle(fontSize: 11, color: AppTheme.slate400)),
+              const SizedBox(height: 4),
+              DropdownButtonFormField<String>(
+                value: targetSvc,
+                isExpanded: true,
+                decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
+                hint: Text('Select service...', style: TextStyle(fontSize: 13)),
+                items: _allServices()
+                  .where((s) => s != currentSvc)
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s, style: TextStyle(fontSize: 13))))
+                  .toList(),
+                onChanged: (v) {
+                  setDialogState(() {
+                    targetSvc = v;
+                    targetPm = widget.plannedMachinery.cast<Map<String, dynamic>?>().firstWhere(
+                      (p) => p?['quote_services']?['name'] == v && p?['machinery_name'] == pm['machinery_name'],
+                      orElse: () => widget.plannedMachinery.cast<Map<String, dynamic>?>().firstWhere(
+                        (p) => p?['quote_services']?['name'] == v && p?['machinery']?['description'] == pm['machinery']?['description'],
+                        orElse: () => widget.plannedMachinery.cast<Map<String, dynamic>?>().firstWhere(
+                          (p) => p?['quote_services']?['name'] == v,
+                          orElse: () => null,
+                        ),
+                      ),
+                    );
+                  });
+                },
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: targetSvc != null && targetPm != null ? () {
+                _addEntry(targetPm!);
+                Navigator.pop(ctx);
+              } : targetSvc != null && targetPm == null ? () {
+                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('No matching machinery found for selected service')));
+              } : null,
+              child: Text(targetPm != null ? 'Reassign' : 'Select a service'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _removeEntry(int index) {
     setState(() => _entries.removeAt(index));
     _emit();
@@ -198,36 +291,52 @@ class _StepMachineryState extends State<StepMachinery> {
   String _workerName(String? wid) {
     if (wid == null) return 'Select operator...';
     final w = widget.workers.firstWhere((x) => x['id'] == wid, orElse: () => <String, dynamic>{});
+    final roleDesc = w['role']?['description'] as String? ?? '';
+    if (roleDesc.isNotEmpty) {
+      return '${w['full_name'] ?? '?'} — $roleDesc (${w['id_number'] ?? '-'})';
+    }
     return '${w['full_name'] ?? '?'} (${w['id_number'] ?? '-'})';
+  }
+
+  String? _getOperatorRoleId(Map<String, dynamic> pm) {
+    final machId = pm['machinery_id'] as String?;
+    var opRoleId = pm['machinery']?['operator_role_id'] as String?;
+    if (opRoleId == null && machId != null) {
+      opRoleId = widget.machineryCatalog.firstWhere(
+        (m) => m['id'] == machId,
+        orElse: () => <String, dynamic>{},
+      )['operator_role_id'] as String?;
+    }
+    if (opRoleId == null) {
+      final machName = pm['machinery_name'] ?? pm['machinery']?['description'] ?? '';
+      final machNameLower = machName.toString().toLowerCase();
+      opRoleId = widget.machineryCatalog.firstWhere(
+        (m) => (m['description'] as String? ?? '').toLowerCase() == machNameLower,
+        orElse: () => <String, dynamic>{},
+      )['operator_role_id'] as String?;
+    }
+    return opRoleId;
+  }
+
+  int Function(Map<String, dynamic>, Map<String, dynamic>) _byRoleMatch(String? targetRoleId) {
+    return (Map<String, dynamic> a, Map<String, dynamic> b) {
+      final aMatch = targetRoleId != null && a['role']?['id'] == targetRoleId;
+      final bMatch = targetRoleId != null && b['role']?['id'] == targetRoleId;
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return ((a['full_name'] as String?) ?? '').compareTo((b['full_name'] as String?) ?? '');
+    };
   }
 
   List<Map<String, dynamic>> _getOperatorsForMachine(Map<String, dynamic> pm) {
     final svcId = pm['quote_service_id'] as String?;
-    final machId = pm['machinery_id'] as String?;
-    final machName = pm['machinery_name'] ?? pm['machinery']?['description'] ?? machId;
+    final opRoleId = _getOperatorRoleId(pm);
 
-    var opRoleId = pm['machinery']?['operator_role_id'] as String?;
-    if (opRoleId == null && machId != null) {
-      final cat = widget.machineryCatalog.firstWhere(
-        (m) => m['id'] == machId,
-        orElse: () => <String, dynamic>{},
-      );
-      opRoleId = cat['operator_role_id'] as String?;
-    }
-    if (opRoleId == null) {
-      final machNameLower = machName.toString().toLowerCase();
-      final cat = widget.machineryCatalog.firstWhere(
-        (m) => (m['description'] as String? ?? '').toLowerCase() == machNameLower,
-        orElse: () => <String, dynamic>{},
-      );
-      opRoleId = cat['operator_role_id'] as String?;
-    }
-
-    debugPrint('[OpFilter] $machName: svcId=$svcId opRoleId=$opRoleId');
+    debugPrint('[OpFilter] ${pm['machinery_name'] ?? pm['machinery']?['description'] ?? ''}: svcId=$svcId opRoleId=$opRoleId');
 
     if (svcId == null || opRoleId == null) {
-      debugPrint('[OpFilter] $machName: svcId or opRoleId is null, returning all workers');
-      return _activeWorkers;
+      debugPrint('[OpFilter] svcId or opRoleId is null, returning all workers');
+      return List<Map<String, dynamic>>.from(_activeWorkers)..sort(_byRoleMatch(null));
     }
 
     final svcWorkerIds = <String>{};
@@ -240,26 +349,103 @@ class _StepMachineryState extends State<StepMachinery> {
       }
     }
 
-    debugPrint('[OpFilter] $machName: svcWorkerIds=${svcWorkerIds.length}');
+    debugPrint('[OpFilter] svcWorkerIds=${svcWorkerIds.length}');
 
     if (svcWorkerIds.isEmpty) {
-      debugPrint('[OpFilter] $machName: no workers assigned to service');
-      return _activeWorkers;
+      debugPrint('[OpFilter] no workers assigned to service, returning all');
+      return List<Map<String, dynamic>>.from(_activeWorkers)..sort(_byRoleMatch(opRoleId));
     }
 
-    final filtered = _activeWorkers.where((w) {
-      if (!svcWorkerIds.contains(w['id'])) return false;
-      return w['role']?['id'] == opRoleId;
-    }).toList();
+    final result = _activeWorkers.where((w) => svcWorkerIds.contains(w['id'])).toList();
+    result.sort(_byRoleMatch(opRoleId));
+    debugPrint('[OpFilter] returning ${result.length} operators sorted by role match');
+    return result;
+  }
 
-    debugPrint('[OpFilter] $machName: returning ${filtered.length} operators');
+  List<DropdownMenuItem<String>> _buildOperatorItems(List<Map<String, dynamic>> operators, Map<String, dynamic>? pm) {
+    final opRoleId = pm != null ? _getOperatorRoleId(pm) : null;
+    final matching = operators.where((w) => w['role']?['id'] == opRoleId).toList();
+    final others = operators.where((w) => w['role']?['id'] != opRoleId).toList();
 
-    if (filtered.isEmpty) {
-      debugPrint('[OpFilter] $machName: no workers with role, falling back to all service workers');
-      return _activeWorkers.where((w) => svcWorkerIds.contains(w['id'])).toList();
+    final items = <DropdownMenuItem<String>>[];
+
+    if (matching.isNotEmpty && opRoleId != null) {
+      items.add(const DropdownMenuItem<String>(
+        enabled: false,
+        value: '',
+        child: Text('── Qualified operators ──', style: TextStyle(color: AppTheme.slate400, fontSize: 11)),
+      ));
+      items.addAll(matching.map((w) => DropdownMenuItem<String>(
+        value: w['id'] as String?,
+        child: Text(_workerName(w['id'] as String?), style: TextStyle(fontSize: 11)),
+      )));
     }
 
-    return filtered;
+    if (others.isNotEmpty) {
+      if (items.isNotEmpty) {
+        items.add(const DropdownMenuItem<String>(
+          enabled: false,
+          value: '',
+          child: Text('── Other workers ──', style: TextStyle(color: AppTheme.slate400, fontSize: 11)),
+        ));
+      }
+      items.addAll(others.map((w) => DropdownMenuItem<String>(
+        value: w['id'] as String?,
+        child: Text(_workerName(w['id'] as String?), style: TextStyle(fontSize: 11)),
+      )));
+    }
+
+    return items;
+  }
+
+  Widget _buildRateUpliftToggle(int index, Map<String, dynamic> entry, Map<String, dynamic> pm) {
+    if (widget.isReadOnly) return const SizedBox.shrink();
+    final currentOpId = entry['operator_id'] as String?;
+    if (currentOpId == null) return const SizedBox.shrink();
+
+    final opRoleId = _getOperatorRoleId(pm);
+    if (opRoleId == null) return const SizedBox.shrink();
+
+    final opRoleRate = widget.workers
+        .map((w) => w['role'] as Map<String, dynamic>?)
+        .where((r) => r?['id'] == opRoleId)
+        .map((r) => (r?['hourly_rate'] as num?)?.toDouble())
+        .firstOrNull;
+    if (opRoleRate == null) return const SizedBox.shrink();
+
+    final worker = widget.workers.firstWhere(
+      (w) => w['id'] == currentOpId,
+      orElse: () => <String, dynamic>{},
+    );
+    final workerRate = (worker['role']?['hourly_rate'] as num?)?.toDouble() ?? 0;
+
+    if (workerRate >= opRoleRate) return const SizedBox.shrink();
+
+    final isEnabled = entry['rate_override'] != null;
+    final opRoleName = widget.workers
+        .map((w) => w['role'] as Map<String, dynamic>?)
+        .where((r) => r?['id'] == opRoleId)
+        .map((r) => r?['description'] as String?)
+        .firstOrNull ?? 'Operator';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(children: [
+        Switch(
+          value: isEnabled,
+          onChanged: (v) {
+            _updateEntry(index, 'rate_override', v ? opRoleRate : null);
+          },
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            'Pay as $opRoleName (\$${opRoleRate.toStringAsFixed(2)}/h instead of \$${workerRate.toStringAsFixed(2)}/h)',
+            style: TextStyle(fontSize: 11, color: isEnabled ? AppTheme.primaryGreen : AppTheme.slate500),
+          ),
+        ),
+      ]),
+    );
   }
 
   List<Map<String, dynamic>> _filteredMachinery() {
@@ -267,16 +453,6 @@ class _StepMachineryState extends State<StepMachinery> {
     return widget.plannedMachinery.where((pm) {
       final svc = pm['quote_services']?['name'] as String?;
       return svc == _serviceFilter;
-    }).toList();
-  }
-
-  List<Map<String, dynamic>> _filteredExtras() {
-    final visibleIds = _filteredMachinery().map((pm) => pm['id'] as String).toSet();
-    return _entries.where((e) {
-      if (e['is_unplanned'] == true && e['project_machinery_id'] == null) return true;
-      final pid = e['project_machinery_id'] as String?;
-      if (pid != null && !visibleIds.contains(pid)) return true;
-      return false;
     }).toList();
   }
 
@@ -298,70 +474,24 @@ class _StepMachineryState extends State<StepMachinery> {
     return map;
   }
 
-  void _showAddExtraDialog() {
-    final addedIds = _entries.map((e) => e['project_machinery_id'] as String?).toSet();
-    final available = widget.plannedMachinery.where((pm) => !addedIds.contains(pm['id'] as String?)).toList();
-    if (available.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('All planned machinery already added', style: _t(fontSize: 13))),
-      );
-      return;
-    }
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        String? pid;
-        return StatefulBuilder(builder: (ctx, setD) {
-          return AlertDialog(
-            title: Text('Add Extra Machinery', style: _t(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
-            content: SizedBox(
-              width: 400,
-              child: DropdownButtonFormField<String>(
-                decoration: const InputDecoration(labelText: 'Select machinery'),
-                isExpanded: true,
-                items: available
-                    .map((pm) => DropdownMenuItem<String>(
-                        value: pm['id'] as String?,
-                        child: Text(pm['machinery_name'] ?? pm['machinery']?['description'] ?? '', style: _t(fontSize: 13))))
-                    .toList(),
-                onChanged: (v) => setD(() => pid = v),
-              ),
-            ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-              ElevatedButton(
-                onPressed: pid != null ? () { Navigator.pop(ctx); final pm = available.firstWhere((x) => x['id'] == pid); _addEntry(pm, isUnplanned: true); } : null,
-                child: const Text('Add')),
-            ],
-          );
-        });
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final filtered = _filteredMachinery();
     final grouped = _groupByService(filtered);
-    final extras = _filteredExtras();
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _buildServiceFilter(),
       const SizedBox(height: 12),
-      if (filtered.isEmpty && extras.isEmpty)
+      if (filtered.isEmpty)
         _emptyState('No machinery scheduled for this date')
       else ...[
         ...grouped.entries.map((svc) => _buildServiceGroup(svc.key ?? 'Unassigned', svc.value)),
-        if (extras.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          _buildExtrasCard(extras),
-        ],
         const SizedBox(height: 12),
         if (!widget.isReadOnly)
           TextButton.icon(
-            onPressed: _showAddExtraDialog,
-            icon: const Icon(Icons.precision_manufacturing, size: 16),
-            label: Text('+ Extra Machinery', style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
+            onPressed: widget.onNavigateToBaseline,
+            icon: const Icon(Icons.add_circle_outline, size: 16),
+            label: Text('+ Add to Baseline', style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
           ),
       ],
     ]);
@@ -396,6 +526,8 @@ class _StepMachineryState extends State<StepMachinery> {
       ),
       const SizedBox(height: 6),
       ...items.map((pm) => _buildMachineryCard(pm)),
+      if (items.where((pm) => pm['is_principal'] == true).isNotEmpty)
+        _buildServiceTotalProgress(items),
     ]);
   }
 
@@ -422,27 +554,41 @@ class _StepMachineryState extends State<StepMachinery> {
           ),
           child: Icon(currentCount > 0 ? Icons.check_circle : Icons.precision_manufacturing, size: 16, color: currentCount > 0 ? AppTheme.primaryGreen : AppTheme.slate500),
         ),
-        title: Row(children: [
-          Expanded(child: Text('$machName ($currentCount/$expectedQty)', style: _t(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900))),
-        ]),
+          title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Expanded(child: Text('$machName ($currentCount/$expectedQty)', style: _t(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900))),
+            ]),
+            if (pm['is_principal'] == true) _buildDailyProgress(pm, pmId, expectedQty, entryIndices),
+          ],
+        ),
         children: [
           if (currentCount == 0)
             Padding(
               padding: const EdgeInsets.only(left: 44),
               child: Row(children: [
                 Expanded(child: Text('Not registered today', style: _t(fontSize: 11, color: AppTheme.slate400))),
-                if (!widget.isReadOnly)
+                if (!widget.isReadOnly) ...[
                   TextButton.icon(
                     onPressed: () => _addEntry(pm),
                     icon: const Icon(Icons.add, size: 14),
                     label: Text('Add', style: _t(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
                     style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                   ),
+                  const SizedBox(width: 4),
+                  TextButton.icon(
+                    onPressed: () => _showMachineryReassignDialog(pm),
+                    icon: const Icon(Icons.swap_horiz, size: 14),
+                    label: Text('Reassign', style: _t(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange)),
+                    style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                  ),
+                ],
               ]),
             )
           else ...[
             for (final idx in entryIndices)
-              _buildEntryForm(idx, _entries[idx], pm: pm),
+              _buildEntryForm(idx, _entries[idx], pm: pm, totalCount: entryIndices.length),
             if (currentCount < expectedQty && !widget.isReadOnly)
               Padding(
                 padding: const EdgeInsets.only(left: 44, top: 4),
@@ -456,6 +602,189 @@ class _StepMachineryState extends State<StepMachinery> {
           ],
         ],
       ),
+    );
+  }
+
+  int _daysElapsed(Map<String, dynamic> pm) {
+    final startDateStr = pm['start_date'] as String?;
+    if (startDateStr == null) return 1;
+    try {
+      final startDate = DateTime.parse(startDateStr.split(' ')[0]);
+      final refDate = widget.reportDate != null
+          ? DateTime.parse(widget.reportDate!)
+          : DateTime.now();
+      final diff = refDate.difference(startDate).inDays;
+      return (diff + 1).clamp(1, 9999);
+    } catch (_) {
+      return 1;
+    }
+  }
+
+  Map<String, dynamic>? _findEst(Map<String, dynamic> pm) {
+    final qsId = pm['quote_service_id']?.toString();
+    final machId = pm['machinery_id']?.toString();
+    final machName = (pm['machinery_name'] ?? pm['machinery']?['description'] ?? '').toString().toLowerCase();
+    if (qsId == null) return null;
+    final byService = _estimationTargets[qsId];
+    if (byService == null) return null;
+    if (machId != null && byService.containsKey(machId)) return byService[machId];
+    return byService.values.firstWhere(
+      (v) => (v['_machine_name'] as String? ?? '') == machName,
+      orElse: () => <String, dynamic>{},
+    );
+  }
+
+  Widget _buildDailyProgress(Map<String, dynamic> pm, String pmId, int expectedQty, List<int> entryIndices) {
+    final isCy = pm['quote_services']?['unit_of_measure']?.toString().toLowerCase() == 'cy';
+
+    final est = _findEst(pm);
+    if (est == null || est.isEmpty) return const SizedBox.shrink();
+
+    double dailyTarget;
+    String unit;
+    if (isCy) {
+      dailyTarget = ((est['capacity_per_trip'] as num?)?.toDouble() ?? 0)
+          * ((est['trips_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
+      unit = 'CY';
+    } else {
+      dailyTarget = ((est['performance_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
+      unit = pm['quote_services']?['unit_of_measure']?.toString().toUpperCase() ?? 'units';
+    }
+
+    if (dailyTarget <= 0) return const SizedBox.shrink();
+
+    double todayProd = 0;
+    for (final idx in entryIndices) {
+      final entry = _entries[idx];
+      if (isCy) {
+        todayProd += ((entry['_calculated_cy'] as num?)?.toDouble() ?? 0);
+      } else {
+        todayProd += ((entry['production_value'] as num?)?.toDouble() ?? 0);
+      }
+    }
+
+    final historicalProd = _machineryProduction[pmId] ?? 0.0;
+    final cumulativeProd = historicalProd + todayProd;
+    final days = _daysElapsed(pm);
+    final cumulativeTarget = dailyTarget * days;
+
+    if (cumulativeTarget <= 0) return const SizedBox.shrink();
+
+    final ratio = (cumulativeProd / cumulativeTarget).clamp(0.0, 1.0);
+    final pct = (ratio * 100).toInt();
+    final barColor = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          'To date: ${cumulativeProd.toStringAsFixed(0)} / ${cumulativeTarget.toStringAsFixed(0)} $unit  ($pct%)',
+          style: _t(fontSize: 11, fontWeight: FontWeight.w600, color: barColor),
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: ratio,
+            backgroundColor: AppTheme.slate200,
+            valueColor: AlwaysStoppedAnimation<Color>(barColor),
+            minHeight: 6,
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildServiceTotalProgress(List<Map<String, dynamic>> items) {
+    double totalCumulativeProd = 0;
+    double totalCumulativeTarget = 0;
+    String unit = '';
+    bool hasData = false;
+    int maxDays = 1;
+
+    for (final pm in items) {
+      if (pm['is_principal'] != true) continue;
+      final pmId = pm['id'] as String;
+      final expectedQty = (pm['expected_quantity'] as int?) ?? 1;
+      final entryIndices = _entriesFor(pmId);
+      final isCy = pm['quote_services']?['unit_of_measure']?.toString().toLowerCase() == 'cy';
+      if (unit.isEmpty) {
+        unit = isCy ? 'CY' : (pm['quote_services']?['unit_of_measure']?.toString().toUpperCase() ?? 'units');
+      }
+      double todayProd = 0;
+      for (final idx in entryIndices) {
+        final entry = _entries[idx];
+        if (isCy) {
+          todayProd += ((entry['_calculated_cy'] as num?)?.toDouble() ?? 0);
+        } else {
+          todayProd += ((entry['production_value'] as num?)?.toDouble() ?? 0);
+        }
+      }
+
+      final historicalProd = _machineryProduction[pmId] ?? 0.0;
+      final cumulativeProd = historicalProd + todayProd;
+
+      final qsId = pm['quote_service_id']?.toString();
+      final machId = pm['machinery_id']?.toString();
+      final machName = (pm['machinery_name'] ?? pm['machinery']?['description'] ?? '').toString().toLowerCase();
+
+      Map<String, dynamic>? est;
+      if (qsId != null) {
+        final byService = _estimationTargets[qsId];
+        if (byService != null) {
+          if (machId != null && byService.containsKey(machId)) {
+            est = byService[machId];
+          } else {
+            est = byService.values.firstWhere(
+              (v) => (v['_machine_name'] as String? ?? '') == machName,
+              orElse: () => <String, dynamic>{},
+            );
+          }
+        }
+      }
+      if (est == null || est.isEmpty) continue;
+
+      double dailyTarget;
+      if (isCy) {
+        dailyTarget = ((est['capacity_per_trip'] as num?)?.toDouble() ?? 0)
+            * ((est['trips_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
+      } else {
+        dailyTarget = ((est['performance_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
+      }
+      if (dailyTarget <= 0) continue;
+
+      final days = _daysElapsed(pm);
+      if (days > maxDays) maxDays = days;
+
+      totalCumulativeProd += cumulativeProd;
+      totalCumulativeTarget += dailyTarget * days;
+      hasData = true;
+    }
+
+    if (!hasData || totalCumulativeTarget <= 0) return const SizedBox.shrink();
+
+    final ratio = (totalCumulativeProd / totalCumulativeTarget).clamp(0.0, 1.0);
+    final pct = (ratio * 100).toInt();
+    final barColor = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          'Service total: ${totalCumulativeProd.toStringAsFixed(0)} / ${totalCumulativeTarget.toStringAsFixed(0)} $unit  ($pct%)',
+          style: _t(fontSize: 11, fontWeight: FontWeight.w700, color: barColor),
+        ),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: ratio,
+            backgroundColor: AppTheme.slate200,
+            valueColor: AlwaysStoppedAnimation<Color>(barColor),
+            minHeight: 8,
+          ),
+        ),
+      ]),
     );
   }
 
@@ -549,7 +878,52 @@ class _StepMachineryState extends State<StepMachinery> {
     ]);
   }
 
-  Widget _buildEntryForm(int index, Map<String, dynamic> entry, {Map<String, dynamic>? pm}) {
+  Widget _buildEntryProgress(int index, Map<String, dynamic> entry, int totalCount, Map<String, dynamic> pm) {
+    if (entry['_is_principal'] != true) return const SizedBox.shrink();
+    final est = _findEst(pm);
+    if (est == null || est.isEmpty) return const SizedBox.shrink();
+    final isCy = entry['_is_cy'] == true;
+    double perUnitTarget;
+    String unit;
+    if (isCy) {
+      perUnitTarget = ((est['capacity_per_trip'] as num?)?.toDouble() ?? 0)
+          * ((est['trips_per_day'] as num?)?.toDouble() ?? 0);
+      unit = 'CY';
+    } else {
+      perUnitTarget = ((est['performance_per_day'] as num?)?.toDouble() ?? 0);
+      unit = entry['production_unit']?.toString().toUpperCase() ?? 'units';
+    }
+    if (perUnitTarget <= 0) return const SizedBox.shrink();
+
+    final entryProd = isCy
+        ? ((entry['_calculated_cy'] as num?)?.toDouble() ?? 0)
+        : ((entry['production_value'] as num?)?.toDouble() ?? 0);
+    final ratio = (entryProd / perUnitTarget).clamp(0.0, 1.0);
+    final pct = (ratio * 100).toInt();
+    final barColor = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(
+          'Machine ${index + 1}/$totalCount: ${entryProd.toStringAsFixed(0)} / ${perUnitTarget.toStringAsFixed(0)} $unit  ($pct%)',
+          style: _t(fontSize: 10, fontWeight: FontWeight.w600, color: barColor),
+        ),
+        const SizedBox(height: 2),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(2),
+          child: LinearProgressIndicator(
+            value: ratio,
+            backgroundColor: AppTheme.slate200,
+            valueColor: AlwaysStoppedAnimation<Color>(barColor),
+            minHeight: 4,
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildEntryForm(int index, Map<String, dynamic> entry, {Map<String, dynamic>? pm, int totalCount = 0}) {
     final isUnplanned = entry['is_unplanned'] as bool? ?? false;
     final operators = (pm != null ? _getOperatorsForMachine(pm) : _activeWorkers).toList();
     final currentOpId = entry['operator_id'] as String?;
@@ -593,138 +967,141 @@ class _StepMachineryState extends State<StepMachinery> {
                   Text('#${entry['_unit_number']}', style: _t(fontSize: 10, fontWeight: FontWeight.w500, color: AppTheme.slate500)),
               ]),
             ),
+          if (pm != null)
+            _buildEntryProgress(index, entry, totalCount, pm),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(flex: 3, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (!widget.isReadOnly) ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: DropdownButtonFormField<String>(
-                    value: entry['operator_id'],
-                    decoration: const InputDecoration(labelText: 'Operator', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6)),
-                    style: _t(fontSize: 12),
-                    items: operators.map<DropdownMenuItem<String>>((w) =>
-                      DropdownMenuItem(value: w['id'] as String?, child: Text(_workerName(w['id'] as String?), style: _t(fontSize: 11)))).toList(),
-                    onChanged: (v) => _updateEntry(index, 'operator_id', v),
+            Expanded(flex: 3, child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.slate200),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                if (!widget.isReadOnly) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: DropdownButtonFormField<String>(
+                      value: entry['operator_id'],
+                      decoration: const InputDecoration(labelText: 'Operator', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6)),
+                      style: _t(fontSize: 12),
+                      items: _buildOperatorItems(operators, pm),
+                      onChanged: (v) {
+                        _updateEntry(index, 'operator_id', v);
+                        // Clear rate_override when operator changes
+                        _updateEntry(index, 'rate_override', null);
+                      },
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Row(children: [
-                  Expanded(child: _numField(index, 'start_meter', 'Start', entry['start_meter']?.toString() ?? '', (v) => _updateEntry(index, 'start_meter', v))),
-                  const SizedBox(width: 6),
-                  Expanded(child: _numField(index, 'end_meter', 'End', entry['end_meter']?.toString() ?? '', (v) => _updateEntry(index, 'end_meter', v))),
-                  const SizedBox(width: 6),
-                  _displayBadge('Diff', entry['total_hours']?.toString() ?? '--', AppTheme.slate700),
-                ]),
-                const SizedBox(height: 6),
-                Row(children: [
-                  Expanded(child: _numField(index, 'fuel_added', 'Fuel (gal)', entry['fuel_added']?.toString() ?? '', (v) => _updateEntry(index, 'fuel_added', v))),
-                  if (entry['_is_principal'] == true && entry['_is_cy'] == true) ...[
-                    const SizedBox(width: 8),
-                    Expanded(
-                      flex: 1,
-                      child: _numField(index, 'production_value', 'Trips', entry['production_value']?.toString() ?? '', (v) {
-                        final capacity = (entry['_capacity'] as num?)?.toDouble() ?? 0;
-                        _updateEntry(index, 'production_value', v);
-                        if (capacity > 0) {
-                          _updateEntry(index, '_calculated_cy', v * capacity);
-                        }
-                      }),
-                    ),
+                  const SizedBox(height: 6),
+                  if (pm != null) _buildRateUpliftToggle(index, entry, pm),
+                  Row(children: [
+                    Expanded(child: _numField(index, 'start_meter', 'Start', entry['start_meter']?.toString() ?? '', (v) => _updateEntry(index, 'start_meter', v))),
                     const SizedBox(width: 6),
-                    _displayBadge('CY/trip', (entry['_capacity'] as num?)?.toString() ?? '--', AppTheme.slate400),
+                    Expanded(child: _numField(index, 'end_meter', 'End', entry['end_meter']?.toString() ?? '', (v) => _updateEntry(index, 'end_meter', v))),
                     const SizedBox(width: 6),
-                    Expanded(
-                      child: _displayBadge('Total CY', (entry['_calculated_cy'] as num?)?.toString() ?? '--', AppTheme.primaryGreen, expand: true),
-                    ),
-                  ],
-                  if (entry['_is_principal'] == true && entry['_is_cy'] != true) ...[
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: _numField(index, 'production_value', 'Prod (${entry['production_unit'] ?? 'units'})', entry['production_value']?.toString() ?? '', (v) => _updateEntry(index, 'production_value', v)),
-                    ),
-                  ],
-                ]),
-                const SizedBox(height: 6),
-                Row(children: [
-                  if (isUnplanned)
-                    Expanded(
-                      child: DropdownButtonFormField<String>(
-                        value: entry['deviation_reason_id'],
-                        decoration: const InputDecoration(labelText: 'Reason', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)),
-                        items: _machReasons.map<DropdownMenuItem<String>>((r) =>
-                          DropdownMenuItem(value: r['id'] as String?, child: Text(r['description'] ?? '', style: _t(fontSize: 10)))).toList(),
-                        onChanged: (v) => _updateEntry(index, 'deviation_reason_id', v),
-                      ),
-                    ),
-                  const Spacer(),
-                  IconButton(icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.errorRed), onPressed: () => _removeEntry(index), tooltip: 'Remove'),
-                ]),
-              ] else ...[
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: _roField('Operator', _workerName(entry['operator_id'])),
-                ),
-                const SizedBox(height: 4),
-                Row(children: [
-                  _roField('Start', entry['start_meter']?.toString() ?? '-'),
-                  const SizedBox(width: 8),
-                  _roField('End', entry['end_meter']?.toString() ?? '-'),
-                ]),
-                const SizedBox(height: 4),
-                Row(children: [
-                  _roField('Diff', entry['total_hours']?.toString() ?? '-'),
-                  const SizedBox(width: 8),
-                  _roField('Fuel', '${entry['fuel_added'] ?? '-'} gal'),
-                ]),
-                if (pm != null && pm['is_principal'] == true) ...[
-                  const SizedBox(height: 4),
-                  if (entry['_is_cy'] == true) ...[
-                    Row(children: [
-                      _roField('Trips', entry['production_value']?.toString() ?? '-'),
+                    _displayBadge('Diff', entry['total_hours']?.toString() ?? '--', AppTheme.slate700),
+                  ]),
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    Expanded(child: _numField(index, 'fuel_added', 'Fuel (gal)', entry['fuel_added']?.toString() ?? '', (v) => _updateEntry(index, 'fuel_added', v))),
+                    if (entry['_is_principal'] == true && entry['_is_cy'] == true) ...[
                       const SizedBox(width: 8),
-                      _roField('CY/trip', (entry['_capacity'] as num?)?.toString() ?? '-'),
-                    ]),
-                    const SizedBox(height: 4),
-                    _roField('Total CY', ((entry['production_value'] as num? ?? 0) * (entry['_capacity'] as num? ?? 0)).toString()),
-                  ] else
-                    _roField('Production', '${entry['production_value'] ?? '-'} ${entry['production_unit'] ?? ''}'),
-                ],
-                if (isUnplanned && entry['deviation_reason_id'] != null) ...[
+                      Expanded(
+                        flex: 1,
+                        child: _numField(index, 'production_value', 'Trips', entry['production_value']?.toString() ?? '', (v) {
+                          final capacity = (entry['_capacity'] as num?)?.toDouble() ?? 0;
+                          _updateEntry(index, 'production_value', v);
+                          if (capacity > 0) {
+                            _updateEntry(index, '_calculated_cy', v * capacity);
+                          }
+                        }),
+                      ),
+                      const SizedBox(width: 6),
+                      _displayBadge('CY/trip', (entry['_capacity'] as num?)?.toString() ?? '--', AppTheme.slate400),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: _displayBadge('Total CY', (entry['_calculated_cy'] as num?)?.toString() ?? '--', AppTheme.primaryGreen, expand: true),
+                      ),
+                    ],
+                    if (entry['_is_principal'] == true && entry['_is_cy'] != true) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _numField(index, 'production_value', 'Prod (${entry['production_unit'] ?? 'units'})', entry['production_value']?.toString() ?? '', (v) => _updateEntry(index, 'production_value', v)),
+                      ),
+                    ],
+                  ]),
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    if (isUnplanned)
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: entry['deviation_reason_id'],
+                          decoration: const InputDecoration(labelText: 'Reason', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)),
+                          items: _machReasons.map<DropdownMenuItem<String>>((r) =>
+                            DropdownMenuItem(value: r['id'] as String?, child: Text(r['description'] ?? '', style: _t(fontSize: 10)))).toList(),
+                          onChanged: (v) => _updateEntry(index, 'deviation_reason_id', v),
+                        ),
+                      ),
+                    const Spacer(),
+                    IconButton(icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.errorRed), onPressed: () => _removeEntry(index), tooltip: 'Remove'),
+                  ]),
+                ] else ...[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: _roField('Operator', _workerName(entry['operator_id'])),
+                  ),
                   const SizedBox(height: 4),
-                  _roField('Reason', _machReasons.firstWhere(
-                    (r) => r['id'] == entry['deviation_reason_id'],
-                    orElse: () => <String, dynamic>{},
-                  )['description'] as String? ?? '-'),
+                  Row(children: [
+                    _roField('Start', entry['start_meter']?.toString() ?? '-'),
+                    const SizedBox(width: 8),
+                    _roField('End', entry['end_meter']?.toString() ?? '-'),
+                  ]),
+                  const SizedBox(height: 4),
+                  Row(children: [
+                    _roField('Diff', entry['total_hours']?.toString() ?? '-'),
+                    const SizedBox(width: 8),
+                    _roField('Fuel', '${entry['fuel_added'] ?? '-'} gal'),
+                  ]),
+                  if (pm != null && pm['is_principal'] == true) ...[
+                    const SizedBox(height: 4),
+                    if (entry['_is_cy'] == true) ...[
+                      Row(children: [
+                        _roField('Trips', entry['production_value']?.toString() ?? '-'),
+                        const SizedBox(width: 8),
+                        _roField('CY/trip', (entry['_capacity'] as num?)?.toString() ?? '-'),
+                      ]),
+                      const SizedBox(height: 4),
+                      _roField('Total CY', ((entry['production_value'] as num? ?? 0) * (entry['_capacity'] as num? ?? 0)).toString()),
+                    ] else
+                      _roField('Production', '${entry['production_value'] ?? '-'} ${entry['production_unit'] ?? ''}'),
+                  ],
+                  if (isUnplanned && entry['deviation_reason_id'] != null) ...[
+                    const SizedBox(height: 4),
+                    _roField('Reason', _machReasons.firstWhere(
+                      (r) => r['id'] == entry['deviation_reason_id'],
+                      orElse: () => <String, dynamic>{},
+                    )['description'] as String? ?? '-'),
+                  ],
                 ],
-              ],
-            ])),
+              ]),
+            )),
             const SizedBox(width: 8),
-            Expanded(flex: 2, child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Expanded(child: _buildPhotoSection(index, entry, 'start_shift_photos', 'Start')),
-              const SizedBox(width: 8),
-              Expanded(child: _buildPhotoSection(index, entry, 'end_shift_photos', 'End')),
-            ])),
+            Expanded(flex: 2, child: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.slate200),
+              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Expanded(child: _buildPhotoSection(index, entry, 'start_shift_photos', 'Start')),
+                  const SizedBox(width: 8),
+                  Expanded(child: _buildPhotoSection(index, entry, 'end_shift_photos', 'End')),
+                ]),
+              ]),
+            )),
           ]),
         ]),
-      ),
-    );
-  }
-
-  Widget _buildExtrasCard(List<Map<String, dynamic>> extras) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: Colors.orange.withAlpha(130))),
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-        childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-        initiallyExpanded: true,
-        leading: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: Colors.orange.withAlpha(30), borderRadius: BorderRadius.circular(6)), child: const Icon(Icons.precision_manufacturing, size: 16, color: Colors.orange)),
-        title: Text('Extra Machinery (${extras.length})', style: _t(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.orange[800])),
-        children: extras.map((e) {
-          final idx = _entries.indexOf(e);
-          return _buildEntryForm(idx, e);
-        }).toList(),
       ),
     );
   }

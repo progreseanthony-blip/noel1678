@@ -8,11 +8,15 @@ import 'package:noel_data/noel_data.dart';
 class AddUnplannedResourceDialog extends ConsumerStatefulWidget {
   final String projectId;
   final Map<String, dynamic>? initialData;
+  final String changeType;
+  final String? initialDate;
 
   AddUnplannedResourceDialog({
     super.key, 
     required this.projectId,
     this.initialData,
+    this.changeType = 'planning',
+    this.initialDate,
   });
 
   @override
@@ -641,6 +645,7 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
         'is_unplanned': true,
         'unplanned_cost': cost,
         'calculation_metadata': metadata,
+        'change_type': widget.changeType,
       };
 
       String table = '';
@@ -675,6 +680,13 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
           'instrument_name': itemName,
           'expected_quantity': qty,
         });
+      }
+
+      if (widget.initialDate != null && widget.initialData == null) {
+        payload['start_date'] = widget.initialDate;
+        final days = int.tryParse(_daysController.text) ?? 1;
+        final end = DateTime.parse(widget.initialDate!).add(Duration(days: days - 1));
+        payload['end_date'] = end.toIso8601String().split('T')[0];
       }
 
       if (widget.initialData != null) {
