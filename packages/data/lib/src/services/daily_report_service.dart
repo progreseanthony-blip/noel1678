@@ -54,18 +54,18 @@ class DailyReportService {
   }
 
   Future<Map<String, dynamic>> getOrCreateTodayReport(String projectId) async {
+    final today = DateTime.now().toIso8601String().split('T')[0];
     final recent = await _supabase
         .from('daily_reports')
         .select()
         .eq('project_id', projectId)
         .eq('status', 'draft')
-        .order('report_date', ascending: false)
+        .eq('report_date', today)
         .limit(1)
         .maybeSingle();
 
     if (recent != null) return recent;
 
-    final today = DateTime.now().toIso8601String().split('T')[0];
     final existing = await getReportByDate(projectId, today);
     if (existing != null) return existing;
 
@@ -173,6 +173,7 @@ class DailyReportService {
     'start_meter', 'end_meter', 'total_hours', 'fuel_added',
     'is_unplanned', 'deviation_reason_id', 'notes', 'created_at',
     'production_value', 'production_unit', 'start_shift_photos', 'end_shift_photos',
+    'rate_override',
   ];
 
   Future<void> saveMachineryLogs(String reportId, List<Map<String, dynamic>> logs) async {
@@ -184,6 +185,7 @@ class DailyReportService {
     await _supabase.from('report_machinery_logs').insert(
       logs.map((log) {
         final clean = {for (final k in _machineryColumns) if (log.containsKey(k)) k: log[k]};
+        clean.remove('id');
         clean['daily_report_id'] = reportId;
         return clean;
       }).toList(),

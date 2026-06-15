@@ -59,15 +59,23 @@ class Sidebar extends StatelessWidget {
                   _ExpandableNavItem(
                     icon: Icons.rocket_launch_outlined,
                     label: 'Projects',
-                    isActive: currentPath.startsWith('/projects') || currentPath == '/daily-reports' || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement'),
-                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath == '/daily-reports' || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement'),
+                    isActive: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement'),
+                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement'),
                     children: [
                       _SubExpandableNavItem(
                         label: 'Planning',
-                        isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')),
+                        isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline') || currentPath.contains('/reception')),
                         initiallyExpanded: true,
                         children: [
                           _SubNavItem(icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')), left: 44, onTap: () => context.go('/projects')),
+                          _SubNavItem(icon: Icons.inventory, label: 'Reception', isActive: currentPath.contains('/reception'), left: 44, onTap: () {
+                            final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
+                            if (projectId.isNotEmpty) {
+                              context.go('/projects/$projectId/reception');
+                            } else {
+                              context.go('/projects');
+                            }
+                          }),
                         ],
                       ),
                       _SubExpandableNavItem(

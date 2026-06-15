@@ -11,6 +11,7 @@ import '../features/customers/presentation/pages/customers_list_page.dart';
 import '../features/projects/presentation/pages/projects_list_page.dart';
 import '../features/projects/presentation/pages/project_detail_page.dart';
 import '../features/projects/presentation/pages/project_baseline_page.dart';
+import '../features/projects/presentation/pages/reception_page.dart';
 import '../features/field_operations/presentation/pages/daily_report_wizard_page.dart';
 import '../features/field_operations/presentation/pages/daily_reports_list_page.dart';
 import '../features/field_operations/presentation/pages/baseline_projects_page.dart';
@@ -62,7 +63,11 @@ final goRouter = GoRouter(
     ),
     GoRoute(
       path: '/projects/:id/baseline',
-      builder: (context, state) => ProjectBaselinePage(projectId: state.pathParameters['id']!),
+      builder: (context, state) => ProjectBaselinePage(projectId: state.pathParameters['id']!, initialDate: state.uri.queryParameters['reportDate']),
+    ),
+    GoRoute(
+      path: '/projects/:id/reception',
+      builder: (context, state) => ReceptionPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/production-measurement',

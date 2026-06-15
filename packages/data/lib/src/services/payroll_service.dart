@@ -25,7 +25,7 @@ class PayrollService {
 
   // ── Weekly OT calculator ──
 
-  static Map<String, dynamic> _calcWeeklyOT(List<Map<String, dynamic>> logs) {
+  static Map<String, dynamic> _calcWeeklyOT(List<Map<String, dynamic>> logs, [List<Map<String, dynamic>> machineryLogs = const []]) {
     // Group by worker_id, then by ISO week
     final Map<String, Map<int, double>> workerWeeklyHours = {};
     final Map<String, Map<String, dynamic>> workerInfo = {};
@@ -74,11 +74,34 @@ class PayrollService {
       info['regular_hours'] = workerReg;
       info['overtime_hours'] = workerOT;
       info['total_pay'] = cost;
+      info['rate_uplift'] = 0.0;
       entries.add(Map<String, dynamic>.from(info));
 
       totalReg += workerReg;
       totalOT += workerOT;
       totalCost += cost;
+    }
+
+    // Apply rate uplift from machinery logs
+    for (final m in machineryLogs) {
+      final wid = m['operator_id'] as String?;
+      if (wid == null || !workerInfo.containsKey(wid)) continue;
+      final override = (m['rate_override'] as num?)?.toDouble() ?? 0;
+      final hours = (m['total_hours'] as num?)?.toDouble() ?? 0;
+      final baseRate = (workerInfo[wid]!['hourly_rate'] as num).toDouble();
+      if (override > baseRate && hours > 0) {
+        final uplift = (override - baseRate) * hours;
+        workerInfo[wid]!['rate_uplift'] = (workerInfo[wid]!['rate_uplift'] as num).toDouble() + uplift;
+        totalCost += uplift;
+      }
+    }
+
+    // Update total_pay with uplift
+    for (final entry in entries) {
+      final uplift = entry['rate_uplift'] as double;
+      if (uplift > 0) {
+        entry['total_pay'] = (entry['total_pay'] as num).toDouble() + uplift;
+      }
     }
 
     return {
@@ -153,6 +176,27 @@ class PayrollService {
     return List<Map<String, dynamic>>.from(logs ?? []);
   }
 
+  Future<List<Map<String, dynamic>>> _fetchMachineryLogs(String projectId, String startDate, String endDate) async {
+    final reports = await _supabase
+        .from('daily_reports')
+        .select('id')
+        .eq('project_id', projectId)
+        .gte('report_date', startDate)
+        .lte('report_date', endDate);
+
+    if (reports.isEmpty) return [];
+
+    final reportIds = (reports as List).map((r) => r['id'] as String).toList();
+
+    final logs = await _supabase
+        .from('report_machinery_logs')
+        .select('operator_id, total_hours, rate_override')
+        .in_('daily_report_id', reportIds)
+        .not('rate_override', 'is', null);
+
+    return List<Map<String, dynamic>>.from(logs ?? []);
+  }
+
   Future<List<Map<String, dynamic>>> calculatePeriod(String periodId) async {
     final period = await _supabase
         .from('payroll_periods')
@@ -164,6 +208,7 @@ class PayrollService {
     final endDate = period['end_date'] as String;
 
     final logs = await _fetchLogs(projectId, startDate, endDate);
+    final machLogs = await _fetchMachineryLogs(projectId, startDate, endDate);
 
     if (logs.isEmpty) {
       await _supabase.from('payroll_periods').update({
@@ -176,7 +221,7 @@ class PayrollService {
       return [];
     }
 
-    final result = _calcWeeklyOT(logs);
+    final result = _calcWeeklyOT(logs, machLogs);
     final entries = result['entries'] as List<Map<String, dynamic>>;
 
     await _supabase.from('payroll_periods').update({
@@ -196,6 +241,7 @@ class PayrollService {
     String endDate,
   ) async {
     final logs = await _fetchLogs(projectId, startDate, endDate);
+    final machLogs = await _fetchMachineryLogs(projectId, startDate, endDate);
 
     if (logs.isEmpty) {
       return {
@@ -207,7 +253,7 @@ class PayrollService {
       };
     }
 
-    return _calcWeeklyOT(logs);
+    return _calcWeeklyOT(logs, machLogs);
   }
 
   Future<void> closePeriod(String id) async {

@@ -118,7 +118,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
 
       final double? durationValue = duration != null ? (duration as num).toDouble() : null;
 
-      // 2. Load all workers, filter by role in Dart
+      // 2. Load all workers, sort by role match then alphabetical
       final workersResult = await supabase
           .from('workers')
           .select('''
@@ -129,20 +129,24 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
           .order('full_name');
 
       var allWorkers = List<Map<String, dynamic>>.from(workersResult ?? []);
-      if (roleId != null) {
-        debugPrint('[WorkerDialog] Filtering by role_id=$roleId from ${allWorkers.length} total');
-        allWorkers = allWorkers.where((w) => w['role_id'] == roleId).toList();
-        debugPrint('[WorkerDialog] After role_id filter: ${allWorkers.length} workers');
-      } else if (roleName != null) {
-        debugPrint('[WorkerDialog] Filtering by role_name="$roleName" from ${allWorkers.length} total');
-        allWorkers = allWorkers.where((w) {
-          final wRole = w['role']?['description'] as String? ?? '';
-          return wRole.toUpperCase() == roleName.toUpperCase();
-        }).toList();
-        debugPrint('[WorkerDialog] After role_name filter: ${allWorkers.length} workers');
-      } else {
-        debugPrint('[WorkerDialog] No roleId or roleName, showing ${allWorkers.length} workers');
-      }
+      final targetRoleId = roleId as String?;
+      final targetRoleName = roleName as String?;
+      allWorkers.sort((a, b) {
+        final aMatch = targetRoleId != null
+            ? a['role_id'] == targetRoleId
+            : targetRoleName != null
+                ? (a['role']?['description'] as String? ?? '').toUpperCase() == targetRoleName.toUpperCase()
+                : false;
+        final bMatch = targetRoleId != null
+            ? b['role_id'] == targetRoleId
+            : targetRoleName != null
+                ? (b['role']?['description'] as String? ?? '').toUpperCase() == targetRoleName.toUpperCase()
+                : false;
+        if (aMatch && !bMatch) return -1;
+        if (!aMatch && bMatch) return 1;
+        return ((a['full_name'] as String?) ?? '').compareTo((b['full_name'] as String?) ?? '');
+      });
+      debugPrint('[WorkerDialog] Sorted ${allWorkers.length} workers; roleId=$roleId roleName=$roleName');
 
       // 3. Load current assignments with dates
       final assignmentsResult = await supabase

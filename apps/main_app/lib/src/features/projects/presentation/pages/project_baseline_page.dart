@@ -11,7 +11,8 @@ import '../widgets/add_unplanned_resource_dialog.dart';
 
 class ProjectBaselinePage extends StatefulWidget {
   final String projectId;
-  const ProjectBaselinePage({super.key, required this.projectId});
+  final String? initialDate;
+  const ProjectBaselinePage({super.key, required this.projectId, this.initialDate});
 
   @override
   State<ProjectBaselinePage> createState() => _ProjectBaselinePageState();
@@ -737,6 +738,7 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
                     builder: (ctx) => AddUnplannedResourceDialog(
                       projectId: widget.projectId,
                       changeType: isFrozen ? 'change_order' : 'planning',
+                      initialDate: widget.initialDate,
                     ),
                   ).then((added) {
                     if (added == true) _loadData();
@@ -1020,6 +1022,7 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
                                   projectId: widget.projectId,
                                   initialData: res,
                                   changeType: res['change_type'] ?? 'planning',
+                                  initialDate: widget.initialDate,
                                 ),
                               ).then((updated) {
                                 if (updated == true) _loadData();

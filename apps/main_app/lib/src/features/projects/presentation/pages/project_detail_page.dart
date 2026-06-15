@@ -41,6 +41,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
   final Map<String, bool> _expandedServices = {};
   Map<String, dynamic>? _latestSnapshot;
   int? _baselineVersion;
+  Map<String, double> _materialUsage = {};
+  Map<String, double> _machineryProduction = {};
 
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -196,6 +198,19 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
           _baselineVersion = null;
         }
 
+        Map<String, double> matUsage = {};
+        Map<String, double> machProd = {};
+        try {
+          matUsage = await ProjectBalanceHelper.getMaterialUsage(
+            Supabase.instance.client, widget.projectId,
+          );
+          machProd = await ProjectBalanceHelper.getMachineryProduction(
+            Supabase.instance.client, widget.projectId,
+          );
+        } catch (e) {
+          debugPrint('Error loading balance data: $e');
+        }
+
         setState(() {
           _project = pResult;
           _machinery = List<Map<String, dynamic>>.from(mResult as List? ?? []);
@@ -203,6 +218,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
           _labor = List<Map<String, dynamic>>.from(labResult as List? ?? []);
           _instruments = List<Map<String, dynamic>>.from(iResult as List? ?? []);
           _machineryPhotos = photoMap;
+          _materialUsage = matUsage;
+          _machineryProduction = machProd;
           _serviceDurations = serviceDurations;
           _projectServices = allServices.toList()..sort((a, b) {
             if (a == 'All Services') return -1;
@@ -1107,6 +1124,18 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                               color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
                             ),
                           ),
+                          if (m['is_principal'] == true && _machineryProduction.containsKey(m['id']))
+                            Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: Text(
+                                'Production: ${_machineryProduction[m['id']]!.toStringAsFixed(0)} CY total',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.slate600,
+                                ),
+                              ),
+                            ),
                           if (!isComplete && expected > 0)
                             Container(
                               margin: const EdgeInsets.only(top: 8),
@@ -1284,7 +1313,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            'Received: $received / $expected $unitName',
+                            'Received: $received / $expected $unitName${_materialUsage.containsKey(m['id']) ? ' · Used: ${_materialUsage[m['id']]!.toStringAsFixed(1)} · Rem: ${(expected - _materialUsage[m['id']]!).toStringAsFixed(1)}' : ''}',
                             style: GoogleFonts.manrope(
                               fontSize: 13, 
                               fontWeight: FontWeight.w600,
