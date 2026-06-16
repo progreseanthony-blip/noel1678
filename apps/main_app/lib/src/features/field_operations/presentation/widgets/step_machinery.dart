@@ -45,6 +45,9 @@ class _StepMachineryState extends State<StepMachinery> {
   String? _serviceFilter;
   final Map<String, TextEditingController> _ctrls = {};
   Map<String, double> _machineryProduction = {};
+  Map<String, double> _rawProd = {};
+  Map<String, List<double>> _rawProdList = {};
+  Map<String, List<double>> _machineryProdList = {};
   Map<String, Map<String, Map<String, dynamic>>> _estimationTargets = {};
 
   @override
@@ -73,16 +76,22 @@ class _StepMachineryState extends State<StepMachinery> {
 
   Future<void> _loadProduction() async {
     try {
-      final prod = await ProjectBalanceHelper.getMachineryProduction(
+      final rawProd = await ProjectBalanceHelper.getMachineryProduction(
+        Supabase.instance.client, widget.projectId,
+      );
+      final perEntry = await ProjectBalanceHelper.getMachineryProductionPerEntry(
         Supabase.instance.client, widget.projectId,
       );
       final est = await ProjectBalanceHelper.getMachineryEstimationTargets(
         Supabase.instance.client, widget.projectId,
       );
-      if (mounted) setState(() {
-        _machineryProduction = prod;
-        _estimationTargets = est;
-      });
+      _estimationTargets = est;
+      _rawProd = rawProd;
+      _rawProdList = perEntry;
+      _machineryProduction = _adjustMachineryProduction(rawProd, est);
+      _machineryProdList = _adjustProductionList(perEntry);
+      _recalculateCalculatedCy();
+      if (mounted) setState(() {});
     } catch (e) {
       debugPrint('Error loading machinery production: $e');
     }
@@ -94,6 +103,7 @@ class _StepMachineryState extends State<StepMachinery> {
     if (oldWidget.machineryLogs != widget.machineryLogs) {
       _entries = widget.machineryLogs.map((m) => Map<String, dynamic>.from(m)).toList();
       _enrichEntries();
+      _recalculateCalculatedCy();
     }
   }
 
@@ -623,83 +633,259 @@ class _StepMachineryState extends State<StepMachinery> {
   Map<String, dynamic>? _findEst(Map<String, dynamic> pm) {
     final qsId = pm['quote_service_id']?.toString();
     final machId = pm['machinery_id']?.toString();
-    final machName = (pm['machinery_name'] ?? pm['machinery']?['description'] ?? '').toString().toLowerCase();
     if (qsId == null) return null;
     final byService = _estimationTargets[qsId];
     if (byService == null) return null;
     if (machId != null && byService.containsKey(machId)) return byService[machId];
-    return byService.values.firstWhere(
-      (v) => (v['_machine_name'] as String? ?? '') == machName,
-      orElse: () => <String, dynamic>{},
-    );
+
+    final names = <String>{
+      (pm['machinery']?['description'] as String?)?.toLowerCase().replaceAll(RegExp(r'\s+'), ' ') ?? '',
+      (pm['machinery_name'] as String?)?.toLowerCase().replaceAll(RegExp(r'\s+'), ' ') ?? '',
+    }..remove('');
+    if (names.isEmpty) return null;
+
+    for (final entry in byService.values) {
+      final estName = (entry['_machine_name'] as String? ?? '').toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+      if (names.any((n) => n == estName || estName.contains(n) || n.contains(estName))) {
+        return entry;
+      }
+    }
+    return null;
+  }
+
+  bool _isTripBased(Map<String, dynamic> pm) {
+    final unit = pm['quote_services']?['unit_of_measure']?.toString().toLowerCase() ?? '';
+    final isVolumeUnit = unit == 'cy' || unit == 'ft2' || unit == 'sqft' || unit == 'sf';
+    if (!isVolumeUnit) return false;
+    final est = _findEst(pm);
+    if (est != null) {
+      final capPerTrip = (est['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+      final tripsPerDay = (est['trips_per_day'] as num?)?.toDouble() ?? 0;
+      return capPerTrip > 0 && tripsPerDay > 0;
+    }
+    return true;
+  }
+
+  void _recalculateCalculatedCy() {
+    for (final entry in _entries) {
+      if (entry['_is_principal'] != true) continue;
+      final pmId = entry['project_machinery_id'] as String?;
+      if (pmId == null) continue;
+      final pm = widget.plannedMachinery.firstWhere(
+        (p) => p['id'] == pmId,
+        orElse: () => <String, dynamic>{},
+      );
+      if (pm.isEmpty) continue;
+      final estCap = _getEstimationCapacity(pm);
+      if (estCap > 0) entry['_capacity'] = estCap;
+      final cap = (entry['_capacity'] as num?)?.toDouble() ?? 0;
+      final prod = (entry['production_value'] as num?)?.toDouble() ?? 0;
+      if (_isTripBased(pm)) {
+        entry['_calculated_cy'] = cap > 0 ? prod * cap : prod;
+      } else {
+        entry['_calculated_cy'] = prod;
+      }
+    }
+  }
+
+  double _getMachineCapacity(Map<String, dynamic> pm) {
+    final cap = (pm['machinery']?['capacity_yards'] as num?)?.toDouble()
+        ?? (widget.machineryCatalog.firstWhere(
+            (m) => (m['description'] as String? ?? '').toLowerCase() == (pm['machinery_name'] as String? ?? '').toLowerCase(),
+            orElse: () => <String, dynamic>{},
+          )['capacity_yards'] as num?)?.toDouble() ?? 1;
+    return cap > 0 ? cap : 1;
+  }
+
+  double _getEstimationCapacity(Map<String, dynamic> pm) {
+    final est = _findEst(pm);
+    if (est != null) {
+      final capPerTrip = (est['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+      if (capPerTrip > 0) return capPerTrip;
+    }
+    return _getMachineCapacity(pm);
+  }
+
+  Map<String, double> _adjustMachineryProduction(
+    Map<String, double> rawProd, Map<String, Map<String, Map<String, dynamic>>> est,
+  ) {
+    final adjusted = Map<String, double>.from(rawProd);
+    for (final pm in widget.plannedMachinery) {
+      final pmId = pm['id'] as String?;
+      if (pmId == null || !adjusted.containsKey(pmId)) continue;
+      final raw = adjusted[pmId]!;
+      if (raw == 0) continue;
+      final unit = pm['quote_services']?['unit_of_measure']?.toString().toLowerCase() ?? '';
+      final isVolumeUnit = unit == 'cy' || unit == 'ft2' || unit == 'sqft' || unit == 'sf';
+      if (!isVolumeUnit) continue;
+      final qsId = pm['quote_service_id']?.toString();
+      final machId = pm['machinery_id']?.toString();
+      bool isTripBased = true;
+      if (qsId != null) {
+        final byService = est[qsId];
+        if (byService != null) {
+          Map<String, dynamic>? pmEst;
+          if (machId != null && byService.containsKey(machId)) {
+            pmEst = byService[machId];
+          } else {
+            final names = <String>{
+              (pm['machinery']?['description'] as String?)?.toLowerCase().replaceAll(RegExp(r'\s+'), ' ') ?? '',
+              (pm['machinery_name'] as String?)?.toLowerCase().replaceAll(RegExp(r'\s+'), ' ') ?? '',
+            }..remove('');
+            if (names.isNotEmpty) {
+              for (final entry in byService.values) {
+                final estName = (entry['_machine_name'] as String? ?? '').toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+                if (names.any((n) => n == estName || estName.contains(n) || n.contains(estName))) {
+                  pmEst = entry;
+                  break;
+                }
+              }
+            }
+          }
+          if (pmEst != null) {
+            final capPerTrip = (pmEst['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+            final tripsPerDay = (pmEst['trips_per_day'] as num?)?.toDouble() ?? 0;
+            isTripBased = capPerTrip > 0 && tripsPerDay > 0;
+          }
+        }
+      }
+      if (isTripBased) {
+        adjusted[pmId] = raw * _getEstimationCapacity(pm);
+      }
+    }
+    return adjusted;
+  }
+
+  Map<String, List<double>> _adjustProductionList(Map<String, List<double>> raw) {
+    final adjusted = Map<String, List<double>>.from(raw);
+    for (final pm in widget.plannedMachinery) {
+      final pmId = pm['id'] as String?;
+      if (pmId == null || !adjusted.containsKey(pmId)) continue;
+      final unit = pm['quote_services']?['unit_of_measure']?.toString().toLowerCase() ?? '';
+      final isVolumeUnit = unit == 'cy' || unit == 'ft2' || unit == 'sqft' || unit == 'sf';
+      if (!isVolumeUnit) continue;
+      final cap = _getEstimationCapacity(pm);
+      if (cap > 0) {
+        adjusted[pmId] = adjusted[pmId]!.map((v) => v * cap).toList();
+      }
+    }
+    return adjusted;
   }
 
   Widget _buildDailyProgress(Map<String, dynamic> pm, String pmId, int expectedQty, List<int> entryIndices) {
-    final isCy = pm['quote_services']?['unit_of_measure']?.toString().toLowerCase() == 'cy';
-
     final est = _findEst(pm);
-    if (est == null || est.isEmpty) return const SizedBox.shrink();
+    if (est == null) return const SizedBox.shrink();
 
-    double dailyTarget;
-    String unit;
-    if (isCy) {
-      dailyTarget = ((est['capacity_per_trip'] as num?)?.toDouble() ?? 0)
-          * ((est['trips_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
-      unit = 'CY';
+    final tripBased = _isTripBased(pm);
+    final days = _daysElapsed(pm);
+
+    if (tripBased) {
+      final tripsPerDay = ((est['trips_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
+      final capPerTrip = (est['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+      final dailyTargetCY = capPerTrip * tripsPerDay;
+      if (dailyTargetCY <= 0) return const SizedBox.shrink();
+
+      double todayTrips = 0;
+      double todayCY = 0;
+      for (final idx in entryIndices) {
+        final entry = _entries[idx];
+        todayTrips += ((entry['production_value'] as num?)?.toDouble() ?? 0);
+        todayCY += ((entry['_calculated_cy'] as num?)?.toDouble() ?? 0);
+      }
+
+      final histTrips = _rawProd[pmId] ?? 0.0;
+      final histCY = _machineryProduction[pmId] ?? 0.0;
+      final cumTrips = histTrips + todayTrips;
+      final cumCY = histCY + todayCY;
+      final cumTargetTrips = tripsPerDay * days;
+      final cumTargetCY = dailyTargetCY * days;
+
+      if (cumTargetTrips <= 0 || cumTargetCY <= 0) return const SizedBox.shrink();
+
+      final ratioTrips = (cumTrips / cumTargetTrips).clamp(0.0, 1.0);
+      final ratioCY = (cumCY / cumTargetCY).clamp(0.0, 1.0);
+      final pctTrips = (ratioTrips * 100).toInt();
+      final pctCY = (ratioCY * 100).toInt();
+
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            'Trips: ${cumTrips.toStringAsFixed(0)} / ${cumTargetTrips.toStringAsFixed(0)} ($pctTrips%)    CY: ${cumCY.toStringAsFixed(0)} / ${cumTargetCY.toStringAsFixed(0)} ($pctCY%)',
+            style: _t(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate700),
+          ),
+          const SizedBox(height: 2),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: ratioTrips,
+              backgroundColor: AppTheme.slate200,
+              valueColor: AlwaysStoppedAnimation<Color>(pctTrips >= 80 ? AppTheme.primaryGreen : (pctTrips >= 50 ? Colors.orange : AppTheme.errorRed)),
+              minHeight: 4,
+            ),
+          ),
+          const SizedBox(height: 2),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: ratioCY,
+              backgroundColor: AppTheme.slate200,
+              valueColor: AlwaysStoppedAnimation<Color>(pctCY >= 80 ? AppTheme.primaryGreen : (pctCY >= 50 ? Colors.orange : AppTheme.errorRed)),
+              minHeight: 4,
+            ),
+          ),
+        ]),
+      );
     } else {
-      dailyTarget = ((est['performance_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
-      unit = pm['quote_services']?['unit_of_measure']?.toString().toUpperCase() ?? 'units';
-    }
+      final dailyTarget = ((est['performance_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
+      if (dailyTarget <= 0) return const SizedBox.shrink();
+      final unit = pm['quote_services']?['unit_of_measure']?.toString().toUpperCase() ?? 'units';
 
-    if (dailyTarget <= 0) return const SizedBox.shrink();
-
-    double todayProd = 0;
-    for (final idx in entryIndices) {
-      final entry = _entries[idx];
-      if (isCy) {
-        todayProd += ((entry['_calculated_cy'] as num?)?.toDouble() ?? 0);
-      } else {
+      double todayProd = 0;
+      for (final idx in entryIndices) {
+        final entry = _entries[idx];
         todayProd += ((entry['production_value'] as num?)?.toDouble() ?? 0);
       }
-    }
 
-    final historicalProd = _machineryProduction[pmId] ?? 0.0;
-    final cumulativeProd = historicalProd + todayProd;
-    final days = _daysElapsed(pm);
-    final cumulativeTarget = dailyTarget * days;
+      final historicalProd = _rawProd[pmId] ?? 0.0;
+      final cumulativeProd = historicalProd + todayProd;
+      final cumulativeTarget = dailyTarget * days;
 
-    if (cumulativeTarget <= 0) return const SizedBox.shrink();
+      if (cumulativeTarget <= 0) return const SizedBox.shrink();
 
-    final ratio = (cumulativeProd / cumulativeTarget).clamp(0.0, 1.0);
-    final pct = (ratio * 100).toInt();
-    final barColor = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
+      final ratio = (cumulativeProd / cumulativeTarget).clamp(0.0, 1.0);
+      final pct = (ratio * 100).toInt();
+      final barColor = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 4),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(
-          'To date: ${cumulativeProd.toStringAsFixed(0)} / ${cumulativeTarget.toStringAsFixed(0)} $unit  ($pct%)',
-          style: _t(fontSize: 11, fontWeight: FontWeight.w600, color: barColor),
-        ),
-        const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(3),
-          child: LinearProgressIndicator(
-            value: ratio,
-            backgroundColor: AppTheme.slate200,
-            valueColor: AlwaysStoppedAnimation<Color>(barColor),
-            minHeight: 6,
+      return Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            'To date: ${cumulativeProd.toStringAsFixed(0)} / ${cumulativeTarget.toStringAsFixed(0)} $unit  ($pct%)',
+            style: _t(fontSize: 11, fontWeight: FontWeight.w600, color: barColor),
           ),
-        ),
-      ]),
-    );
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(3),
+            child: LinearProgressIndicator(
+              value: ratio,
+              backgroundColor: AppTheme.slate200,
+              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+              minHeight: 6,
+            ),
+          ),
+        ]),
+      );
+    }
   }
 
   Widget _buildServiceTotalProgress(List<Map<String, dynamic>> items) {
-    double totalCumulativeProd = 0;
-    double totalCumulativeTarget = 0;
-    String unit = '';
-    bool hasData = false;
+    double totalTripsProd = 0;
+    double totalTripsTarget = 0;
+    double totalCYProd = 0;
+    double totalCYTarget = 0;
+    bool hasTrips = false;
+    bool hasCY = false;
     int maxDays = 1;
 
     for (final pm in items) {
@@ -707,84 +893,100 @@ class _StepMachineryState extends State<StepMachinery> {
       final pmId = pm['id'] as String;
       final expectedQty = (pm['expected_quantity'] as int?) ?? 1;
       final entryIndices = _entriesFor(pmId);
-      final isCy = pm['quote_services']?['unit_of_measure']?.toString().toLowerCase() == 'cy';
-      if (unit.isEmpty) {
-        unit = isCy ? 'CY' : (pm['quote_services']?['unit_of_measure']?.toString().toUpperCase() ?? 'units');
-      }
+      final est = _findEst(pm);
+      if (est == null) continue;
+
+      final tripBased = _isTripBased(pm);
+
       double todayProd = 0;
+      double todayTrips = 0;
       for (final idx in entryIndices) {
         final entry = _entries[idx];
-        if (isCy) {
+        if (tripBased) {
+          todayTrips += ((entry['production_value'] as num?)?.toDouble() ?? 0);
           todayProd += ((entry['_calculated_cy'] as num?)?.toDouble() ?? 0);
         } else {
           todayProd += ((entry['production_value'] as num?)?.toDouble() ?? 0);
         }
       }
 
-      final historicalProd = _machineryProduction[pmId] ?? 0.0;
-      final cumulativeProd = historicalProd + todayProd;
-
-      final qsId = pm['quote_service_id']?.toString();
-      final machId = pm['machinery_id']?.toString();
-      final machName = (pm['machinery_name'] ?? pm['machinery']?['description'] ?? '').toString().toLowerCase();
-
-      Map<String, dynamic>? est;
-      if (qsId != null) {
-        final byService = _estimationTargets[qsId];
-        if (byService != null) {
-          if (machId != null && byService.containsKey(machId)) {
-            est = byService[machId];
-          } else {
-            est = byService.values.firstWhere(
-              (v) => (v['_machine_name'] as String? ?? '') == machName,
-              orElse: () => <String, dynamic>{},
-            );
-          }
-        }
-      }
-      if (est == null || est.isEmpty) continue;
-
-      double dailyTarget;
-      if (isCy) {
-        dailyTarget = ((est['capacity_per_trip'] as num?)?.toDouble() ?? 0)
-            * ((est['trips_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
-      } else {
-        dailyTarget = ((est['performance_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
-      }
-      if (dailyTarget <= 0) continue;
-
       final days = _daysElapsed(pm);
       if (days > maxDays) maxDays = days;
 
-      totalCumulativeProd += cumulativeProd;
-      totalCumulativeTarget += dailyTarget * days;
-      hasData = true;
+      if (tripBased) {
+        final tripsPerDay = ((est['trips_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
+        final capPerTrip = (est['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+        final dailyTargetCY = capPerTrip * tripsPerDay;
+        if (dailyTargetCY <= 0) continue;
+
+        final histTrips = _rawProd[pmId] ?? 0.0;
+        final histCY = _machineryProduction[pmId] ?? 0.0;
+
+        totalTripsProd += histTrips + todayTrips;
+        totalTripsTarget += tripsPerDay * days;
+        totalCYProd += histCY + todayProd;
+        totalCYTarget += dailyTargetCY * days;
+        hasTrips = true;
+        hasCY = true;
+      } else {
+        final dailyTarget = ((est['performance_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
+        if (dailyTarget <= 0) continue;
+
+        final historicalProd = _rawProd[pmId] ?? 0.0;
+        totalTripsProd += historicalProd + todayProd;
+        totalTripsTarget += dailyTarget * days;
+        hasTrips = true;
+      }
     }
 
-    if (!hasData || totalCumulativeTarget <= 0) return const SizedBox.shrink();
+    if (!hasTrips && !hasCY) return const SizedBox.shrink();
 
-    final ratio = (totalCumulativeProd / totalCumulativeTarget).clamp(0.0, 1.0);
-    final pct = (ratio * 100).toInt();
-    final barColor = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
+    final children = <Widget>[];
+    if (hasTrips && totalTripsTarget > 0) {
+      final ratio = (totalTripsProd / totalTripsTarget).clamp(0.0, 1.0);
+      final pct = (ratio * 100).toInt();
+      final barColor = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
+      children.add(Text(
+        'Service total: ${totalTripsProd.toStringAsFixed(0)} / ${totalTripsTarget.toStringAsFixed(0)} units  ($pct%)',
+        style: _t(fontSize: 11, fontWeight: FontWeight.w700, color: barColor),
+      ));
+      children.add(const SizedBox(height: 4));
+      children.add(ClipRRect(
+        borderRadius: BorderRadius.circular(3),
+        child: LinearProgressIndicator(
+          value: ratio,
+          backgroundColor: AppTheme.slate200,
+          valueColor: AlwaysStoppedAnimation<Color>(barColor),
+          minHeight: 8,
+        ),
+      ));
+    }
+    if (hasCY && totalCYTarget > 0) {
+      final ratio = (totalCYProd / totalCYTarget).clamp(0.0, 1.0);
+      final pct = (ratio * 100).toInt();
+      final barColor = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
+      children.add(const SizedBox(height: 6));
+      children.add(Text(
+        'Service total CY: ${totalCYProd.toStringAsFixed(0)} / ${totalCYTarget.toStringAsFixed(0)} CY  ($pct%)',
+        style: _t(fontSize: 11, fontWeight: FontWeight.w700, color: barColor),
+      ));
+      children.add(const SizedBox(height: 4));
+      children.add(ClipRRect(
+        borderRadius: BorderRadius.circular(3),
+        child: LinearProgressIndicator(
+          value: ratio,
+          backgroundColor: AppTheme.slate200,
+          valueColor: AlwaysStoppedAnimation<Color>(barColor),
+          minHeight: 8,
+        ),
+      ));
+    }
+
+    if (children.isEmpty) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(
-          'Service total: ${totalCumulativeProd.toStringAsFixed(0)} / ${totalCumulativeTarget.toStringAsFixed(0)} $unit  ($pct%)',
-          style: _t(fontSize: 11, fontWeight: FontWeight.w700, color: barColor),
-        ),
-        const SizedBox(height: 4),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(3),
-          child: LinearProgressIndicator(
-            value: ratio,
-            backgroundColor: AppTheme.slate200,
-            valueColor: AlwaysStoppedAnimation<Color>(barColor),
-            minHeight: 8,
-          ),
-        ),
-      ]),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
     );
   }
 
@@ -881,46 +1083,104 @@ class _StepMachineryState extends State<StepMachinery> {
   Widget _buildEntryProgress(int index, Map<String, dynamic> entry, int totalCount, Map<String, dynamic> pm) {
     if (entry['_is_principal'] != true) return const SizedBox.shrink();
     final est = _findEst(pm);
-    if (est == null || est.isEmpty) return const SizedBox.shrink();
-    final isCy = entry['_is_cy'] == true;
-    double perUnitTarget;
-    String unit;
-    if (isCy) {
-      perUnitTarget = ((est['capacity_per_trip'] as num?)?.toDouble() ?? 0)
-          * ((est['trips_per_day'] as num?)?.toDouble() ?? 0);
-      unit = 'CY';
-    } else {
-      perUnitTarget = ((est['performance_per_day'] as num?)?.toDouble() ?? 0);
-      unit = entry['production_unit']?.toString().toUpperCase() ?? 'units';
-    }
-    if (perUnitTarget <= 0) return const SizedBox.shrink();
+    if (est == null) return const SizedBox.shrink();
+    final tripBased = _isTripBased(pm);
+    final pmId = pm['id'] as String;
+    final days = _daysElapsed(pm);
+    final entryIndices = _entriesFor(pmId);
+    final myPos = entryIndices.indexOf(index);
+    if (myPos < 0) return const SizedBox.shrink();
 
-    final entryProd = isCy
-        ? ((entry['_calculated_cy'] as num?)?.toDouble() ?? 0)
-        : ((entry['production_value'] as num?)?.toDouble() ?? 0);
-    final ratio = (entryProd / perUnitTarget).clamp(0.0, 1.0);
-    final pct = (ratio * 100).toInt();
-    final barColor = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
+    if (tripBased) {
+      final tripsPerDay = (est['trips_per_day'] as num?)?.toDouble() ?? 0;
+      final capPerTrip = (est['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+      final dailyTargetCY = capPerTrip * tripsPerDay;
+      if (dailyTargetCY <= 0) return const SizedBox.shrink();
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(
-          'Machine ${index + 1}/$totalCount: ${entryProd.toStringAsFixed(0)} / ${perUnitTarget.toStringAsFixed(0)} $unit  ($pct%)',
-          style: _t(fontSize: 10, fontWeight: FontWeight.w600, color: barColor),
-        ),
-        const SizedBox(height: 2),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(2),
-          child: LinearProgressIndicator(
-            value: ratio,
-            backgroundColor: AppTheme.slate200,
-            valueColor: AlwaysStoppedAnimation<Color>(barColor),
-            minHeight: 4,
+      final todayTrips = (entry['production_value'] as num?)?.toDouble() ?? 0.0;
+      final todayCY = (entry['_calculated_cy'] as num?)?.toDouble() ?? 0.0;
+
+      final histListRaw = _rawProdList[pmId] ?? [];
+      final histListCY = _machineryProdList[pmId] ?? [];
+      final histTrips = myPos < histListRaw.length ? histListRaw[myPos] : 0.0;
+      final histCY = myPos < histListCY.length ? histListCY[myPos] : 0.0;
+      final cumTrips = histTrips + todayTrips;
+      final cumCY = histCY + todayCY;
+      final cumTargetTrips = tripsPerDay * days;
+      final cumTargetCY = dailyTargetCY * days;
+
+      if (cumTargetTrips <= 0 || cumTargetCY <= 0) return const SizedBox.shrink();
+
+      final ratioTrips = (cumTrips / cumTargetTrips).clamp(0.0, 1.0);
+      final ratioCY = (cumCY / cumTargetCY).clamp(0.0, 1.0);
+
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            'Trips: ${cumTrips.toStringAsFixed(0)} / ${cumTargetTrips.toStringAsFixed(0)}    CY: ${cumCY.toStringAsFixed(0)} / ${cumTargetCY.toStringAsFixed(0)}',
+            style: _t(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate700),
           ),
-        ),
-      ]),
-    );
+          const SizedBox(height: 2),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: ratioTrips,
+              backgroundColor: AppTheme.slate200,
+              valueColor: AlwaysStoppedAnimation<Color>(ratioTrips >= 0.8 ? AppTheme.primaryGreen : (ratioTrips >= 0.5 ? Colors.orange : AppTheme.errorRed)),
+              minHeight: 4,
+            ),
+          ),
+          const SizedBox(height: 2),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: ratioCY,
+              backgroundColor: AppTheme.slate200,
+              valueColor: AlwaysStoppedAnimation<Color>(ratioCY >= 0.8 ? AppTheme.primaryGreen : (ratioCY >= 0.5 ? Colors.orange : AppTheme.errorRed)),
+              minHeight: 4,
+            ),
+          ),
+        ]),
+      );
+    } else {
+      final dailyTarget = (est['performance_per_day'] as num?)?.toDouble() ?? 0;
+      if (dailyTarget <= 0) return const SizedBox.shrink();
+      final unit = entry['production_unit']?.toString().toUpperCase() ?? 'units';
+
+      final todayProd = (entry['production_value'] as num?)?.toDouble() ?? 0.0;
+
+      final histList = _rawProdList[pmId] ?? [];
+      final historicalProd = myPos < histList.length ? histList[myPos] : 0.0;
+      final cumulativeProd = historicalProd + todayProd;
+      final cumulativeTarget = dailyTarget * days;
+
+      if (cumulativeTarget <= 0) return const SizedBox.shrink();
+
+      final ratio = (cumulativeProd / cumulativeTarget).clamp(0.0, 1.0);
+      final pct = (ratio * 100).toInt();
+      final barColor = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
+
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 6),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            'Machine ${index + 1}/$totalCount: ${cumulativeProd.toStringAsFixed(0)} / ${cumulativeTarget.toStringAsFixed(0)} $unit  ($pct%)',
+            style: _t(fontSize: 10, fontWeight: FontWeight.w600, color: barColor),
+          ),
+          const SizedBox(height: 2),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+              value: ratio,
+              backgroundColor: AppTheme.slate200,
+              valueColor: AlwaysStoppedAnimation<Color>(barColor),
+              minHeight: 4,
+            ),
+          ),
+        ]),
+      );
+    }
   }
 
   Widget _buildEntryForm(int index, Map<String, dynamic> entry, {Map<String, dynamic>? pm, int totalCount = 0}) {
@@ -1004,30 +1264,34 @@ class _StepMachineryState extends State<StepMachinery> {
                   const SizedBox(height: 6),
                   Row(children: [
                     Expanded(child: _numField(index, 'fuel_added', 'Fuel (gal)', entry['fuel_added']?.toString() ?? '', (v) => _updateEntry(index, 'fuel_added', v))),
-                    if (entry['_is_principal'] == true && entry['_is_cy'] == true) ...[
-                      const SizedBox(width: 8),
-                      Expanded(
-                        flex: 1,
-                        child: _numField(index, 'production_value', 'Trips', entry['production_value']?.toString() ?? '', (v) {
-                          final capacity = (entry['_capacity'] as num?)?.toDouble() ?? 0;
-                          _updateEntry(index, 'production_value', v);
-                          if (capacity > 0) {
-                            _updateEntry(index, '_calculated_cy', v * capacity);
-                          }
-                        }),
-                      ),
-                      const SizedBox(width: 6),
-                      _displayBadge('CY/trip', (entry['_capacity'] as num?)?.toString() ?? '--', AppTheme.slate400),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: _displayBadge('Total CY', (entry['_calculated_cy'] as num?)?.toString() ?? '--', AppTheme.primaryGreen, expand: true),
-                      ),
-                    ],
-                    if (entry['_is_principal'] == true && entry['_is_cy'] != true) ...[
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _numField(index, 'production_value', 'Prod (${entry['production_unit'] ?? 'units'})', entry['production_value']?.toString() ?? '', (v) => _updateEntry(index, 'production_value', v)),
-                      ),
+                    if (entry['_is_principal'] == true) ...[
+                      if (pm != null && _isTripBased(pm)) ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 1,
+                          child: _numField(index, 'production_value', 'Trips', entry['production_value']?.toString() ?? '', (v) {
+                            final capacity = _getEstimationCapacity(pm!);
+                            _updateEntry(index, 'production_value', v);
+                            if (capacity > 0) {
+                              _updateEntry(index, '_calculated_cy', v * capacity);
+                            }
+                          }),
+                        ),
+                        const SizedBox(width: 6),
+                        _displayBadge('CY/trip', _getEstimationCapacity(pm!).toStringAsFixed(0), AppTheme.slate400),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: _displayBadge('Total CY', (entry['_calculated_cy'] as num?)?.toString() ?? '--', AppTheme.primaryGreen, expand: true),
+                        ),
+                      ] else ...[
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _numField(index, 'production_value', 'Prod (${entry['production_unit'] ?? 'units'})', entry['production_value']?.toString() ?? '', (v) {
+                            _updateEntry(index, 'production_value', v);
+                            _updateEntry(index, '_calculated_cy', v);
+                          }),
+                        ),
+                      ],
                     ],
                   ]),
                   const SizedBox(height: 6),
