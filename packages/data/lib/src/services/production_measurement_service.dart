@@ -46,13 +46,14 @@ class ProductionMeasurementService {
         .in_('daily_reports.status', ['submitted', 'approved']);
     final machLogs = List<Map<String, dynamic>>.from(machResult ?? []);
 
-    // Actual labor hours per service
+    // Actual labor hours per service with real rates
     final laborResult = await _supabase
         .from('report_labor_logs')
         .select('''
           regular_hours, overtime_hours,
           project_labor!inner(quote_service_id, project_id),
-          daily_reports!inner(status)
+          daily_reports!inner(status),
+          workers!inner(role_id, labor_roles!inner(hourly_rate))
         ''')
         .eq('project_labor.project_id', projectId)
         .in_('daily_reports.status', ['submitted', 'approved']);
@@ -70,10 +71,32 @@ class ProductionMeasurementService {
         .in_('daily_reports.status', ['submitted', 'approved']);
     final matLogs = List<Map<String, dynamic>>.from(matResult ?? []);
 
+    // Machinery cost rates per project_machinery
+    final machCostRows = await _supabase
+        .from('project_machinery')
+        .select('id, quote_service_machineries(monthly_rent_cost, gallons_per_hour, gallon_cost)')
+        .eq('project_id', projectId);
+    final Map<String, Map<String, dynamic>> machCostMap = {};
+    for (final row in machCostRows ?? []) {
+      final pmId = row['id']?.toString();
+      if (pmId != null) {
+        final qsm = row['quote_service_machineries'];
+        if (qsm is Map<String, dynamic>) {
+          machCostMap[pmId] = {
+            'monthly_rent_cost': (qsm['monthly_rent_cost'] as num?)?.toDouble() ?? 0,
+            'gallons_per_hour': (qsm['gallons_per_hour'] as num?)?.toDouble() ?? 0,
+            'gallon_cost': (qsm['gallon_cost'] as num?)?.toDouble() ?? 0,
+          };
+        }
+      }
+    }
+
     // Aggregate actual by quote_service_id
     final Map<String, double> actualProduction = {};
     final Map<String, double> actualMachHours = {};
     final Map<String, double> actualLaborHours = {};
+    final Map<String, double> actualLaborCost = {};
+    final Map<String, double> actualMachCost = {};
     final Map<String, double> actualMaterialUsed = {};
 
     for (final log in machLogs) {
@@ -84,14 +107,30 @@ class ProductionMeasurementService {
       final hrs = (log['total_hours'] as num?)?.toDouble() ?? 0;
       actualProduction[qsId] = (actualProduction[qsId] ?? 0) + prod * cap;
       actualMachHours[qsId] = (actualMachHours[qsId] ?? 0) + hrs;
+
+      final pmId = log['project_machinery_id']?.toString();
+      final costInfo = pmId != null ? machCostMap[pmId] : null;
+      if (costInfo != null) {
+        final monthlyRent = costInfo['monthly_rent_cost'] as double;
+        final gallonCost = costInfo['gallon_cost'] as double;
+        final fuelAdded = (log['fuel_added'] as num?)?.toDouble() ?? 0;
+        final rentCost = monthlyRent > 0 ? (hrs / 8) * (monthlyRent / 30) : 0;
+        final fuelCost = fuelAdded * gallonCost;
+        actualMachCost[qsId] = (actualMachCost[qsId] ?? 0) + rentCost + fuelCost;
+      }
     }
 
     for (final log in laborLogs) {
       final qsId = log['project_labor']?['quote_service_id']?.toString();
       if (qsId == null) continue;
-      final hrs = ((log['regular_hours'] as num?)?.toDouble() ?? 0) +
-          ((log['overtime_hours'] as num?)?.toDouble() ?? 0);
+      final regHrs = (log['regular_hours'] as num?)?.toDouble() ?? 0;
+      final otHrs = (log['overtime_hours'] as num?)?.toDouble() ?? 0;
+      final hrs = regHrs + otHrs;
       actualLaborHours[qsId] = (actualLaborHours[qsId] ?? 0) + hrs;
+
+      final rate = (log['workers']?['labor_roles']?['hourly_rate'] as num?)?.toDouble() ?? 0;
+      final cost = regHrs * rate + otHrs * rate * 1.5;
+      actualLaborCost[qsId] = (actualLaborCost[qsId] ?? 0) + cost;
     }
 
     for (final log in matLogs) {
@@ -120,9 +159,7 @@ class ProductionMeasurementService {
       final ev = actualProd * unitCost;
       final machHrs = actualMachHours[qsId] ?? 0;
       final laborHrs = actualLaborHours[qsId] ?? 0;
-      const laborUnitCost = 25.0;
-      const machUnitCost = 85.0;
-      final actualCost = laborHrs * laborUnitCost + machHrs * machUnitCost;
+      final actualCost = (actualLaborCost[qsId] ?? 0) + (actualMachCost[qsId] ?? 0);
 
       totalPlannedUnits += plannedQty;
       totalActualUnits += actualProd;
