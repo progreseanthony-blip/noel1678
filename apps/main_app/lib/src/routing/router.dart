@@ -26,6 +26,8 @@ import '../features/incidents/presentation/pages/incidents_list_page.dart';
 import '../features/incidents/presentation/pages/incident_detail_page.dart';
 import '../features/incidents/presentation/pages/incident_form_page.dart';
 import '../features/incidents/presentation/pages/incident_dashboard_page.dart';
+import '../features/monitoring/presentation/pages/monitoring_projects_page.dart';
+import '../features/monitoring/presentation/pages/project_monitoring_page.dart';
 final goRouter = GoRouter(
   initialLocation: '/signin',
   routes: [
@@ -76,6 +78,14 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/projects/:id/production-measurement',
       builder: (context, state) => ProductionMeasurementPage(projectId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/monitoring',
+      builder: (context, state) => const MonitoringProjectsPage(),
+    ),
+    GoRoute(
+      path: '/projects/:id/monitoring',
+      builder: (context, state) => ProjectMonitoringPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/daily-reports',

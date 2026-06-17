@@ -59,8 +59,8 @@ class Sidebar extends StatelessWidget {
                   _ExpandableNavItem(
                     icon: Icons.rocket_launch_outlined,
                     label: 'Projects',
-                    isActive: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement'),
-                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement'),
+                    isActive: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring'),
+                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring'),
                     children: [
                       _SubExpandableNavItem(
                         label: 'Planning',
@@ -90,11 +90,12 @@ class Sidebar extends StatelessWidget {
                       ),
                       _SubExpandableNavItem(
                         label: 'Monitoring',
-                        isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement'),
-                        initiallyExpanded: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement'),
+                        isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.contains('/monitoring'),
+                        initiallyExpanded: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.contains('/monitoring'),
                         children: [
                           _SubNavItem(icon: Icons.attach_money, label: 'Labor Cost', isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost'), left: 44, onTap: () => context.go('/labor-cost')),
                           _SubNavItem(icon: Icons.speed, label: 'Production Metrics', isActive: currentPath.startsWith('/production-measurement'), left: 44, onTap: () => context.go('/production-measurement')),
+                          _SubNavItem(icon: Icons.dashboard, label: 'Monitoring Dashboard', isActive: currentPath.contains('/monitoring'), left: 44, onTap: () => context.go('/monitoring')),
                         ],
                       ),
                     ],
@@ -190,7 +191,9 @@ class _NavItemState extends State<_NavItem> {
           child: Row(children: [
             Icon(widget.icon, color: color, size: 20),
             const SizedBox(width: 14),
-            Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 14, fontWeight: widget.isActive ? FontWeight.w700 : FontWeight.w600)),
+            Expanded(
+              child: Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 14, fontWeight: widget.isActive ? FontWeight.w700 : FontWeight.w600), overflow: TextOverflow.ellipsis),
+            ),
           ]),
         ),
       ),
@@ -219,6 +222,14 @@ class _ExpandableNavItemState extends State<_ExpandableNavItem> {
   void initState() {
     super.initState();
     _isExpanded = widget.initiallyExpanded;
+  }
+
+  @override
+  void didUpdateWidget(covariant _ExpandableNavItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initiallyExpanded != oldWidget.initiallyExpanded) {
+      _isExpanded = widget.initiallyExpanded;
+    }
   }
 
   @override
@@ -285,6 +296,14 @@ class _SubExpandableNavItemState extends State<_SubExpandableNavItem> {
   }
 
   @override
+  void didUpdateWidget(covariant _SubExpandableNavItem oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.initiallyExpanded != oldWidget.initiallyExpanded) {
+      _isExpanded = widget.initiallyExpanded;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final color = widget.isActive ? AppTheme.primaryGreen : (_isHovered ? Colors.white : AppTheme.slate500);
     return Column(children: [
@@ -298,11 +317,16 @@ class _SubExpandableNavItemState extends State<_SubExpandableNavItem> {
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.only(left: 36, right: 16, top: 8, bottom: 8),
             decoration: BoxDecoration(
-              color: _isHovered ? Colors.white.withOpacity(0.03) : Colors.transparent,
+              color: widget.isActive
+                  ? AppTheme.primaryGreen.withOpacity(0.08)
+                  : (_isHovered ? Colors.white.withOpacity(0.03) : Colors.transparent),
               borderRadius: BorderRadius.circular(8),
+              border: widget.isActive
+                  ? const Border(left: BorderSide(color: AppTheme.primaryGreen, width: 3))
+                  : null,
             ),
             child: Row(children: [
-              Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+              Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
               const Spacer(),
               AnimatedRotation(duration: const Duration(milliseconds: 200), turns: _isExpanded ? 0.5 : 0.0, child: Icon(Icons.expand_more, color: color, size: 16)),
             ]),
@@ -346,7 +370,7 @@ class _SubNavItemState extends State<_SubNavItem> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: EdgeInsets.only(left: widget.left, right: 16, top: 10, bottom: 10),
+          padding: EdgeInsets.only(left: widget.left, right: 16, top: 8, bottom: 8),
           decoration: BoxDecoration(
             color: widget.isActive ? AppTheme.primaryGreen.withOpacity(0.08) : (_isHovered ? Colors.white.withOpacity(0.03) : Colors.transparent),
             borderRadius: BorderRadius.circular(8),
@@ -354,7 +378,9 @@ class _SubNavItemState extends State<_SubNavItem> {
           child: Row(children: [
             Icon(widget.icon, color: color, size: 16),
             const SizedBox(width: 12),
-            Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 13, fontWeight: widget.isActive ? FontWeight.w700 : FontWeight.w500)),
+            Expanded(
+              child: Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 12, fontWeight: widget.isActive ? FontWeight.w600 : FontWeight.w500), overflow: TextOverflow.ellipsis),
+            ),
           ]),
         ),
       ),

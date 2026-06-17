@@ -14,4 +14,5 @@ export 'src/services/production_measurement_service.dart';
 export 'src/services/incidents_service.dart';
 export 'src/services/baseline_service.dart';
 export 'src/services/project_balance_helper.dart';
+export 'src/services/project_monitoring_service.dart';
 export 'package:supabase_flutter/supabase_flutter.dart';
