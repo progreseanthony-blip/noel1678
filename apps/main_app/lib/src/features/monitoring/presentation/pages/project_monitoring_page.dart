@@ -1,0 +1,419 @@
+import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
+import 'package:noel_core/noel_core.dart';
+import 'package:noel_data/noel_data.dart';
+import '../../../../shared/widgets/sidebar.dart';
+import '../../../../shared/widgets/top_header.dart';
+import '../widgets/monitoring_summary_card.dart';
+import '../widgets/alert_list.dart';
+import '../widgets/service_accordion.dart';
+
+class ProjectMonitoringPage extends StatefulWidget {
+  final String projectId;
+  const ProjectMonitoringPage({super.key, required this.projectId});
+
+  @override
+  State<ProjectMonitoringPage> createState() => _ProjectMonitoringPageState();
+}
+
+class _ProjectMonitoringPageState extends State<ProjectMonitoringPage> {
+  Map<String, dynamic>? _summary;
+  List<Map<String, dynamic>> _services = [];
+  List<Map<String, dynamic>> _alerts = [];
+  Map<String, List<Map<String, dynamic>>> _resources = {};
+  Map<String, dynamic>? _workerIrregularities;
+  Map<String, dynamic>? _machineryIrregularities;
+  bool _isLoading = true;
+  String? _error;
+  final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAll();
+  }
+
+  Future<void> _loadAll() async {
+    if (!mounted) return;
+    setState(() { _isLoading = true; _error = null; });
+    try {
+      final service = ProjectMonitoringService(Supabase.instance.client);
+      final summary = await service.getProjectSummary(widget.projectId);
+      final svcResult = await service.getServiceDetails(widget.projectId);
+      final services = List<Map<String, dynamic>>.from(svcResult['services'] ?? []);
+      final allAlerts = List<Map<String, dynamic>>.from(svcResult['alerts'] ?? []);
+
+      final Map<String, List<Map<String, dynamic>>> resources = {};
+      for (final svc in services) {
+        final svcId = svc['quote_service_id']?.toString() ?? '';
+        if (svcId.isNotEmpty) {
+          final res = await service.getResourceDetails(widget.projectId, svcId);
+          resources[svcId] = res;
+        }
+      }
+
+      final workerIrreg = await service.getWorkerIrregularities(widget.projectId);
+      final machIrreg = await service.getMachineryIrregularities(widget.projectId);
+
+      for (final w in (workerIrreg['irregular_workers'] as List? ?? [])) {
+        allAlerts.add({
+          'type': 'worker',
+          'severity': 'warning',
+          'message': 'Worker ${w['name']}: ${w['deviation_count']} deviations, ${w['total_ot'].toStringAsFixed(0)}h OT',
+        });
+      }
+      for (final m in (machIrreg['irregular_machines'] as List? ?? [])) {
+        allAlerts.add({
+          'type': 'machinery',
+          'severity': 'warning',
+          'message': 'Machine ${m['name']}: ${m['deviation_count']} deviations, ${m['total_production'].toStringAsFixed(0)} total prod',
+        });
+      }
+      allAlerts.sort((a, b) {
+        final sevA = a['severity']?.toString() == 'critical' ? 0 : 1;
+        final sevB = b['severity']?.toString() == 'critical' ? 0 : 1;
+        return sevA.compareTo(sevB);
+      });
+
+      if (mounted) {
+        setState(() {
+          _summary = summary;
+          _services = services;
+          _alerts = allAlerts;
+          _resources = resources;
+          _workerIrregularities = workerIrreg;
+          _machineryIrregularities = machIrreg;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() { _error = 'Error: $e'; _isLoading = false; });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    final userName = currentUser?.userMetadata?['name'] ?? 'Admin User';
+    final userEmail = currentUser?.email ?? '';
+    final isMobile = MediaQuery.of(context).size.width < 768;
+
+    return Scaffold(
+      key: _mobileScaffoldKey,
+      backgroundColor: const Color(0xFF0F172A),
+      drawer: isMobile ? Drawer(
+        backgroundColor: const Color(0xFF0F172A),
+        child: Sidebar(
+          userName: userName,
+          userEmail: userEmail,
+          currentPath: '/projects/${widget.projectId}',
+          onLogout: () async {
+            await Supabase.instance.client.auth.signOut();
+            if (context.mounted) context.go('/signin');
+          },
+        ),
+      ) : null,
+      body: Row(
+        children: [
+          if (!isMobile)
+            Sidebar(
+              userName: userName,
+              userEmail: userEmail,
+              currentPath: '/projects/${widget.projectId}',
+              onLogout: () async {
+                await Supabase.instance.client.auth.signOut();
+                if (context.mounted) context.go('/signin');
+              },
+            ),
+          Expanded(
+            child: Column(
+              children: [
+                if (!isMobile)
+                  TopHeader(userName: userName, breadcrumbs: const ['Operations', 'Projects', 'Monitoring Dashboard']),
+                if (isMobile)
+                  _buildMobileHeader(),
+                Expanded(
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen))
+                      : _error != null
+                          ? Center(child: Padding(
+                              padding: const EdgeInsets.all(32),
+                              child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
+                            ))
+                          : _buildContent(isMobile),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileHeader() {
+    return Container(
+      color: const Color(0xFF1E293B),
+      padding: EdgeInsets.only(
+        top: MediaQuery.of(context).padding.top + 8,
+        left: 16, right: 16, bottom: 12,
+      ),
+      child: Row(
+        children: [
+          GestureDetector(
+            onTap: () => _mobileScaffoldKey.currentState?.openDrawer(),
+            child: const Icon(Icons.menu, color: Colors.white, size: 24),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            'Monitoring Dashboard',
+            style: GoogleFonts.manrope(
+              fontSize: 18, fontWeight: FontWeight.w800, color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContent(bool isMobile) {
+    final s = _summary!;
+    final totalPlanned = (s['total_planned_cost'] as num?)?.toDouble() ?? 0;
+    final elapsedDays = (s['elapsed_days'] as int?) ?? 0;
+    final totalDays = (s['total_days'] as int?) ?? 1;
+    final servicesCount = (s['services_count'] as int?) ?? 0;
+
+    final overallProgress = _services.isNotEmpty
+        ? _services.fold<double>(0, (sum, svc) => sum + ((svc['progress'] as num?)?.toDouble() ?? 0)) / _services.length
+        : 0.0;
+    final totalActualCost = _services.fold<double>(0, (sum, svc) => sum + ((svc['actual_cost'] as num?)?.toDouble() ?? 0));
+    final totalEv = _services.fold<double>(0, (sum, svc) => sum + ((svc['earned_value'] as num?)?.toDouble() ?? 0));
+    final cpi = totalActualCost > 0 ? totalEv / totalActualCost : 1.0;
+    final spi = totalPlanned > 0 && elapsedDays > 0
+        ? totalEv / ((elapsedDays / totalDays.clamp(1, 9999)) * totalPlanned)
+        : 1.0;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(isMobile ? 16 : 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Back + title
+          GestureDetector(
+            onTap: () => context.pop(),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.arrow_back, size: 16, color: AppTheme.slate400),
+                const SizedBox(width: 6),
+                Text('Back to Project', style: GoogleFonts.manrope(color: AppTheme.slate400, fontWeight: FontWeight.w600, fontSize: 13)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Monitoring Dashboard',
+            style: GoogleFonts.manrope(
+              fontSize: isMobile ? 24 : 32,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: -0.5,
+            ),
+          ),
+          Text(
+            s['project_name'] ?? '',
+            style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w500, color: AppTheme.slate400),
+          ),
+          const SizedBox(height: 20),
+
+          // Summary cards
+          if (isMobile)
+            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              MonitoringSummaryCard(
+                title: 'PHYSICAL PROGRESS', value: '${overallProgress.toStringAsFixed(1)}%',
+                subtitle: '$servicesCount services · Day $elapsedDays/$totalDays',
+                icon: Icons.speed, color: overallProgress >= 50 ? AppTheme.primaryGreen : Colors.orange,
+                progress: overallProgress / 100,
+              ),
+              const SizedBox(height: 12),
+              MonitoringSummaryCard(
+                title: 'CPI (COST INDEX)', value: cpi.toStringAsFixed(2),
+                subtitle: cpi >= 1 ? 'Under budget' : 'Over budget',
+                icon: Icons.account_balance, color: cpi >= 0.95 ? AppTheme.primaryGreen : Colors.redAccent,
+                progress: cpi.clamp(0.0, 2.0) / 2,
+              ),
+              const SizedBox(height: 12),
+              MonitoringSummaryCard(
+                title: 'SPI (SCHEDULE INDEX)', value: spi.toStringAsFixed(2),
+                subtitle: spi >= 1 ? 'Ahead of schedule' : 'Behind schedule',
+                icon: Icons.schedule, color: spi >= 0.9 ? AppTheme.primaryGreen : Colors.redAccent,
+                progress: spi.clamp(0.0, 2.0) / 2,
+              ),
+              const SizedBox(height: 12),
+              MonitoringSummaryCard(
+                title: 'ALERTS', value: '${_alerts.length}',
+                subtitle: '${_workerIrregularities?['irregular_count'] ?? 0} workers · ${_machineryIrregularities?['irregular_count'] ?? 0} machines',
+                icon: Icons.warning_amber_rounded, color: _alerts.isEmpty ? AppTheme.primaryGreen : Colors.redAccent,
+              ),
+            ])
+          else
+            Wrap(spacing: 16, runSpacing: 16, children: [
+              SizedBox(
+                width: 240,
+                child: MonitoringSummaryCard(
+                  title: 'PHYSICAL PROGRESS', value: '${overallProgress.toStringAsFixed(1)}%',
+                  subtitle: '$servicesCount services · Day $elapsedDays/$totalDays',
+                  icon: Icons.speed, color: overallProgress >= 50 ? AppTheme.primaryGreen : Colors.orange,
+                  progress: overallProgress / 100,
+                ),
+              ),
+              SizedBox(
+                width: 240,
+                child: MonitoringSummaryCard(
+                  title: 'CPI (COST INDEX)', value: cpi.toStringAsFixed(2),
+                  subtitle: cpi >= 1 ? 'Under budget' : 'Over budget',
+                  icon: Icons.account_balance, color: cpi >= 0.95 ? AppTheme.primaryGreen : Colors.redAccent,
+                  progress: cpi.clamp(0.0, 2.0) / 2,
+                ),
+              ),
+              SizedBox(
+                width: 240,
+                child: MonitoringSummaryCard(
+                  title: 'SPI (SCHEDULE INDEX)', value: spi.toStringAsFixed(2),
+                  subtitle: spi >= 1 ? 'Ahead of schedule' : 'Behind schedule',
+                  icon: Icons.schedule, color: spi >= 0.9 ? AppTheme.primaryGreen : Colors.redAccent,
+                  progress: spi.clamp(0.0, 2.0) / 2,
+                ),
+              ),
+              SizedBox(
+                width: 240,
+                child: MonitoringSummaryCard(
+                  title: 'ALERTS', value: '${_alerts.length}',
+                  subtitle: '${_workerIrregularities?['irregular_count'] ?? 0} workers · ${_machineryIrregularities?['irregular_count'] ?? 0} machines',
+                  icon: Icons.warning_amber_rounded, color: _alerts.isEmpty ? AppTheme.primaryGreen : Colors.redAccent,
+                ),
+              ),
+            ]),
+
+          const SizedBox(height: 24),
+
+          // Alerts
+          if (_alerts.isNotEmpty) ...[
+            Text(
+              'Alerts & Warnings',
+              style: GoogleFonts.manrope(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 10),
+            AlertList(alerts: _alerts),
+            const SizedBox(height: 20),
+          ],
+
+          // Irregularities section
+          if ((_workerIrregularities?['irregular_count'] ?? 0) > 0 ||
+              (_machineryIrregularities?['irregular_count'] ?? 0) > 0) ...[
+            _buildIrregularitiesSection(isMobile),
+            const SizedBox(height: 20),
+          ],
+
+          // Service breakdown
+          Text(
+            'Services',
+            style: GoogleFonts.manrope(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tap a service to expand resources. Tap a resource to see daily history.',
+            style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400),
+          ),
+          const SizedBox(height: 12),
+          for (final svc in _services) ...[
+            ServiceAccordion(
+              projectId: widget.projectId,
+              service: svc,
+              resources: _resources[svc['quote_service_id']?.toString()] ?? [],
+            ),
+            const SizedBox(height: 4),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIrregularitiesSection(bool isMobile) {
+    final workers = List<Map<String, dynamic>>.from(_workerIrregularities?['irregular_workers'] as List? ?? []);
+    final machines = List<Map<String, dynamic>>.from(_machineryIrregularities?['irregular_machines'] as List? ?? []);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.red.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.withOpacity(0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.error_outline, color: Colors.redAccent, size: 18),
+              const SizedBox(width: 8),
+              Text(
+                'Resources Requiring Attention',
+                style: GoogleFonts.manrope(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.red.shade200,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (workers.isNotEmpty) ...[
+            Text('Workers', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate400, letterSpacing: 0.5)),
+            const SizedBox(height: 6),
+            for (final w in workers.take(5))
+              _irregularRow(w, Icons.person, '${w['name']} — ${w['deviation_count']} deviations, ${w['total_ot'].toStringAsFixed(0)}h OT'),
+          ],
+          if (workers.isNotEmpty && machines.isNotEmpty) const SizedBox(height: 10),
+          if (machines.isNotEmpty) ...[
+            Text('Machinery', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate400, letterSpacing: 0.5)),
+            const SizedBox(height: 6),
+            for (final m in machines.take(5))
+              _irregularRow(m, Icons.precision_manufacturing, '${m['name']} — ${m['deviation_count']} deviations, ${m['total_hours'].toStringAsFixed(0)}h'),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _irregularRow(Map<String, dynamic> item, IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: Colors.redAccent.withOpacity(0.7)),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: GoogleFonts.manrope(
+                fontSize: 11,
+                color: Colors.red.shade100,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
