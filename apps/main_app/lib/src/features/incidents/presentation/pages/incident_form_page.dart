@@ -49,19 +49,19 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
       final client = Supabase.instance.client;
       final materials = await client
           .from('project_materials')
-          .select('id, material_name, unit_name, expected_quantity, received_quantity')
+          .select('id, material_name, unit_name, expected_quantity, received_quantity, quote_service_materials(unit_price)')
           .eq('project_id', widget.projectId);
       final machinery = await client
           .from('project_machinery')
-          .select('id, machinery_name, expected_quantity, received_quantity')
+          .select('id, machinery_name, expected_quantity, received_quantity, quote_service_machineries(monthly_rent_cost)')
           .eq('project_id', widget.projectId);
       final labor = await client
           .from('project_labor')
-          .select('id, role_name, expected_employees, active_employees')
+          .select('id, role_name, expected_employees, active_employees, labor_roles(hourly_rate)')
           .eq('project_id', widget.projectId);
       final instruments = await client
           .from('project_instruments')
-          .select('id, instrument_name, expected_quantity, received_quantity')
+          .select('id, instrument_name, expected_quantity, received_quantity, quote_service_instruments(unit_price)')
           .eq('project_id', widget.projectId);
 
       if (mounted) {
@@ -278,18 +278,21 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
                       ),
                     )
                   else
-                    ..._affectedItems.asMap().entries.map((entry) => Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: Icon(Icons.inventory_2, color: AppTheme.slate500),
-                        title: Text(entry.value['resource_name'] as String? ?? '', style: GoogleFonts.manrope(fontWeight: FontWeight.w600, fontSize: 13)),
-                        subtitle: Text('${entry.value['affected_type']} - ${entry.value['quantity_affected']} ${entry.value['unit'] ?? ''}'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.close, size: 18, color: AppTheme.errorRed),
-                          onPressed: () => _removeResourceItem(entry.key),
+                    ..._affectedItems.asMap().entries.map((entry) {
+                      final rate = entry.value['hourly_cost_rate'] ?? 0;
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: ListTile(
+                          leading: Icon(Icons.inventory_2, color: AppTheme.slate500),
+                          title: Text(entry.value['resource_name'] as String? ?? '', style: GoogleFonts.manrope(fontWeight: FontWeight.w600, fontSize: 13)),
+                          subtitle: Text('${entry.value['affected_type']} - ${(rate as num).toStringAsFixed(0)} \$/hr'),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.close, size: 18, color: AppTheme.errorRed),
+                            onPressed: () => _removeResourceItem(entry.key),
+                          ),
                         ),
-                      ),
-                    )),
+                      );
+                    }),
 
                   const SizedBox(height: 32),
                   SizedBox(
@@ -334,7 +337,8 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
   String? _selectedResourceId;
   double _quantity = 1;
   String _unit = '';
-  double _repairCost = 0;
+  double _hourlyCostRate = 0;
+  final _rateCtrl = TextEditingController();
 
   List<Map<String, dynamic>> get _currentList {
     switch (_selectedType) {
@@ -344,6 +348,32 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
       case 'instrument': return widget.instruments;
       default: return [];
     }
+  }
+
+  double _suggestedRate(Map<String, dynamic>? resource) {
+    if (resource == null) return 0;
+    switch (_selectedType) {
+      case 'machinery':
+        final qsm = resource['quote_service_machineries'];
+        final monthly = qsm is Map ? (qsm['monthly_rent_cost'] as num?)?.toDouble() ?? 0 : 0;
+        return monthly > 0 ? monthly / 160 : 0;
+      case 'labor':
+        final lr = resource['labor_roles'];
+        return lr is Map ? (lr['hourly_rate'] as num?)?.toDouble() ?? 0 : 0;
+      case 'instrument':
+        final qsi = resource['quote_service_instruments'];
+        final price = qsi is Map ? (qsi['unit_price'] as num?)?.toDouble() ?? 0 : 0;
+        return price > 0 ? price / 8 : 0;
+      case 'material':
+      default:
+        return 0;
+    }
+  }
+
+  @override
+  void dispose() {
+    _rateCtrl.dispose();
+    super.dispose();
   }
 
   @override
@@ -383,6 +413,8 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
                     final selected = _currentList.cast<Map<String, dynamic>?>().firstWhere((r) => r?['id'] == v, orElse: () => null);
                     if (selected != null) {
                       _unit = selected['unit_name'] as String? ?? selected['unit'] as String? ?? '';
+                      _hourlyCostRate = _suggestedRate(selected);
+                      _rateCtrl.text = _hourlyCostRate > 0 ? _hourlyCostRate.toStringAsFixed(0) : '0';
                     }
                   });
                 },
@@ -403,10 +435,15 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
               ),
               const SizedBox(height: 12),
               TextFormField(
-                initialValue: '0',
+                controller: _rateCtrl,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Repair Cost (\$)', border: OutlineInputBorder(), hintText: 'Estimated cost to fix/replace'),
-                onChanged: (v) => _repairCost = double.tryParse(v) ?? 0,
+                decoration: const InputDecoration(
+                  labelText: 'Hourly Cost Rate (\$/hr)',
+                  hintText: 'Cost per hour of downtime',
+                  border: OutlineInputBorder(),
+                  prefixText: '\$ ',
+                ),
+                onChanged: (v) => _hourlyCostRate = double.tryParse(v) ?? 0,
               ),
             ],
           ),
@@ -427,7 +464,7 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
               'resource_name': name,
               'quantity_affected': _quantity,
               'unit': _unit,
-              'estimated_cost': _repairCost,
+              'hourly_cost_rate': _hourlyCostRate,
             });
           },
           child: const Text('Add'),

@@ -163,7 +163,7 @@ class _IncidentsDashboardPageState extends ConsumerState<IncidentsDashboardPage>
       ),
       child: Row(children: [
         _summaryItem(Icons.access_time, '${totalTime.toStringAsFixed(1)}h', 'Time Lost', AppTheme.accentCyan),
-        _summaryItem(Icons.attach_money, '\$${(totalCost + totalExpenses).toStringAsFixed(0)}', 'Budget Impact', AppTheme.errorRed),
+        _summaryItem(Icons.attach_money, '\$${(totalCost + totalExpenses).toStringAsFixed(0)}', 'Total Impact', AppTheme.errorRed),
         _summaryItem(Icons.warning, '$criticalCount', 'Critical', AppTheme.errorRed),
         _summaryItem(Icons.list_alt, '${_incidents.length}', 'Open Incidents', AppTheme.slate600),
       ]),

@@ -223,7 +223,7 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
               _infoRow('Started', _formatDate(i['started_at'])),
               _infoRow('Ended', i['ended_at'] != null ? _formatDate(i['ended_at']) : '-'),
               _infoRow('Time Lost', i['time_impact_hours'] != null ? '${(i['time_impact_hours'] as num).toStringAsFixed(1)}h' : '—'),
-              _infoRow('Budget Impact', i['cost_impact'] != null ? '\$${(i['cost_impact'] as num).toStringAsFixed(0)}' : '—'),
+              _infoRow('Cost Impact (time×rate)', i['cost_impact'] != null ? '\$${(i['cost_impact'] as num).toStringAsFixed(0)}' : '—'),
               _infoRow('Actual Expenses', '\$${(i['actual_expenses'] as num?)?.toStringAsFixed(0) ?? '0'}'),
             ]),
             const SizedBox(height: 16),

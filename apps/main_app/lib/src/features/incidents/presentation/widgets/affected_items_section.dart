@@ -59,7 +59,7 @@ class AffectedItemsSection extends StatelessWidget {
     final name = item['resource_name'] as String? ?? '';
     final qty = item['quantity_affected'] ?? 0;
     final unit = item['unit'] as String? ?? '';
-    final cost = item['estimated_cost'] ?? 0;
+    final rate = item['hourly_cost_rate'] ?? 0;
     final desc = item['description'] as String? ?? '';
 
     return Card(
@@ -109,7 +109,7 @@ class AffectedItemsSection extends StatelessWidget {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    '\$${(cost as num).toStringAsFixed(0)}',
+                    '\$${(rate as num).toStringAsFixed(0)}/hr',
                     style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate700),
                   ),
                 ),
