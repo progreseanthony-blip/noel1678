@@ -29,12 +29,15 @@ jobs:
           flutter pub get
           # También corremos build_runner aquí por si Riverpod lo necesita en main_app
           dart run build_runner build --delete-conflicting-outputs
-          
+
+          # Cargar configuración de producción desde .env.production
+          set -a && source ../../.env.production && set +a
+
           flutter build web --release \
-            --dart-define=ENVIRONMENT=production \
-            --dart-define=SUPABASE_URL=${{ secrets.SUPABASE_URL }} \
-            --dart-define=SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          
+            --dart-define=ENVIRONMENT=$ENVIRONMENT \
+            --dart-define=SUPABASE_URL=$SUPABASE_URL \
+            --dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY
+
           test -f build/web/main.dart.js || exit 1
 
       - name: Setup Supabase CLI
