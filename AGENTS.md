@@ -21,22 +21,23 @@ Always run in this sequence:
 
 ## How to run
 ```bash
-# Development (Chrome)
-cd apps/main_app
-flutter run -d chrome --web-port 8081
+# Required before first run / after dependency changes
+melos get   # Fetches deps across all packages
+melos gen   # Runs build_runner everywhere
 
-# Production web build
-flutter build web --release \
-  --dart-define=ENVIRONMENT=production \
-  --dart-define=SUPABASE_URL=<prod-url> \
-  --dart-define=SUPABASE_ANON_KEY=<prod-key>
+# Development (Chrome) — loads config from .env
+melos dev
+
+# Production web build — loads config from .env.production (CI does this automatically)
+# Config is passed via --dart-define, sourced from .env.production in the deploy workflow
 ```
 
 ## Environment & configuration
 - Configuration uses **compile-time `--dart-define` flags**, not `.env` at runtime
 - Read via `String.fromEnvironment()` in `packages/core/lib/src/config/env_config.dart`
-- Defaults point to local Supabase at `http://127.0.0.1:54421`
-- `.env` at repo root is for reference only; not loaded by the app
+- `.env` at repo root is the source of truth for development — loaded by `scripts/run_dev.ps1` → `melos dev`
+- `.env.production` at repo root is the source of truth for production — loaded by CI workflow
+- Defaults in `env_config.dart` serve only as fallback; update `.env` / `.env.production` for actual config changes
 
 ## Supabase local dev
 - Supabase CLI project at `supabase/`
