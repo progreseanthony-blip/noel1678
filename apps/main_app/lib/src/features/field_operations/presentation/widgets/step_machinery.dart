@@ -536,8 +536,6 @@ class _StepMachineryState extends State<StepMachinery> {
       ),
       const SizedBox(height: 6),
       ...items.map((pm) => _buildMachineryCard(pm)),
-      if (items.where((pm) => pm['is_principal'] == true).isNotEmpty)
-        _buildServiceTotalProgress(items),
     ]);
   }
 
@@ -877,117 +875,6 @@ class _StepMachineryState extends State<StepMachinery> {
         ]),
       );
     }
-  }
-
-  Widget _buildServiceTotalProgress(List<Map<String, dynamic>> items) {
-    double totalTripsProd = 0;
-    double totalTripsTarget = 0;
-    double totalCYProd = 0;
-    double totalCYTarget = 0;
-    bool hasTrips = false;
-    bool hasCY = false;
-    int maxDays = 1;
-
-    for (final pm in items) {
-      if (pm['is_principal'] != true) continue;
-      final pmId = pm['id'] as String;
-      final expectedQty = (pm['expected_quantity'] as int?) ?? 1;
-      final entryIndices = _entriesFor(pmId);
-      final est = _findEst(pm);
-      if (est == null) continue;
-
-      final tripBased = _isTripBased(pm);
-
-      double todayProd = 0;
-      double todayTrips = 0;
-      for (final idx in entryIndices) {
-        final entry = _entries[idx];
-        if (tripBased) {
-          todayTrips += ((entry['production_value'] as num?)?.toDouble() ?? 0);
-          todayProd += ((entry['_calculated_cy'] as num?)?.toDouble() ?? 0);
-        } else {
-          todayProd += ((entry['production_value'] as num?)?.toDouble() ?? 0);
-        }
-      }
-
-      final days = _daysElapsed(pm);
-      if (days > maxDays) maxDays = days;
-
-      if (tripBased) {
-        final tripsPerDay = ((est['trips_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
-        final capPerTrip = (est['capacity_per_trip'] as num?)?.toDouble() ?? 0;
-        final dailyTargetCY = capPerTrip * tripsPerDay;
-        if (dailyTargetCY <= 0) continue;
-
-        final histTrips = _rawProd[pmId] ?? 0.0;
-        final histCY = _machineryProduction[pmId] ?? 0.0;
-
-        totalTripsProd += histTrips + todayTrips;
-        totalTripsTarget += tripsPerDay * days;
-        totalCYProd += histCY + todayProd;
-        totalCYTarget += dailyTargetCY * days;
-        hasTrips = true;
-        hasCY = true;
-      } else {
-        final dailyTarget = ((est['performance_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
-        if (dailyTarget <= 0) continue;
-
-        final historicalProd = _rawProd[pmId] ?? 0.0;
-        totalTripsProd += historicalProd + todayProd;
-        totalTripsTarget += dailyTarget * days;
-        hasTrips = true;
-      }
-    }
-
-    if (!hasTrips && !hasCY) return const SizedBox.shrink();
-
-    final children = <Widget>[];
-    if (hasTrips && totalTripsTarget > 0) {
-      final ratio = (totalTripsProd / totalTripsTarget).clamp(0.0, 1.0);
-      final pct = (ratio * 100).toInt();
-      final barColor = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
-      children.add(Text(
-        'Service total: ${totalTripsProd.toStringAsFixed(0)} / ${totalTripsTarget.toStringAsFixed(0)} units  ($pct%)',
-        style: _t(fontSize: 11, fontWeight: FontWeight.w700, color: barColor),
-      ));
-      children.add(const SizedBox(height: 4));
-      children.add(ClipRRect(
-        borderRadius: BorderRadius.circular(3),
-        child: LinearProgressIndicator(
-          value: ratio,
-          backgroundColor: AppTheme.slate200,
-          valueColor: AlwaysStoppedAnimation<Color>(barColor),
-          minHeight: 8,
-        ),
-      ));
-    }
-    if (hasCY && totalCYTarget > 0) {
-      final ratio = (totalCYProd / totalCYTarget).clamp(0.0, 1.0);
-      final pct = (ratio * 100).toInt();
-      final barColor = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
-      children.add(const SizedBox(height: 6));
-      children.add(Text(
-        'Service total CY: ${totalCYProd.toStringAsFixed(0)} / ${totalCYTarget.toStringAsFixed(0)} CY  ($pct%)',
-        style: _t(fontSize: 11, fontWeight: FontWeight.w700, color: barColor),
-      ));
-      children.add(const SizedBox(height: 4));
-      children.add(ClipRRect(
-        borderRadius: BorderRadius.circular(3),
-        child: LinearProgressIndicator(
-          value: ratio,
-          backgroundColor: AppTheme.slate200,
-          valueColor: AlwaysStoppedAnimation<Color>(barColor),
-          minHeight: 8,
-        ),
-      ));
-    }
-
-    if (children.isEmpty) return const SizedBox.shrink();
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: children),
-    );
   }
 
   Future<void> _pickAndUploadPhoto(int index, String shiftKey) async {

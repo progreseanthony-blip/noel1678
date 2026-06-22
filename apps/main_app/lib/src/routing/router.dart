@@ -28,6 +28,13 @@ import '../features/incidents/presentation/pages/incident_form_page.dart';
 import '../features/incidents/presentation/pages/incident_dashboard_page.dart';
 import '../features/monitoring/presentation/pages/monitoring_projects_page.dart';
 import '../features/monitoring/presentation/pages/project_monitoring_page.dart';
+import '../features/billing/presentation/pages/billing_list_page.dart';
+import '../features/billing/presentation/pages/billing_matrix_page.dart';
+import '../features/billing/presentation/pages/billing_projects_page.dart';
+import '../features/change_orders/presentation/pages/change_orders_list_page.dart';
+import '../features/change_orders/presentation/pages/change_order_form_page.dart';
+import '../features/change_orders/presentation/pages/change_order_detail_page.dart';
+import '../features/change_orders/presentation/pages/change_orders_projects_page.dart';
 final goRouter = GoRouter(
   initialLocation: '/signin',
   routes: [
@@ -149,6 +156,51 @@ final goRouter = GoRouter(
         projectId: state.pathParameters['id']!,
         incidentId: state.pathParameters['incidentId']!,
       ),
+    ),
+    GoRoute(
+      path: '/projects/:id/billing',
+      builder: (context, state) => BillingListPage(projectId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/projects/:id/billing/new',
+      builder: (context, state) {
+        final extra = state.extra as Map<String, String>?;
+        return BillingMatrixPage(
+          projectId: state.pathParameters['id']!,
+          periodStart: extra?['periodStart'],
+          periodEnd: extra?['periodEnd'],
+        );
+      },
+    ),
+    GoRoute(
+      path: '/projects/:id/billing/:invoiceId',
+      builder: (context, state) => BillingMatrixPage(
+        projectId: state.pathParameters['id']!,
+        invoiceId: state.pathParameters['invoiceId'],
+      ),
+    ),
+    GoRoute(
+      path: '/projects/:id/change-orders',
+      builder: (context, state) => ChangeOrdersListPage(projectId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/projects/:id/change-orders/new',
+      builder: (context, state) => ChangeOrderFormPage(projectId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/projects/:id/change-orders/:coId',
+      builder: (context, state) => ChangeOrderDetailPage(
+        projectId: state.pathParameters['id']!,
+        coId: state.pathParameters['coId']!,
+      ),
+    ),
+    GoRoute(
+      path: '/billing',
+      builder: (context, state) => const BillingProjectsPage(),
+    ),
+    GoRoute(
+      path: '/change-orders',
+      builder: (context, state) => const ChangeOrdersProjectsPage(),
     ),
     GoRoute(
       path: '/catalogs',

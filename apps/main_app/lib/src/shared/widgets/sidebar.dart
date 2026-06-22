@@ -90,12 +90,22 @@ class Sidebar extends StatelessWidget {
                       ),
                       _SubExpandableNavItem(
                         label: 'Monitoring',
-                        isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.contains('/monitoring'),
-                        initiallyExpanded: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.contains('/monitoring'),
+                        isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.contains('/monitoring') || currentPath.contains('/billing') || currentPath.contains('/change-orders'),
+                        initiallyExpanded: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.contains('/monitoring') || currentPath.contains('/billing') || currentPath.contains('/change-orders'),
                         children: [
                           _SubNavItem(icon: Icons.attach_money, label: 'Labor Cost', isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost'), left: 44, onTap: () => context.go('/labor-cost')),
                           _SubNavItem(icon: Icons.speed, label: 'Production Metrics', isActive: currentPath.startsWith('/production-measurement'), left: 44, onTap: () => context.go('/production-measurement')),
                           _SubNavItem(icon: Icons.dashboard, label: 'Monitoring Dashboard', isActive: currentPath.contains('/monitoring'), left: 44, onTap: () => context.go('/monitoring')),
+                          _SubNavItem(icon: Icons.receipt_long_outlined, label: 'Billing', isActive: currentPath.contains('/billing'), left: 44, onTap: () {
+                            final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
+                            if (projectId.isNotEmpty) context.go('/projects/$projectId/billing');
+                            else context.go('/billing');
+                          }),
+                          _SubNavItem(icon: Icons.swap_horizontal_circle_outlined, label: 'Change Orders', isActive: currentPath.contains('/change-orders'), left: 44, onTap: () {
+                            final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
+                            if (projectId.isNotEmpty) context.go('/projects/$projectId/change-orders');
+                            else context.go('/change-orders');
+                          }),
                         ],
                       ),
                     ],
