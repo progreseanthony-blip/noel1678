@@ -33,6 +33,8 @@ class ProductionMeasurementService {
       plannedServices = List<Map<String, dynamic>>.from(qsResult ?? []);
     }
 
+    final serviceUnits = {for (final s in plannedServices) s['id'].toString(): (s['unit_of_measure'] as String?)?.toLowerCase() ?? ''};
+
     // Actual production per service from machinery logs
     final machResult = await _supabase
         .from('report_machinery_logs')
@@ -64,10 +66,10 @@ class ProductionMeasurementService {
         .from('report_material_usage')
         .select('''
           quantity_used,
-          project_material!inner(quote_service_id, project_id),
+          project_materials!inner(quote_service_id, project_id),
           daily_reports!inner(status)
         ''')
-        .eq('project_material.project_id', projectId)
+        .eq('project_materials.project_id', projectId)
         .in_('daily_reports.status', ['submitted', 'approved']);
     final matLogs = List<Map<String, dynamic>>.from(matResult ?? []);
 
@@ -102,10 +104,12 @@ class ProductionMeasurementService {
     for (final log in machLogs) {
       final qsId = log['project_machinery']?['quote_service_id']?.toString();
       if (qsId == null) continue;
-      final cap = (log['machinery']?['capacity_yards'] as num?)?.toDouble() ?? 1;
+      final cap = (log['machinery']?['capacity_yards'] as num?)?.toDouble() ?? 0;
       final prod = (log['production_value'] as num?)?.toDouble() ?? 0;
       final hrs = (log['total_hours'] as num?)?.toDouble() ?? 0;
-      actualProduction[qsId] = (actualProduction[qsId] ?? 0) + prod * cap;
+      final unit = serviceUnits[qsId] ?? '';
+      final isVolumeUnit = unit == 'cy' || unit == 'ft2' || unit == 'sqft' || unit == 'sf';
+      actualProduction[qsId] = (actualProduction[qsId] ?? 0) + (isVolumeUnit && cap > 0 ? prod * cap : prod);
       actualMachHours[qsId] = (actualMachHours[qsId] ?? 0) + hrs;
 
       final pmId = log['project_machinery_id']?.toString();
@@ -134,7 +138,7 @@ class ProductionMeasurementService {
     }
 
     for (final log in matLogs) {
-      final qsId = log['project_material']?['quote_service_id']?.toString();
+      final qsId = log['project_materials']?['quote_service_id']?.toString();
       if (qsId == null) continue;
       final qty = (log['quantity_used'] as num?)?.toDouble() ?? 0;
       actualMaterialUsed[qsId] = (actualMaterialUsed[qsId] ?? 0) + qty;

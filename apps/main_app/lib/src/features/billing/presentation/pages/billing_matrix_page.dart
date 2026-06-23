@@ -78,38 +78,9 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         final loadedLines = linesRaw.cast<Map<String, dynamic>>();
         double scheduledTotal = 0;
 
-        // Get quote_id from project
-        final project = await Supabase.instance.client
-            .from('projects')
-            .select('quote_id')
-            .eq('id', widget.projectId)
-            .single();
-        final quoteId = project['quote_id'] as String?;
-
-        // Get actual scheduled values from quote_services using client-side calculation
-        if (quoteId != null) {
-          final qsList = await Supabase.instance.client
-              .from('quote_services')
-              .select()
-              .eq('quote_id', quoteId)
-              .order('created_at');
-
-          for (int i = 0; i < loadedLines.length && i < qsList.length; i++) {
-            final qs = qsList[i] as Map<String, dynamic>;
-            final quantity = (qs['quantity'] as num?)?.toDouble() ?? 0;
-            final directCost = (qs['direct_cost'] as num?)?.toDouble() ?? 0;
-            final oh = (qs['overhead_percentage'] as num?)?.toDouble() ?? 0;
-            final prof = (qs['profit_percentage'] as num?)?.toDouble() ?? 0;
-            final base = quantity * directCost;
-            final withOh = base * (1 + oh / 100);
-            final sale = withOh * (1 + prof / 100);
-            loadedLines[i]['scheduled_value'] = sale;
-            scheduledTotal += sale;
-          }
-        } else {
-          for (final l in loadedLines) {
-            scheduledTotal += (l['scheduled_value'] as num?)?.toDouble() ?? 0;
-          }
+        // Use scheduled_value from RPC directly (direct_cost now holds totalSaleV2)
+        for (final l in loadedLines) {
+          scheduledTotal += (l['scheduled_value'] as num?)?.toDouble() ?? 0;
         }
 
         if (mounted) {

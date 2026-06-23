@@ -110,6 +110,7 @@ class InstrumentEntry {
 }
 
 class ServiceEntry {
+  String? dbId;
   String name;
   String unitOfMeasure;
   double quantity;
@@ -726,7 +727,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             estimationData: estimationData,
             catalogId: svcData['service_id']
                 ?.toString(), // Map it if it exists in DB, otherwise we match by name below
-          ),
+          )..dbId = svcId,
         );
       }
 
@@ -814,9 +815,6 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             })
             .eq('id', widget.quoteToEdit!['id']);
         quoteId = widget.quoteToEdit!['id'];
-
-        // Delete old children to re-insert
-        await supabase.from('quote_services').delete().eq('quote_id', quoteId);
       } else {
         final result = await supabase
             .from('quotes')
@@ -834,22 +832,45 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         quoteId = result['id'];
       }
 
-      // Insert services, machineries, labors
+      // Insert or update services, machineries, labors
       for (final svc in _services) {
-        final svcResult = await supabase
-            .from('quote_services')
-            .insert({
-              'quote_id': quoteId,
-              'name': svc.name,
-              'unit_of_measure': svc.unitOfMeasure,
-              'quantity': svc.quantity,
-              'overhead_percentage': svc.overheadPercentage,
-              'profit_percentage': svc.profitPercentage,
-              'direct_cost': svc.directCost,
-            })
-            .select()
-            .single();
-        final svcId = svcResult['id'];
+        final String svcId;
+        if (svc.dbId != null) {
+          svcId = svc.dbId!;
+          await supabase
+              .from('quote_services')
+              .update({
+                'name': svc.name,
+                'unit_of_measure': svc.unitOfMeasure,
+                'quantity': svc.quantity,
+                'overhead_percentage': svc.overheadPercentage,
+                'profit_percentage': svc.profitPercentage,
+                'direct_cost': svc.totalSaleV2,
+              })
+              .eq('id', svcId);
+
+          // Delete old resource children to re-insert
+          await supabase.from('quote_service_machineries').delete().eq('quote_service_id', svcId);
+          await supabase.from('quote_service_labors').delete().eq('quote_service_id', svcId);
+          await supabase.from('quote_service_materials').delete().eq('quote_service_id', svcId);
+          await supabase.from('quote_service_instruments').delete().eq('quote_service_id', svcId);
+          await supabase.from('quote_service_estimations').delete().eq('quote_service_id', svcId);
+        } else {
+          final svcResult = await supabase
+              .from('quote_services')
+              .insert({
+                'quote_id': quoteId,
+                'name': svc.name,
+                'unit_of_measure': svc.unitOfMeasure,
+                'quantity': svc.quantity,
+                'overhead_percentage': svc.overheadPercentage,
+                'profit_percentage': svc.profitPercentage,
+                'direct_cost': svc.totalSaleV2,
+              })
+              .select()
+              .single();
+          svcId = svcResult['id'];
+        }
 
         for (final m in svc.machineries) {
           await supabase.from('quote_service_machineries').insert({

@@ -8,8 +8,8 @@ class ProjectBalanceHelper {
     final result = await supabase.from('report_material_usage').select('''
       project_material_id, quantity_used,
       daily_reports!inner(status),
-      project_material!inner(project_id)
-    ''').eq('project_material.project_id', projectId)
+      project_materials!inner(project_id)
+    ''').eq('project_materials.project_id', projectId)
         .in_('daily_reports.status', ['submitted', 'approved']);
 
     final map = <String, double>{};

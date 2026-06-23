@@ -108,7 +108,7 @@ class _ProjectMonitoringPageState extends State<ProjectMonitoringPage> {
         child: Sidebar(
           userName: userName,
           userEmail: userEmail,
-          currentPath: '/projects/${widget.projectId}',
+          currentPath: '/projects/${widget.projectId}/monitoring',
           onLogout: () async {
             await Supabase.instance.client.auth.signOut();
             if (context.mounted) context.go('/signin');
@@ -121,7 +121,7 @@ class _ProjectMonitoringPageState extends State<ProjectMonitoringPage> {
             Sidebar(
               userName: userName,
               userEmail: userEmail,
-              currentPath: '/projects/${widget.projectId}',
+currentPath: '/projects/${widget.projectId}/monitoring',
               onLogout: () async {
                 await Supabase.instance.client.auth.signOut();
                 if (context.mounted) context.go('/signin');
@@ -184,9 +184,9 @@ class _ProjectMonitoringPageState extends State<ProjectMonitoringPage> {
     final totalDays = (s['total_days'] as int?) ?? 1;
     final servicesCount = (s['services_count'] as int?) ?? 0;
 
-    final overallProgress = _services.isNotEmpty
-        ? _services.fold<double>(0, (sum, svc) => sum + ((svc['progress'] as num?)?.toDouble() ?? 0)) / _services.length
-        : 0.0;
+    final totalActualQty = _services.fold<double>(0, (sum, svc) => sum + ((svc['actual_quantity'] as num?)?.toDouble() ?? 0));
+    final totalPlannedQty = _services.fold<double>(0, (sum, svc) => sum + ((svc['planned_quantity'] as num?)?.toDouble() ?? 0));
+    final overallProgress = totalPlannedQty > 0 ? (totalActualQty / totalPlannedQty * 100) : 0.0;
     final totalActualCost = _services.fold<double>(0, (sum, svc) => sum + ((svc['actual_cost'] as num?)?.toDouble() ?? 0));
     final totalEv = _services.fold<double>(0, (sum, svc) => sum + ((svc['earned_value'] as num?)?.toDouble() ?? 0));
     final cpi = totalActualCost > 0 ? totalEv / totalActualCost : 1.0;
@@ -388,7 +388,7 @@ class _ProjectMonitoringPageState extends State<ProjectMonitoringPage> {
             Text('Machinery', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate400, letterSpacing: 0.5)),
             const SizedBox(height: 6),
             for (final m in machines.take(5))
-              _irregularRow(m, Icons.precision_manufacturing, '${m['name']} — ${m['deviation_count']} deviations, ${m['total_hours'].toStringAsFixed(0)}h'),
+              _irregularRow(m, Icons.precision_manufacturing, '${m['name']} — ${m['deviation_count']} deviations, ${(m['total_hours'] as num?)?.toDouble() ?? 0}${m['odometer_unit'] == 'miles' ? ' mi' : 'h'}'),
           ],
         ],
       ),

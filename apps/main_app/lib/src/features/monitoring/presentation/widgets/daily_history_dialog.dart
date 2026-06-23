@@ -7,6 +7,7 @@ class DailyHistoryDialog extends StatefulWidget {
   final String resourceType;
   final String resourceId;
   final String resourceName;
+  final String odometerUnit;
 
   const DailyHistoryDialog({
     super.key,
@@ -14,6 +15,7 @@ class DailyHistoryDialog extends StatefulWidget {
     required this.resourceType,
     required this.resourceId,
     required this.resourceName,
+    this.odometerUnit = 'hours',
   });
 
   @override
@@ -127,8 +129,9 @@ class _DailyHistoryDialogState extends State<DailyHistoryDialog> {
                     if (widget.resourceType == 'machinery') {
                       final prod = (e['production_value'] as num?)?.toDouble() ?? 0;
                       final hrs = (e['total_hours'] as num?)?.toDouble() ?? 0;
+                      final unitLabel = widget.odometerUnit == 'miles' ? 'Miles' : 'Hours';
                       return _entryRow(date, status,
-                        'Production: ${prod.toStringAsFixed(0)} · Hours: ${hrs.toStringAsFixed(1)}',
+                        'Production: ${prod.toStringAsFixed(0)} · $unitLabel: ${hrs.toStringAsFixed(1)}',
                         devReason,
                       );
                     } else {

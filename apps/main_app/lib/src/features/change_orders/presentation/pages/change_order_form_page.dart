@@ -11,8 +11,11 @@ import '../../../../shared/widgets/sidebar.dart';
 
 class ChangeOrderFormPage extends ConsumerStatefulWidget {
   final String projectId;
+  final String? coId;
 
-  const ChangeOrderFormPage({super.key, required this.projectId});
+  const ChangeOrderFormPage({super.key, required this.projectId, this.coId});
+
+  bool get isEditing => coId != null;
 
   @override
   ConsumerState<ChangeOrderFormPage> createState() => _ChangeOrderFormPageState();
@@ -23,9 +26,16 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
   final _descCtrl = TextEditingController();
   int _schedDays = 0;
   bool _saving = false;
+  bool _loadingData = false;
 
   final _lines = <Map<String, dynamic>>[];
   final _fmt = NumberFormat('#,##0.00', 'en_US');
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isEditing) _loadData();
+  }
 
   @override
   void dispose() {
@@ -39,6 +49,25 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     final up = (l['unit_price'] as num?)?.toDouble() ?? 0;
     return s + (qty * up);
   });
+
+  bool get _isEditing => widget.isEditing;
+
+  Future<void> _loadData() async {
+    setState(() => _loadingData = true);
+    try {
+      final co = await ref.read(changeOrderDetailProvider(widget.coId!).future);
+      final details = co['details'] as List<dynamic>? ?? [];
+
+      _titleCtrl.text = co['title'] ?? '';
+      _descCtrl.text = co['description'] ?? '';
+      _schedDays = (co['schedule_days_change'] as num?)?.toInt() ?? 0;
+      _lines.clear();
+      for (final d in details) {
+        _lines.add(Map<String, dynamic>.from(d as Map));
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _loadingData = false);
+  }
 
   Future<void> _addExistingService() async {
     final services = await ref.read(quoteServiceListProvider(widget.projectId).future);
@@ -192,25 +221,45 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     setState(() => _saving = true);
     try {
       final controller = ref.read(changeOrderControllerProvider.notifier);
-      final co = await controller.createChangeOrder({
-        'project_id': widget.projectId,
-        'title': _titleCtrl.text.trim(),
-        'description': _descCtrl.text.trim(),
-        'executed_date': DateTime.now().toIso8601String().split('T')[0],
-        'original_contract_amount': 0,
-        'schedule_days_change': _schedDays,
-        'created_by': Supabase.instance.client.auth.currentUser?.id,
-      });
 
-      if (_lines.isNotEmpty) {
-        await controller.saveDetails(co['id'], _lines);
-      }
+      if (_isEditing) {
+        await controller.updateChangeOrder(widget.coId!, {
+          'title': _titleCtrl.text.trim(),
+          'description': _descCtrl.text.trim(),
+          'schedule_days_change': _schedDays,
+        });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Change Order created', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.primaryGreen),
-        );
-        context.go('/projects/${widget.projectId}/change-orders/${co['id']}');
+        if (_lines.isNotEmpty) {
+          await controller.saveDetails(widget.coId!, _lines);
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Change Order updated', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.primaryGreen),
+          );
+          context.go('/projects/${widget.projectId}/change-orders/${widget.coId}');
+        }
+      } else {
+        final co = await controller.createChangeOrder({
+          'project_id': widget.projectId,
+          'title': _titleCtrl.text.trim(),
+          'description': _descCtrl.text.trim(),
+          'executed_date': DateTime.now().toIso8601String().split('T')[0],
+          'original_contract_amount': 0,
+          'schedule_days_change': _schedDays,
+          'created_by': Supabase.instance.client.auth.currentUser?.id,
+        });
+
+        if (_lines.isNotEmpty) {
+          await controller.saveDetails(co['id'], _lines);
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Change Order created', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.primaryGreen),
+          );
+          context.go('/projects/${widget.projectId}/change-orders/${co['id']}');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -230,6 +279,13 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     final userEmail = currentUser?.email ?? '';
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 1250;
+
+    if (_loadingData) {
+      return Scaffold(
+        backgroundColor: AppTheme.backgroundLight,
+        body: Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen)),
+      );
+    }
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
@@ -288,7 +344,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Icon(Icons.chevron_right, size: 16, color: AppTheme.slate400),
             ),
-            Text('New', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+            Text(_isEditing ? 'Edit' : 'New', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
           ],
           const Spacer(),
           ElevatedButton.icon(
@@ -323,7 +379,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('New Change Order', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+              Text(_isEditing ? 'Edit Change Order' : 'New Change Order', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
               const SizedBox(height: 20),
               TextField(
                 controller: _titleCtrl,

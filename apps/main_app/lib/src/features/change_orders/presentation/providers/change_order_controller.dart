@@ -28,6 +28,13 @@ class ChangeOrderController extends _$ChangeOrderController {
     ref.invalidate(changeOrderDetailProvider(coId));
   }
 
+  Future<void> submitChangeOrder(String id) async {
+    final svc = ref.read(billingServiceProvider);
+    await svc.updateChangeOrder(id, {'status': 'submitted'});
+    ref.invalidate(changeOrderListProvider);
+    ref.invalidate(changeOrderDetailProvider(id));
+  }
+
   Future<void> approveChangeOrder(String id) async {
     final svc = ref.read(billingServiceProvider);
     final user = Supabase.instance.client.auth.currentUser;

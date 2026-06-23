@@ -46,11 +46,15 @@ class ProjectMonitoringService {
   Future<Map<String, List<Map<String, dynamic>>>> getServiceDetails(String projectId) async {
     final project = await _supabase
         .from('projects')
-        .select('quote_id')
+        .select('quote_id, start_date, end_date')
         .eq('id', projectId)
         .maybeSingle();
     final quoteId = project?['quote_id'];
     if (quoteId == null) return {'services': [], 'alerts': []};
+
+    final start = DateTime.tryParse(project?['start_date']?.toString() ?? '');
+    final now = DateTime.now();
+    final elapsedDays = start != null ? now.difference(start).inDays.clamp(0, 9999) : 0;
 
     final plannedServices = await _supabase
         .from('quote_services')
@@ -58,10 +62,13 @@ class ProjectMonitoringService {
         .eq('quote_id', quoteId);
     final services = List<Map<String, dynamic>>.from(plannedServices ?? []);
 
+    // Build unit-of-measure lookup for trip-based detection
+    final serviceUnits = {for (final s in services) s['id'].toString(): (s['unit_of_measure'] as String?)?.toLowerCase() ?? ''};
+
     final machLogs = await _supabase
         .from('report_machinery_logs')
         .select('''
-          production_value, total_hours,
+          production_value, total_hours, fuel_added,
           machinery!inner(capacity_yards),
           project_machinery!inner(quote_service_id, project_id, id),
           daily_reports!inner(status),
@@ -76,7 +83,8 @@ class ProjectMonitoringService {
         .select('''
           regular_hours, overtime_hours,
           project_labor!inner(quote_service_id, project_id),
-          daily_reports!inner(status)
+          daily_reports!inner(status),
+          workers!worker_id!inner(role_id, labor_roles!inner(hourly_rate))
         ''')
         .eq('project_labor.project_id', projectId)
         .in_('daily_reports.status', ['submitted', 'approved']);
@@ -87,10 +95,13 @@ class ProjectMonitoringService {
     for (final log in machList) {
       final qsId = log['project_machinery']?['quote_service_id']?.toString();
       if (qsId == null) continue;
-      final cap = (log['machinery']?['capacity_yards'] as num?)?.toDouble() ?? 1;
+      final cap = (log['machinery']?['capacity_yards'] as num?)?.toDouble() ?? 0;
       final prod = (log['production_value'] as num?)?.toDouble() ?? 0;
       final hrs = (log['total_hours'] as num?)?.toDouble() ?? 0;
-      prodByService[qsId] = (prodByService[qsId] ?? 0) + prod * cap;
+      final unit = serviceUnits[qsId] ?? '';
+      final isVolumeUnit = unit == 'cy' || unit == 'ft2' || unit == 'sqft' || unit == 'sf';
+      final effectiveProd = isVolumeUnit && cap > 0 ? prod * cap : prod;
+      prodByService[qsId] = (prodByService[qsId] ?? 0) + effectiveProd;
       hrsByService[qsId] = (hrsByService[qsId] ?? 0) + hrs;
     }
 
@@ -102,8 +113,93 @@ class ProjectMonitoringService {
       final reg = (log['regular_hours'] as num?)?.toDouble() ?? 0;
       final ot = (log['overtime_hours'] as num?)?.toDouble() ?? 0;
       laborHrsByService[qsId] = (laborHrsByService[qsId] ?? 0) + reg + ot;
-      final rate = 0.0;
+      final rate = (log['workers']?['labor_roles']?['hourly_rate'] as num?)?.toDouble() ?? 0;
       laborCostByService[qsId] = (laborCostByService[qsId] ?? 0) + reg * rate + ot * rate * 1.5;
+    }
+
+    // Machinery costs per project_machinery_id
+    final machCostRows = await _supabase
+        .from('project_machinery')
+        .select('id, quote_service_machineries(monthly_rent_cost, gallon_cost)')
+        .eq('project_id', projectId);
+    final Map<String, Map<String, dynamic>> machCostMap = {};
+    for (final row in machCostRows ?? []) {
+      final pmId = row['id']?.toString();
+      if (pmId != null) {
+        final qsm = row['quote_service_machineries'];
+        if (qsm is Map<String, dynamic>) {
+          machCostMap[pmId] = {
+            'monthly_rent_cost': (qsm['monthly_rent_cost'] as num?)?.toDouble() ?? 0,
+            'gallon_cost': (qsm['gallon_cost'] as num?)?.toDouble() ?? 0,
+          };
+        }
+      }
+    }
+
+    final Map<String, double> machCostByService = {};
+    for (final log in machList) {
+      final qsId = log['project_machinery']?['quote_service_id']?.toString();
+      if (qsId == null) continue;
+      final hrs = (log['total_hours'] as num?)?.toDouble() ?? 0;
+      final fuel = (log['fuel_added'] as num?)?.toDouble() ?? 0;
+      final pmId = log['project_machinery_id']?.toString();
+      final costInfo = pmId != null ? machCostMap[pmId] : null;
+      double machCost = 0;
+      if (costInfo != null) {
+        final rent = costInfo['monthly_rent_cost'] as double;
+        final gal = costInfo['gallon_cost'] as double;
+        machCost = (rent > 0 ? (hrs / 8) * (rent / 30) : 0) + fuel * gal;
+      }
+      machCostByService[qsId] = (machCostByService[qsId] ?? 0) + machCost;
+    }
+
+    // Material usage and costs
+    final matLogs = await _supabase
+        .from('report_material_usage')
+        .select('quantity_used, project_materials!inner(quote_service_id, project_id), daily_reports!inner(status)')
+        .eq('project_materials.project_id', projectId)
+        .in_('daily_reports.status', ['submitted', 'approved']);
+    final matList = List<Map<String, dynamic>>.from(matLogs ?? []);
+
+    // Material unit prices from quote_service_materials
+    final matPriceRows = await _supabase
+        .from('project_materials')
+        .select('id, quote_service_materials(unit_price)')
+        .eq('project_id', projectId);
+    final Map<String, double> matPriceMap = {};
+    for (final row in matPriceRows ?? []) {
+      final pmId = row['id']?.toString();
+      if (pmId != null) {
+        final qsm = row['quote_service_materials'];
+        if (qsm is Map<String, dynamic>) {
+          matPriceMap[pmId] = (qsm['unit_price'] as num?)?.toDouble() ?? 0;
+        }
+      }
+    }
+
+    final Map<String, double> matCostByService = {};
+    for (final log in matList) {
+      final qsId = log['project_materials']?['quote_service_id']?.toString();
+      if (qsId == null) continue;
+      final qty = (log['quantity_used'] as num?)?.toDouble() ?? 0;
+      final pmId = log['project_material_id']?.toString();
+      final unitPrice = pmId != null ? (matPriceMap[pmId] ?? 0) : 0;
+      matCostByService[qsId] = (matCostByService[qsId] ?? 0) + qty * unitPrice;
+    }
+
+    // Equipment/instruments prorated by elapsed days
+    final Map<String, double> equipCostByService = {};
+    final instrRows = await _supabase
+        .from('quote_service_instruments')
+        .select('quote_service_id, total_cost, days')
+        .in_('quote_service_id', services.map((s) => s['id']).toList());
+    for (final row in instrRows ?? []) {
+      final qsId = row['quote_service_id']?.toString();
+      if (qsId == null) continue;
+      final totalCost = (row['total_cost'] as num?)?.toDouble() ?? 0;
+      final instrumentDays = (row['days'] as num?)?.toDouble() ?? 1;
+      final prorated = instrumentDays > 0 ? totalCost * (elapsedDays / instrumentDays).clamp(0.0, 1.0) : 0;
+      equipCostByService[qsId] = (equipCostByService[qsId] ?? 0) + prorated;
     }
 
     final List<Map<String, dynamic>> resultServices = [];
@@ -118,7 +214,10 @@ class ProjectMonitoringService {
       final unitCost = plannedQty > 0 ? directCost / plannedQty : 0;
       final ev = actualProd * unitCost;
       final totalHrs = (hrsByService[qsId] ?? 0) + (laborHrsByService[qsId] ?? 0);
-      final actualCost = laborCostByService[qsId] ?? 0;
+      final actualCost = (laborCostByService[qsId] ?? 0)
+          + (machCostByService[qsId] ?? 0)
+          + (matCostByService[qsId] ?? 0)
+          + (equipCostByService[qsId] ?? 0);
       final cpi = actualCost > 0 && ev > 0 ? ev / actualCost : 1.0;
 
       if (actualCost > 0 && ev > 0 && cpi < 0.95) {
@@ -199,6 +298,26 @@ class ProjectMonitoringService {
       }
     }
     resources.addAll(machMap.values);
+
+    // Attach odometer_unit from machinery_inspections
+    if (machMap.isNotEmpty) {
+      final pmIds = machMap.keys.toList();
+      final inspResult = await _supabase
+          .from('machinery_inspections')
+          .select('project_machinery_id, odometer_unit')
+          .in_('project_machinery_id', pmIds);
+      final Map<String, String> odometerMap = {};
+      for (final row in inspResult ?? []) {
+        final pmId = row['project_machinery_id']?.toString();
+        if (pmId != null) {
+          odometerMap[pmId] = row['odometer_unit']?.toString() ?? 'hours';
+        }
+      }
+      for (final entry in machMap.values) {
+        final pmId = entry['id'] as String;
+        entry['odometer_unit'] = odometerMap[pmId] ?? 'hours';
+      }
+    }
 
     final laborResult = await _supabase
         .from('report_labor_logs')
@@ -380,6 +499,25 @@ class ProjectMonitoringService {
         ((m['total_production'] as double) / ((m['total_hours'] as double).clamp(1, 9999))) < 1.0
     ).toList();
     irregulars.sort((a, b) => (b['deviation_count'] as int).compareTo(a['deviation_count'] as int));
+
+    // Attach odometer_unit from machinery_inspections
+    if (machines.isNotEmpty) {
+      final pmIds = machines.keys.toList();
+      final inspResult = await _supabase
+          .from('machinery_inspections')
+          .select('project_machinery_id, odometer_unit')
+          .in_('project_machinery_id', pmIds);
+      final Map<String, String> odometerMap = {};
+      for (final row in inspResult ?? []) {
+        final pmId = row['project_machinery_id']?.toString();
+        if (pmId != null) {
+          odometerMap[pmId] = row['odometer_unit']?.toString() ?? 'hours';
+        }
+      }
+      for (final entry in machines.values) {
+        entry['odometer_unit'] = odometerMap[entry['id'] as String] ?? 'hours';
+      }
+    }
 
     return {
       'irregular_machines': irregulars,

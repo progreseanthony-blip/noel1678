@@ -160,6 +160,14 @@ class _ChangeOrdersListPageState extends ConsumerState<ChangeOrdersListPage> {
             Row(
               children: [
                 Expanded(child: Text(co['co_number'] ?? '', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.slate900))),
+                if (co['status'] == 'draft')
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 18, color: AppTheme.slate500),
+                    onPressed: () => context.go('/projects/${widget.projectId}/change-orders/${co['id']}/edit'),
+                    tooltip: 'Edit',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  ),
                 _statusBadge(co['status']?.toString() ?? 'draft'),
               ],
             ),
@@ -213,7 +221,17 @@ class _ChangeOrdersListPageState extends ConsumerState<ChangeOrdersListPage> {
                     color: adj >= 0 ? AppTheme.primaryGreen : AppTheme.errorRed,
                   ))),
                   DataCell(Text(co['executed_date']?.toString() ?? '', style: GoogleFonts.manrope(fontSize: 11))),
-                  DataCell(Icon(Icons.chevron_right, size: 18, color: AppTheme.slate400)),
+                  DataCell(
+                    co['status'] == 'draft'
+                        ? IconButton(
+                            icon: const Icon(Icons.edit_outlined, size: 18, color: AppTheme.slate500),
+                            onPressed: () => context.go('/projects/${widget.projectId}/change-orders/${co['id']}/edit'),
+                            tooltip: 'Edit',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          )
+                        : Icon(Icons.chevron_right, size: 18, color: AppTheme.slate400),
+                  ),
                 ],
               );
             }).toList(),

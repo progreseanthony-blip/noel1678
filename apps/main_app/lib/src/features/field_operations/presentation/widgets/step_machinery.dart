@@ -613,7 +613,7 @@ class _StepMachineryState extends State<StepMachinery> {
     );
   }
 
-  int _daysElapsed(Map<String, dynamic> pm) {
+  double _daysElapsed(Map<String, dynamic> pm) {
     final startDateStr = pm['start_date'] as String?;
     if (startDateStr == null) return 1;
     try {
@@ -621,8 +621,11 @@ class _StepMachineryState extends State<StepMachinery> {
       final refDate = widget.reportDate != null
           ? DateTime.parse(widget.reportDate!)
           : DateTime.now();
-      final diff = refDate.difference(startDate).inDays;
-      return (diff + 1).clamp(1, 9999);
+      double effectiveDays = 0;
+      for (var d = startDate; !d.isAfter(refDate); d = d.add(const Duration(days: 1))) {
+        effectiveDays += d.weekday == DateTime.saturday ? 0.5 : 1.0;
+      }
+      return effectiveDays.clamp(1.0, 9999.0);
     } catch (_) {
       return 1;
     }
@@ -989,10 +992,17 @@ class _StepMachineryState extends State<StepMachinery> {
 
       final histListRaw = _rawProdList[pmId] ?? [];
       final histListCY = _machineryProdList[pmId] ?? [];
-      final histTrips = myPos < histListRaw.length ? histListRaw[myPos] : 0.0;
-      final histCY = myPos < histListCY.length ? histListCY[myPos] : 0.0;
+      final expectedQty = entryIndices.length;
+      double histTrips = 0.0;
+      for (int i = myPos; i < histListRaw.length; i += expectedQty) {
+        histTrips += histListRaw[i];
+      }
+      double histCyFromList = 0.0;
+      for (int i = myPos; i < histListCY.length; i += expectedQty) {
+        histCyFromList += histListCY[i];
+      }
       final cumTrips = histTrips + todayTrips;
-      final cumCY = histCY + todayCY;
+      final cumCY = histCyFromList + todayCY;
       final cumTargetTrips = tripsPerDay * days;
       final cumTargetCY = dailyTargetCY * days;
 
@@ -1038,7 +1048,11 @@ class _StepMachineryState extends State<StepMachinery> {
       final todayProd = (entry['production_value'] as num?)?.toDouble() ?? 0.0;
 
       final histList = _rawProdList[pmId] ?? [];
-      final historicalProd = myPos < histList.length ? histList[myPos] : 0.0;
+      final expectedQty = entryIndices.length;
+      double historicalProd = 0.0;
+      for (int i = myPos; i < histList.length; i += expectedQty) {
+        historicalProd += histList[i];
+      }
       final cumulativeProd = historicalProd + todayProd;
       final cumulativeTarget = dailyTarget * days;
 

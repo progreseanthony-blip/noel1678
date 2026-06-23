@@ -681,7 +681,6 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
                                         ),
                                       ),
                                     ),
-                                    if (isBusyElsewhere) _buildBusyBadge(busyProject),
                                     if (isAssignedHere)
                                       IconButton(
                                         icon: const Icon(Icons.edit_calendar, size: 20, color: Colors.blue),
@@ -690,6 +689,11 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
                                       ),
                                   ],
                                 ),
+                                if (isBusyElsewhere)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: _buildBusyBadge(busyProject),
+                                  ),
                                 Text(
                                   'ID: ${worker['id_number'] ?? '-'}  \u2022  ${worker['role']?['description'] ?? 'No role'}',
                                   style: GoogleFonts.manrope(
@@ -746,7 +750,11 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(color: AppTheme.errorRed.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-      child: Text('BUSY: $project', style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.errorRed)),
+      child: Text(
+        'BUSY: $project',
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.errorRed)),
     );
   }
 }

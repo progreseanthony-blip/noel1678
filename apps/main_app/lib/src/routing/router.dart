@@ -12,6 +12,7 @@ import '../features/projects/presentation/pages/projects_list_page.dart';
 import '../features/projects/presentation/pages/project_detail_page.dart';
 import '../features/projects/presentation/pages/project_baseline_page.dart';
 import '../features/projects/presentation/pages/reception_page.dart';
+import '../features/projects/presentation/pages/reception_projects_page.dart';
 import '../features/field_operations/presentation/pages/daily_report_wizard_page.dart';
 import '../features/field_operations/presentation/pages/daily_reports_list_page.dart';
 import '../features/field_operations/presentation/pages/baseline_projects_page.dart';
@@ -188,11 +189,22 @@ final goRouter = GoRouter(
       builder: (context, state) => ChangeOrderFormPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
+      path: '/projects/:id/change-orders/:coId/edit',
+      builder: (context, state) => ChangeOrderFormPage(
+        projectId: state.pathParameters['id']!,
+        coId: state.pathParameters['coId'],
+      ),
+    ),
+    GoRoute(
       path: '/projects/:id/change-orders/:coId',
       builder: (context, state) => ChangeOrderDetailPage(
         projectId: state.pathParameters['id']!,
         coId: state.pathParameters['coId']!,
       ),
+    ),
+    GoRoute(
+      path: '/reception',
+      builder: (context, state) => const ReceptionProjectsPage(),
     ),
     GoRoute(
       path: '/billing',

@@ -283,6 +283,37 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
                 ],
               ),
             ),
+          if (status == 'draft') ...[
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  try {
+                    await ref.read(changeOrderControllerProvider.notifier).submitChangeOrder(widget.coId);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Change Order submitted', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.primaryGreen),
+                      );
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.send, color: Colors.white),
+                label: Text('Submit for Approval', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryGreen,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+              ),
+            ),
+          ],
           if (status == 'submitted') ...[
             const SizedBox(height: 24),
             Row(

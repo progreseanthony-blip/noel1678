@@ -23,7 +23,8 @@ class ResourceRow extends StatelessWidget {
       final devCount = (resource['deviation_count'] as int?) ?? 0;
       indicatorColor = devCount >= 2 ? Colors.redAccent : (prod > 0 ? AppTheme.primaryGreen : AppTheme.slate400);
       statusLabel = devCount >= 2 ? 'IRREGULAR' : (prod > 0 ? 'ACTIVE' : 'NO DATA');
-      metricLine = '${prod.toStringAsFixed(0)} prod · ${hrs.toStringAsFixed(1)} hrs · ${devCount} deviations';
+      final odometerUnit = resource['odometer_unit']?.toString() == 'miles' ? 'mi' : 'hrs';
+      metricLine = '${prod.toStringAsFixed(0)} prod · ${hrs.toStringAsFixed(1)} $odometerUnit · ${devCount} deviations';
     } else {
       final totalHrs = (resource['total_hours'] as num?)?.toDouble() ?? 0;
       final ot = (resource['total_ot'] as num?)?.toDouble() ?? 0;
