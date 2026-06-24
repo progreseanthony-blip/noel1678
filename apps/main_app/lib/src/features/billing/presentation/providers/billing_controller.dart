@@ -26,6 +26,22 @@ class BillingController extends _$BillingController {
     ref.invalidate(invoiceListProvider);
   }
 
+  Future<void> markAsPaid(String id) async {
+    final svc = ref.read(billingServiceProvider);
+    await svc.updateInvoiceStatus(id, 'paid');
+    ref.invalidate(invoiceListProvider);
+  }
+
+  Future<void> linkCOToInvoice(String invoiceId, String coId) async {
+    final svc = ref.read(billingServiceProvider);
+    await svc.linkChangeOrderToInvoice(invoiceId, coId);
+  }
+
+  Future<void> unlinkCOFromInvoice(String invoiceId, String coId) async {
+    final svc = ref.read(billingServiceProvider);
+    await svc.unlinkChangeOrder(invoiceId, coId);
+  }
+
   Future<void> saveInvoiceDetails(String invoiceId, List<Map<String, dynamic>> details) async {
     final svc = ref.read(billingServiceProvider);
     await svc.saveInvoiceDetails(invoiceId, details);

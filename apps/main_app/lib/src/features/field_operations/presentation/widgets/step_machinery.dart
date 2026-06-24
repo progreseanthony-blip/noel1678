@@ -1066,7 +1066,7 @@ class _StepMachineryState extends State<StepMachinery> {
         padding: const EdgeInsets.only(bottom: 6),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
-            'Machine ${index + 1}/$totalCount: ${cumulativeProd.toStringAsFixed(0)} / ${cumulativeTarget.toStringAsFixed(0)} $unit  ($pct%)',
+            'Machine ${myPos + 1}/$totalCount: ${cumulativeProd.toStringAsFixed(0)} / ${cumulativeTarget.toStringAsFixed(0)} $unit  ($pct%)',
             style: _t(fontSize: 10, fontWeight: FontWeight.w600, color: barColor),
           ),
           const SizedBox(height: 2),

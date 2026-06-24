@@ -41,6 +41,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
   bool _isDirty = false;
   String? _error;
   double _retainageRate = 5.0;
+  final Set<String> _linkedCoIds = {};
   final _fmt = NumberFormat('#,##0.00', 'en_US');
 
   @override
@@ -58,7 +59,27 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         final inv = await svc.getInvoice(widget.invoiceId!);
         final details = await svc.getInvoiceDetails(widget.invoiceId!);
 
+        // Load linked Change Orders
+        final links = await Supabase.instance.client
+            .from('invoice_change_order_links')
+            .select('change_order_id')
+            .eq('invoice_id', widget.invoiceId);
+        _linkedCoIds.clear();
+        _linkedCoIds.addAll(links.map((l) => l['change_order_id'].toString()));
+
         if (mounted) {
+          // Ensure correct order: services → CO headers → CO details
+          details.sort((a, b) {
+            const typeOrder = {
+              'service': 0, 'equipment': 1, 'co_adjustment': 2,
+              'change_order_header': 3, 'change_order_detail': 4
+            };
+            final aType = typeOrder[a['line_type']?.toString() ?? ''] ?? 99;
+            final bType = typeOrder[b['line_type']?.toString() ?? ''] ?? 99;
+            if (aType != bType) return aType.compareTo(bType);
+            return ((a['sort_order'] as num?)?.toInt() ?? 0)
+                .compareTo((b['sort_order'] as num?)?.toInt() ?? 0);
+          });
           setState(() {
             _invoice = inv;
             _lines = details;
@@ -84,6 +105,17 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         }
 
         if (mounted) {
+          // Ensure correct order: services → CO headers → CO details
+          loadedLines.sort((a, b) {
+            const typeOrder = {
+              'service': 0, 'equipment': 1, 'co_adjustment': 2,
+              'change_order_header': 3, 'change_order_detail': 4
+            };
+            final aType = typeOrder[a['line_type']?.toString() ?? ''] ?? 99;
+            final bType = typeOrder[b['line_type']?.toString() ?? ''] ?? 99;
+            if (aType != bType) return aType.compareTo(bType);
+            return 0;
+          });
           setState(() {
             _lines = loadedLines;
             _invoice = {
@@ -177,6 +209,16 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
       }).toList();
 
       await ctrl.saveInvoiceDetails(_invoice!['id'], details);
+
+      // Save Change Order links — delete old then re-insert
+      await Supabase.instance.client
+          .from('invoice_change_order_links')
+          .delete()
+          .eq('invoice_id', _invoice!['id']);
+      for (final coId in _linkedCoIds) {
+        await ctrl.linkCOToInvoice(_invoice!['id'], coId);
+      }
+
       setState(() => _isDirty = false);
 
       if (mounted) {
@@ -218,6 +260,194 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
           );
         }
       }
+    }
+  }
+
+  Future<void> _markAsPaid() async {
+    if (_invoice?['id'] == null) return;
+    try {
+      await ref.read(billingControllerProvider.notifier).markAsPaid(_invoice!['id']);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Marked as Paid', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.primaryGreen),
+        );
+        context.go('/projects/${widget.projectId}/billing');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
+  }
+
+  Future<void> _refreshFromReports() async {
+    if (_invoice?['id'] == null || _invoice?['period_start'] == null) return;
+    setState(() => _isSaving = true);
+    try {
+      final svc = ref.read(billingServiceProvider);
+      final data = await svc.getPayApplicationData(
+        projectId: widget.projectId,
+        periodStart: _invoice!['period_start'],
+        periodEnd: _invoice!['period_end'],
+        excludeInvoiceId: _invoice!['id'],
+      );
+      final rpcLines = (data['lines'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+
+      setState(() {
+        for (final rpcLine in rpcLines) {
+          final qsId = rpcLine['quote_service_id']?.toString();
+          final matchIndex = _lines.indexWhere((l) {
+            final lt = l['line_type']?.toString() ?? '';
+            if (lt == 'change_order_header' || lt == 'change_order_detail') return false;
+            return l['quote_service_id']?.toString() == qsId;
+          });
+          if (matchIndex >= 0) {
+            _lines[matchIndex]['this_period_amount'] = rpcLine['this_period_amount'];
+            _lines[matchIndex]['this_period_qty'] = rpcLine['this_period_qty'];
+            _lines[matchIndex]['previous_completed'] = rpcLine['previous_completed'];
+          }
+        }
+        _isDirty = true;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Refreshed from daily reports', style: GoogleFonts.manrope(color: Colors.white)),
+              backgroundColor: AppTheme.primaryGreen),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _linkChangeOrders() async {
+    final svc = ref.read(billingServiceProvider);
+    final allCOs = await svc.getChangeOrders(widget.projectId);
+    final approved = allCOs.where((co) => co['status'] == 'approved').toList();
+
+    if (approved.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('No approved Change Orders available', style: GoogleFonts.manrope())),
+        );
+      }
+      return;
+    }
+
+    // Get COs already linked to other invoices
+    final linkedResult = await Supabase.instance.client
+        .from('invoice_change_order_links')
+        .select('change_order_id');
+    final alreadyLinked = linkedResult.map((r) => r['change_order_id'].toString()).toSet();
+    final available = approved.where((co) => !alreadyLinked.contains(co['id'].toString()) || _linkedCoIds.contains(co['id'].toString())).toList();
+
+    if (!mounted) return;
+
+    final selectedIds = Set<String>.from(_linkedCoIds);
+    final result = await showDialog<Set<String>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text('Link Change Orders', style: GoogleFonts.manrope(fontWeight: FontWeight.w800)),
+          content: SizedBox(
+            width: 400,
+            child: available.isEmpty
+                ? Text('No approved Change Orders available', style: GoogleFonts.manrope(color: AppTheme.slate500))
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: available.map((co) => CheckboxListTile(
+                      dense: true,
+                      title: Text(co['co_number'] ?? '', style: GoogleFonts.manrope(fontWeight: FontWeight.w600, fontSize: 13)),
+                      subtitle: Text('\$${_fmt.format((co['adjustment_amount'] as num?)?.toDouble() ?? 0)} — ${co['title'] ?? ''}',
+                          style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500)),
+                      value: selectedIds.contains(co['id'] as String),
+                      onChanged: (val) {
+                        setDialogState(() {
+                          if (val == true) {
+                            selectedIds.add(co['id'] as String);
+                          } else {
+                            selectedIds.remove(co['id'] as String);
+                          }
+                        });
+                      },
+                    )).toList(),
+                  ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, selectedIds), child: const Text('Apply')),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      // Remove lines for COs that were unselected (sync - safe in setState)
+      setState(() {
+        _lines.removeWhere((l) => (l['line_type'] == 'change_order_header' || l['line_type'] == 'change_order_detail') && !result.contains(l['co_id']));
+      });
+
+      // Add header + detail lines for newly selected COs (async - load details first)
+      for (final co in approved) {
+        final coId = co['id'] as String;
+        if (result.contains(coId) && !_lines.any((l) => l['co_id'] == coId)) {
+          final coDetails = await svc.getChangeOrderDetails(coId);
+          final adjAmount = (co['adjustment_amount'] as num?)?.toDouble() ?? 0;
+
+          setState(() {
+            // Header line
+            _lines.add({
+              'quote_service_id': null,
+              'line_type': 'change_order_header',
+              'co_id': coId,
+              'service_name': 'CO: ${co['co_number'] ?? coId} — ${co['title'] ?? ''}',
+              'unit_of_measure': '',
+              'scheduled_value': adjAmount,
+              'previous_completed': 0,
+              'this_period_qty': 0,
+              'this_period_amount': adjAmount,
+              'equipment_present': 0,
+            });
+
+            // Detail sub-lines
+            for (final d in coDetails) {
+              final qty = (d['quantity_change'] as num?)?.toDouble() ?? 0;
+              final up = (d['unit_price'] as num?)?.toDouble() ?? 0;
+              final total = (d['total_change'] as num?)?.toDouble() ?? (qty * up);
+              final typeLabel = d['line_type'] == 'deduction' ? 'Deduct' : (d['line_type'] == 'new_service' ? 'New' : '');
+              final qtySign = qty >= 0 ? '+$qty' : '$qty';
+              _lines.add({
+                'quote_service_id': null,
+                'line_type': 'change_order_detail',
+                'co_id': coId,
+                'service_name': '  ${typeLabel.isNotEmpty ? '$typeLabel: ' : ''}${d['service_name'] ?? ''} ($qtySign ${d['unit_of_measure'] ?? ''} × \$${_fmt.format(up)})',
+                'unit_of_measure': d['unit_of_measure'] ?? '',
+                'scheduled_value': total,
+                'previous_completed': 0,
+                'this_period_qty': 0,
+                'this_period_amount': total,
+                'equipment_present': 0,
+              });
+            }
+          });
+        }
+      }
+
+      setState(() {
+        _linkedCoIds
+          ..clear()
+          ..addAll(result);
+        _isDirty = true;
+      });
     }
   }
 
@@ -335,6 +565,20 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
                 style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
           ],
           const Spacer(),
+          if (_invoice?['status'] == 'submitted') ...[
+            ElevatedButton.icon(
+              onPressed: _markAsPaid,
+              icon: const Icon(Icons.check_circle_outline, size: 18, color: Colors.white),
+              label: Text('Mark as Paid', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryGreen,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                elevation: 0,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
           if (!isSubmitted) ...[
             ElevatedButton.icon(
               onPressed: _isSaving ? null : _save,
@@ -359,6 +603,20 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 elevation: 0,
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          if (!isNew) ...[
+            OutlinedButton.icon(
+              onPressed: _isSaving ? null : _refreshFromReports,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: Text('Refresh', style: GoogleFonts.manrope(fontWeight: FontWeight.w600)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.primaryGreen,
+                side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
             ),
             const SizedBox(width: 8),
@@ -441,6 +699,21 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
           ]),
           const SizedBox(height: 12),
           _buildSummaryDetail(isMobile, orig, cosTotal, current),
+          if (!isSubmitted && cosTotal > 0) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _linkChangeOrders,
+              icon: const Icon(Icons.link, size: 16),
+              label: Text('Link Change Orders${_linkedCoIds.isNotEmpty ? ' (${_linkedCoIds.length})' : ''}',
+                  style: GoogleFonts.manrope(fontWeight: FontWeight.w600)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.primaryGreen,
+                side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -540,8 +813,30 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
     final rows = <DataRow>[];
     double tSv = 0, tTp = 0, tPrev = 0, tEq = 0, tTc = 0, tBal = 0, tRet = 0, tThis = 0;
 
+    int mainSeq = 0;
+    int? coHeaderSeq;
+    int coSubSeq = 0;
+
     for (int i = 0; i < _lines.length; i++) {
       final l = _lines[i];
+      final lt = l['line_type']?.toString() ?? '';
+
+      // Hierarchical numbering for CO lines
+      String rowNumber;
+      if (lt == 'change_order_header') {
+        mainSeq++;
+        coHeaderSeq = mainSeq;
+        coSubSeq = 0;
+        rowNumber = '$mainSeq';
+      } else if (lt == 'change_order_detail') {
+        coSubSeq++;
+        rowNumber = '$coHeaderSeq.$coSubSeq';
+      } else {
+        mainSeq++;
+        coHeaderSeq = null;
+        coSubSeq = 0;
+        rowNumber = '$mainSeq';
+      }
       final sv = (l['scheduled_value'] as num?)?.toDouble() ?? 0;
       final tpAmt = (l['this_period_amount'] as num?)?.toDouble() ?? 0;
       final prev = (l['previous_completed'] as num?)?.toDouble() ?? 0;
@@ -554,12 +849,16 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
       tSv += sv; tTp += tpAmt; tPrev += prev; tEq += eq;
       tTc += tc; tBal += bal; tRet += ret; tThis += ttp;
 
-      rows.add(DataRow(cells: [
-        DataCell(Text('${i + 1}', style: GoogleFonts.manrope(fontSize: 11))),
+      rows.add(DataRow(
+        color: lt == 'change_order_detail'
+            ? MaterialStateProperty.all(AppTheme.primaryGreen.withOpacity(0.06))
+            : null,
+        cells: [
+        DataCell(Text(rowNumber, style: GoogleFonts.manrope(fontSize: 11))),
         DataCell(Text(l['service_name'] ?? '', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w600))),
         DataCell(Text('\$${_fmt.format(sv)}', style: GoogleFonts.manrope(fontSize: 11))),
         DataCell(
-          isSubmitted
+          isSubmitted || l['line_type'] == 'change_order_header' || l['line_type'] == 'change_order_detail'
               ? Text('\$${_fmt.format(tpAmt)}', style: GoogleFonts.manrope(fontSize: 11))
               : SizedBox(
                   width: 100,
@@ -580,7 +879,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         ),
         DataCell(Text('\$${_fmt.format(prev)}', style: GoogleFonts.manrope(fontSize: 11))),
         DataCell(
-          isSubmitted
+          isSubmitted || l['line_type'] == 'change_order_header' || l['line_type'] == 'change_order_detail'
               ? Text('\$${_fmt.format(eq)}', style: GoogleFonts.manrope(fontSize: 11))
               : SizedBox(
                   width: 80,

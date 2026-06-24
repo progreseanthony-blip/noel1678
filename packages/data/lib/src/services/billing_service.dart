@@ -143,6 +143,15 @@ class BillingService {
     return data;
   }
 
+  Future<List<Map<String, dynamic>>> getChangeOrderDetails(String coId) async {
+    final response = await _supabase
+        .from('change_order_details')
+        .select()
+        .eq('change_order_id', coId)
+        .order('created_at');
+    return List<Map<String, dynamic>>.from(response ?? []);
+  }
+
   Future<Map<String, dynamic>> createChangeOrder(Map<String, dynamic> data) async {
     final response = await _supabase
         .from('change_orders')
