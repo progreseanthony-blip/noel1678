@@ -26,7 +26,7 @@ class IncidentsService {
   Future<Map<String, dynamic>> getById(String id) async {
     final response = await _supabase
         .from('incidents')
-        .select('*, incident_categories(name, icon, color), reported_by_profile:profiles!incidents_reported_by_fkey(full_name), incident_affected_items(*), incident_actions(*)')
+        .select('*, incident_categories(name, icon, color), reported_by_profile:profiles!incidents_reported_by_fkey(name), incident_affected_items(*), incident_actions(*)')
         .eq('id', id)
         .single();
     return response;
