@@ -72,7 +72,7 @@ class _ProductionMeasurementPageState extends State<ProductionMeasurementPage> {
         child: Sidebar(
           userName: userName,
           userEmail: userEmail,
-          currentPath: '/projects',
+          currentPath: '/projects/${widget.projectId}/production-measurement',
           onLogout: () async {
             await Supabase.instance.client.auth.signOut();
             if (context.mounted) context.go('/signin');
@@ -85,7 +85,7 @@ class _ProductionMeasurementPageState extends State<ProductionMeasurementPage> {
             Sidebar(
               userName: userName,
               userEmail: userEmail,
-              currentPath: '/projects',
+currentPath: '/projects/${widget.projectId}/production-measurement',
               onLogout: () async {
                 await Supabase.instance.client.auth.signOut();
                 if (context.mounted) context.go('/signin');

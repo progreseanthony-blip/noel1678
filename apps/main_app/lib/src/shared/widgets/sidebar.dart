@@ -59,49 +59,49 @@ class Sidebar extends StatelessWidget {
                   _ExpandableNavItem(
                     icon: Icons.rocket_launch_outlined,
                     label: 'Projects',
-                    isActive: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring'),
-                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring'),
+                    isActive: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/billing') || currentPath.startsWith('/change-orders') || currentPath.startsWith('/incidents') || currentPath.startsWith('/reception'),
+                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/billing') || currentPath.startsWith('/change-orders') || currentPath.startsWith('/incidents') || currentPath.startsWith('/reception'),
                     children: [
                       _SubExpandableNavItem(
                         label: 'Planning',
-                        isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline') || currentPath.contains('/reception')),
+                        isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline') || currentPath.contains('/reception')) || currentPath.startsWith('/reception'),
                         initiallyExpanded: true,
                         children: [
-                          _SubNavItem(icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')), left: 44, onTap: () => context.go('/projects')),
-                          _SubNavItem(icon: Icons.inventory, label: 'Reception', isActive: currentPath.contains('/reception'), left: 44, onTap: () {
+                          _SubNavItem(icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')), left: 36, onTap: () => context.go('/projects')),
+                          _SubNavItem(icon: Icons.inventory, label: 'Reception', isActive: currentPath.contains('/reception'), left: 36, onTap: () {
                             final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
                             if (projectId.isNotEmpty) {
                               context.go('/projects/$projectId/reception');
                             } else {
-                              context.go('/projects');
+                              context.go('/reception');
                             }
                           }),
                         ],
                       ),
                       _SubExpandableNavItem(
                         label: 'Field Execution',
-                        isActive: currentPath.startsWith('/daily-reports'),
-                        initiallyExpanded: currentPath.startsWith('/daily-reports'),
+                        isActive: currentPath.startsWith('/daily-reports') || currentPath.startsWith('/incidents'),
+                        initiallyExpanded: currentPath.startsWith('/daily-reports') || currentPath.startsWith('/incidents'),
                         children: [
-                          _SubNavItem(icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), left: 44, onTap: () => context.go('/daily-reports')),
-                          _SubNavItem(icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), left: 44, onTap: () => context.go('/daily-reports/pending')),
-                          _SubNavItem(icon: Icons.warning_amber_rounded, label: 'Incidents', isActive: currentPath.startsWith('/incidents') || currentPath.contains('/incidents'), left: 44, onTap: () => context.go('/incidents')),
+                          _SubNavItem(icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), left: 36, onTap: () => context.go('/daily-reports')),
+                          _SubNavItem(icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), left: 36, onTap: () => context.go('/daily-reports/pending')),
+                          _SubNavItem(icon: Icons.warning_amber_rounded, label: 'Incidents', isActive: currentPath.startsWith('/incidents') || currentPath.contains('/incidents'), left: 36, onTap: () => context.go('/incidents')),
                         ],
                       ),
                       _SubExpandableNavItem(
                         label: 'Monitoring',
-                        isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.contains('/monitoring') || currentPath.contains('/billing') || currentPath.contains('/change-orders'),
-                        initiallyExpanded: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.contains('/monitoring') || currentPath.contains('/billing') || currentPath.contains('/change-orders'),
+                        isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.contains('/production-measurement') || currentPath.contains('/monitoring') || currentPath.contains('/billing') || currentPath.contains('/change-orders'),
+                        initiallyExpanded: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.contains('/production-measurement') || currentPath.contains('/monitoring') || currentPath.contains('/billing') || currentPath.contains('/change-orders'),
                         children: [
-                          _SubNavItem(icon: Icons.attach_money, label: 'Labor Cost', isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost'), left: 44, onTap: () => context.go('/labor-cost')),
-                          _SubNavItem(icon: Icons.speed, label: 'Production Metrics', isActive: currentPath.startsWith('/production-measurement'), left: 44, onTap: () => context.go('/production-measurement')),
-                          _SubNavItem(icon: Icons.dashboard, label: 'Monitoring Dashboard', isActive: currentPath.contains('/monitoring'), left: 44, onTap: () => context.go('/monitoring')),
-                          _SubNavItem(icon: Icons.receipt_long_outlined, label: 'Billing', isActive: currentPath.contains('/billing'), left: 44, onTap: () {
+                          _SubNavItem(icon: Icons.attach_money, label: 'Labor Cost', isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost'), left: 36, onTap: () => context.go('/labor-cost')),
+                          _SubNavItem(icon: Icons.speed, label: 'Production Metrics', isActive: currentPath.contains('/production-measurement'), left: 36, onTap: () => context.go('/production-measurement')),
+                          _SubNavItem(icon: Icons.dashboard, label: 'Monitoring Dashboard', isActive: currentPath.contains('/monitoring'), left: 36, onTap: () => context.go('/monitoring')),
+                          _SubNavItem(icon: Icons.receipt_long_outlined, label: 'Billing', isActive: currentPath.contains('/billing'), left: 36, onTap: () {
                             final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
                             if (projectId.isNotEmpty) context.go('/projects/$projectId/billing');
                             else context.go('/billing');
                           }),
-                          _SubNavItem(icon: Icons.swap_horizontal_circle_outlined, label: 'Change Orders', isActive: currentPath.contains('/change-orders'), left: 44, onTap: () {
+                          _SubNavItem(icon: Icons.swap_horizontal_circle_outlined, label: 'Change Orders', isActive: currentPath.contains('/change-orders'), left: 36, onTap: () {
                             final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
                             if (projectId.isNotEmpty) context.go('/projects/$projectId/change-orders');
                             else context.go('/change-orders');
@@ -271,7 +271,7 @@ class _ExpandableNavItemState extends State<_ExpandableNavItem> {
       AnimatedCrossFade(
         duration: const Duration(milliseconds: 200),
         crossFadeState: _isExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-        firstChild: Padding(padding: const EdgeInsets.only(left: 16), child: Column(children: widget.children)),
+        firstChild: Padding(padding: const EdgeInsets.only(left: 12), child: Column(children: widget.children)),
         secondChild: const SizedBox.shrink(),
       ),
     ]);
@@ -325,7 +325,7 @@ class _SubExpandableNavItemState extends State<_SubExpandableNavItem> {
           onTap: () => setState(() => _isExpanded = !_isExpanded),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.only(left: 36, right: 16, top: 8, bottom: 8),
+            padding: const EdgeInsets.only(left: 32, right: 16, top: 8, bottom: 8),
             decoration: BoxDecoration(
               color: widget.isActive
                   ? AppTheme.primaryGreen.withOpacity(0.08)
@@ -346,7 +346,7 @@ class _SubExpandableNavItemState extends State<_SubExpandableNavItem> {
       AnimatedCrossFade(
         duration: const Duration(milliseconds: 200),
         crossFadeState: _isExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-        firstChild: Padding(padding: const EdgeInsets.only(left: 16), child: Column(children: widget.children)),
+        firstChild: Padding(padding: const EdgeInsets.only(left: 10), child: Column(children: widget.children)),
         secondChild: const SizedBox.shrink(),
       ),
     ]);

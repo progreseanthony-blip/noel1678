@@ -716,7 +716,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
         child: Sidebar(
           userName: userName,
           userEmail: userEmail,
-          currentPath: '/projects',
+          currentPath: '/projects/${widget.projectId}',
           onLogout: () async {
             await Supabase.instance.client.auth.signOut();
             if (context.mounted) context.go('/signin');
@@ -729,7 +729,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
             Sidebar(
               userName: userName,
               userEmail: userEmail,
-              currentPath: '/projects',
+currentPath: '/projects/${widget.projectId}',
               onLogout: () async {
                 await Supabase.instance.client.auth.signOut();
                 if (context.mounted) context.go('/signin');

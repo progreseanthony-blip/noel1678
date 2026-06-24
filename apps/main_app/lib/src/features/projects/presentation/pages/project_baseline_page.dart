@@ -343,7 +343,7 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
         child: Sidebar(
           userName: userName,
           userEmail: userEmail,
-          currentPath: '/projects',
+          currentPath: '/projects/${widget.projectId}/baseline',
           onLogout: () async {
             await Supabase.instance.client.auth.signOut();
             if (context.mounted) context.go('/signin');
@@ -356,7 +356,7 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
             Sidebar(
               userName: userName,
               userEmail: userEmail,
-              currentPath: '/projects',
+currentPath: '/projects/${widget.projectId}/baseline',
               onLogout: () async {
                 await Supabase.instance.client.auth.signOut();
                 if (context.mounted) context.go('/signin');
