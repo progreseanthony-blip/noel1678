@@ -38,18 +38,20 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
   }
 
   Future<void> _addAction() async {
+    final ctrl = TextEditingController();
     final desc = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Add Action'),
         content: TextField(
+          controller: ctrl,
           autofocus: true,
           decoration: const InputDecoration(hintText: 'Describe the action...'),
           onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ''), child: const Text('Add')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Add')),
         ],
       ),
     );
@@ -169,6 +171,16 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
     }
   }
 
+  Future<void> _startProgress() async {
+    try {
+      await ref.read(incidentsServiceProvider).update(widget.incidentId, {'status': 'in_progress'});
+      await _loadData();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Incident in progress'), backgroundColor: Colors.blue));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return Scaffold(appBar: AppBar(), body: const Center(child: CircularProgressIndicator()));
@@ -249,6 +261,21 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
               onComplete: isClosed ? null : _completeAction,
               onAddAction: isClosed ? null : _addAction,
             ),
+            if (status == 'open') ...[
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity, height: 44,
+                child: FilledButton.icon(
+                  onPressed: _startProgress,
+                  icon: const Icon(Icons.play_arrow, size: 18),
+                  label: Text('Start Progress', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF3B82F6),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+            ],
             if (isOpen) ...[
               const SizedBox(height: 24),
               SizedBox(
