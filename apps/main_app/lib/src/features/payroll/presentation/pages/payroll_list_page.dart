@@ -6,6 +6,7 @@ import 'package:noel_data/noel_data.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
 import '../widgets/payroll_period_dialog.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class PayrollListPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -46,7 +47,7 @@ class _PayrollListPageState extends ConsumerState<PayrollListPage> {
   }
 
   Future<void> _createPeriod() async {
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await showSafeDialog<Map<String, dynamic>>(
       context: context,
       builder: (_) => PayrollPeriodDialog(projectId: widget.projectId),
     );
@@ -66,7 +67,7 @@ class _PayrollListPageState extends ConsumerState<PayrollListPage> {
   }
 
   Future<void> _deletePeriod(Map<String, dynamic> period) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Period'),

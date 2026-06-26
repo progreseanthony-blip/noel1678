@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:typed_data';
@@ -541,7 +542,10 @@ class _MaterialReceptionDialogState extends State<MaterialReceptionDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+        if (required)
+          RequiredLabel(label: label)
+        else
+          Text(label, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
@@ -558,10 +562,7 @@ class _MaterialReceptionDialogState extends State<MaterialReceptionDialog> {
             filled: true,
             fillColor: Colors.white,
           ),
-          validator: required ? (value) {
-            if (value == null || value.trim().isEmpty) return 'Required field';
-            return null;
-          } : null,
+          validator: required ? DialogValidators.required() : null,
         ),
       ],
     );

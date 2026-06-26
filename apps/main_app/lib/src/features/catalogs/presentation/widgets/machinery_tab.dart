@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'machinery_dialog.dart';
 
@@ -41,7 +42,7 @@ class _MachineryTabState extends ConsumerState<MachineryTab> {
   }
 
   void _showForm([Map<String, dynamic>? item]) {
-    showDialog(
+    showSafeDialog(
       context: context,
       builder: (context) => MachineryDialog(machineryToEdit: item),
     ).then((success) {
@@ -151,7 +152,7 @@ class _MachineryTabState extends ConsumerState<MachineryTab> {
   }
 
   Future<void> _deleteItem(String id) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await showSafeDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Machinery'),

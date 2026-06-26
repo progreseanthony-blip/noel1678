@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
@@ -462,7 +463,7 @@ class _LogisticsDialogState extends ConsumerState<LogisticsDialog> {
     final curName = app['name'] ?? '';
     final curId = app['id'].toString();
     final ctrl = TextEditingController(text: curName);
-    final newName = await showDialog<String>(
+    final newName = await showSafeDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Edit Application', style: GoogleFonts.manrope(fontWeight: FontWeight.bold)),
@@ -485,7 +486,7 @@ class _LogisticsDialogState extends ConsumerState<LogisticsDialog> {
   }
 
   Future<void> _deleteApp(String id, String name) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await showSafeDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Delete Application'),

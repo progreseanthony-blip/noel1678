@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class LaborRoleDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic>? roleToEdit;

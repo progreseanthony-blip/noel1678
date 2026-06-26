@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class InstrumentReceptionDialog extends StatefulWidget {
   final String projectId;
@@ -327,26 +328,25 @@ class _InstrumentReceptionDialogState extends State<InstrumentReceptionDialog> {
                         children: [
                           Expanded(
                             flex: 2,
-                            child: _buildTextField(
-                              label: 'Serial Number / Internal Code',
-                              controller: _serialController,
-                              icon: Icons.tag,
-                              validator: (v) => v!.isEmpty ? 'Required' : null,
-                            ),
+                          child: _buildTextField(
+                            label: 'Serial Number / Internal Code',
+                            controller: _serialController,
+                            icon: Icons.tag,
+                            required: true,
+                            validator: DialogValidators.required(),
+                          ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
                             flex: 1,
-                            child: _buildTextField(
-                              label: 'Quantity',
-                              controller: _quantityController,
-                              icon: Icons.numbers,
-                              keyboardType: TextInputType.number,
-                              validator: (v) {
-                                final n = int.tryParse(v ?? '');
-                                return n == null || n < 1 ? 'Min 1' : null;
-                              },
-                            ),
+                          child: _buildTextField(
+                            label: 'Quantity',
+                            controller: _quantityController,
+                            icon: Icons.numbers,
+                            keyboardType: TextInputType.number,
+                            required: true,
+                            validator: DialogValidators.requiredPositive(),
+                          ),
                           ),
                         ],
                       ),
@@ -560,12 +560,16 @@ class _InstrumentReceptionDialogState extends State<InstrumentReceptionDialog> {
     required IconData icon,
     TextInputType? keyboardType,
     int maxLines = 1,
+    bool required = false,
     String? Function(String?)? validator,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+        if (required)
+          RequiredLabel(label: label)
+        else
+          Text(label, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,

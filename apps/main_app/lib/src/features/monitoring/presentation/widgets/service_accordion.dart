@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'resource_row.dart';
 import 'daily_history_dialog.dart';
 
@@ -208,7 +209,7 @@ class _ServiceAccordionState extends State<ServiceAccordion> {
 
   void _showDailyHistory(BuildContext context, Map<String, dynamic> resource) {
     final type = resource['type']?.toString() ?? '';
-    showDialog(
+    showSafeDialog(
       context: context,
       builder: (_) => DailyHistoryDialog(
         projectId: widget.projectId, resourceType: type, resourceId: resource['id']?.toString() ?? '',

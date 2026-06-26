@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class DailyReportsListPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -64,7 +65,7 @@ class _DailyReportsListPageState extends ConsumerState<DailyReportsListPage> {
   }
 
   Future<void> _deleteReport(String id) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Report'),
@@ -110,7 +111,7 @@ class _DailyReportsListPageState extends ConsumerState<DailyReportsListPage> {
   }
 
   Future<void> _rejectReport(String id) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Reject Report'),

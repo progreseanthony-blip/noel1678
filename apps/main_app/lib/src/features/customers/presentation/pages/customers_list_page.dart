@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../widgets/customer_form_dialog.dart';
@@ -349,7 +350,7 @@ class _CustomersListPageState extends ConsumerState<CustomersListPage> {
   }
 
   void _showCustomerForm([Map<String, dynamic>? customer]) {
-    showDialog(
+    showSafeDialog(
       context: context,
       builder: (context) => CustomerFormDialog(customerToEdit: customer),
     ).then((updated) {
@@ -358,7 +359,7 @@ class _CustomersListPageState extends ConsumerState<CustomersListPage> {
   }
 
   Future<void> _confirmDelete(Map<String, dynamic> customer) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Customer'),

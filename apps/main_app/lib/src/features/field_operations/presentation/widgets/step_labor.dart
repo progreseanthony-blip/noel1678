@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class StepLabor extends StatefulWidget {
   final List<Map<String, dynamic>> plannedLabor;
@@ -115,7 +116,7 @@ class _StepLaborState extends State<StepLabor> {
     String? targetSvc;
     String? targetReason;
 
-    await showDialog<void>(
+    await showSafeDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(

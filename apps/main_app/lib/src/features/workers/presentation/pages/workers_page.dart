@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
@@ -479,15 +480,15 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
   }
 
   void _showWorkerForm(BuildContext context, {Map<String, dynamic>? worker}) {
-    showDialog(context: context, builder: (context) => WorkerFormDialog(worker: worker));
+    showSafeDialog(context: context, builder: (context) => WorkerFormDialog(worker: worker));
   }
 
   void _showWorkerProfile(BuildContext context, Map<String, dynamic> worker) {
-    showDialog(context: context, builder: (context) => WorkerProfileDialog(worker: worker));
+    showSafeDialog(context: context, builder: (context) => WorkerProfileDialog(worker: worker));
   }
 
   Future<void> _confirmDeleteWorker(BuildContext context, Map<String, dynamic> worker) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSafeDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text('Delete Worker', style: GoogleFonts.manrope(fontWeight: FontWeight.bold)),

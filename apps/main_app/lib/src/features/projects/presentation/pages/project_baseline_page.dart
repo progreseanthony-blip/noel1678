@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:noel_data/noel_data.dart';
@@ -217,7 +218,7 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
   }
 
   Future<void> _deleteUnplannedResource(Map<String, dynamic> resource) async {
-    final bool? confirm = await showDialog<bool>(
+    final bool? confirm = await showSafeDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
@@ -732,9 +733,8 @@ currentPath: '/projects/${widget.projectId}/baseline',
                 onPressed: () {
                   final isFrozen = _project?['calculation_metadata']?['baseline_latest_version'] != null
                       || _project?['calculation_metadata']?['baseline_frozen'] == true;
-                  showDialog(
+                  showSafeDialog(
                     context: context,
-                    barrierColor: Colors.black.withOpacity(0.5),
                     builder: (ctx) => AddUnplannedResourceDialog(
                       projectId: widget.projectId,
                       changeType: isFrozen ? 'change_order' : 'planning',
@@ -1015,9 +1015,8 @@ currentPath: '/projects/${widget.projectId}/baseline',
 
                           return ListTile(
                             onTap: () {
-                              showDialog(
+                              showSafeDialog(
                                 context: context,
-                                barrierColor: Colors.black.withOpacity(0.5),
                                 builder: (_) => AddUnplannedResourceDialog(
                                   projectId: widget.projectId,
                                   initialData: res,

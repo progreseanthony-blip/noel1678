@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class DailyHistoryDialog extends StatefulWidget {
   final String projectId;

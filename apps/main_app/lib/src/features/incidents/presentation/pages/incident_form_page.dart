@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class IncidentFormPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -97,7 +98,7 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
   }
 
   Future<void> _addResourceItem() async {
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await showSafeDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) => _AddResourceDialog(
         materials: _projectMaterials,

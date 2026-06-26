@@ -12,6 +12,7 @@ import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
 import '../utils/payroll_pdf_generator.dart';
 import '../utils/payroll_excel_generator.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class PayrollPeriodPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -244,7 +245,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
   }
 
   Future<void> _closePeriod() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Close Period'),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import '../widgets/incident_status_badge.dart';
 import '../widgets/incident_priority_badge.dart';
 import '../widgets/affected_items_section.dart';
@@ -39,7 +40,7 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
 
   Future<void> _addAction() async {
     final ctrl = TextEditingController();
-    final desc = await showDialog<String>(
+    final desc = await showSafeDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Add Action'),
@@ -77,7 +78,7 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
 
   Future<void> _resolveIncident() async {
     final solutionCtrl = TextEditingController();
-    final result = await showDialog<Map<String, String>>(
+    final result = await showSafeDialog<Map<String, String>>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Resolve Incident'),
@@ -126,7 +127,7 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
 
   Future<void> _closeIncident() async {
     final notesCtrl = TextEditingController();
-    final notes = await showDialog<String>(
+    final notes = await showSafeDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Close Incident'),

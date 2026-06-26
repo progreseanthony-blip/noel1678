@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'logistics_dialog.dart';
 
 class LogisticsTab extends ConsumerStatefulWidget {
@@ -45,7 +46,7 @@ class _LogisticsTabState extends ConsumerState<LogisticsTab> {
   }
 
   void _showForm([Map<String, dynamic>? item]) {
-    showDialog(
+    showSafeDialog(
       context: context,
       builder: (context) => LogisticsDialog(itemToEdit: item),
     ).then((success) {
@@ -201,7 +202,7 @@ class _LogisticsTabState extends ConsumerState<LogisticsTab> {
   }
 
   Future<void> _deleteItem(String id) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await showSafeDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Item'),

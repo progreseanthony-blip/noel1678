@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:intl/intl.dart';
 import '../widgets/quote_form_dialog.dart';
@@ -765,7 +766,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
   }
 
   Future<void> _confirmDeleteQuote(Map<String, dynamic> quote) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -814,9 +815,8 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
   }
 
   void _showQuoteForm([Map<String, dynamic>? quote]) {
-    showDialog(
+    showSafeDialog(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.2),
       builder: (context) => QuoteFormDialog(quoteToEdit: quote),
     ).then((updated) {
       if (updated == true) {

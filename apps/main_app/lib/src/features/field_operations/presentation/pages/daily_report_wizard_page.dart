@@ -9,6 +9,7 @@ import '../widgets/step_labor.dart';
 import '../widgets/step_machinery.dart';
 import '../widgets/step_materials.dart';
 import '../widgets/step_review_sign.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class DailyReportWizardPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -432,7 +433,7 @@ class _DailyReportWizardPageState
   }
 
   Future<void> _navigateToBaseline() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Add resource to baseline'),

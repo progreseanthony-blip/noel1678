@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
@@ -353,7 +354,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
     if (!mounted) return;
 
     final selectedIds = Set<String>.from(_linkedCoIds);
-    final result = await showDialog<Set<String>>(
+    final result = await showSafeDialog<Set<String>>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(

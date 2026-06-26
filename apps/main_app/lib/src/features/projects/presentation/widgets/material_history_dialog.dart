@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'material_reception_dialog.dart';
 
@@ -76,7 +77,7 @@ class _MaterialHistoryDialogState extends State<MaterialHistoryDialog> {
   }
 
   void _openEditDialog(String receptionId) {
-    showDialog(
+    showSafeDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
       builder: (_) => MaterialReceptionDialog(

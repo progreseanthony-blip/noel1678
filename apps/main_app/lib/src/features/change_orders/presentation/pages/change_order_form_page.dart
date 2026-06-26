@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../providers/change_order_providers.dart';
 import '../providers/change_order_controller.dart';
 import '../../../../shared/widgets/sidebar.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class ChangeOrderFormPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -73,7 +74,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     final services = await ref.read(quoteServiceListProvider(widget.projectId).future);
     if (!mounted) return;
 
-    final selected = await showDialog<Map<String, dynamic>>(
+    final selected = await showSafeDialog<Map<String, dynamic>>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.2),
       builder: (ctx) => SimpleDialog(
@@ -103,7 +104,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     final catalog = await ref.read(servicesCatalogProvider.future);
     if (!mounted) return;
 
-    final selected = await showDialog<Map<String, dynamic>>(
+    final selected = await showSafeDialog<Map<String, dynamic>>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.2),
       builder: (ctx) => SimpleDialog(
@@ -141,7 +142,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     final priceCtrl = TextEditingController(text: existing?['unit_price']?.toString() ?? '0');
     String type = existing?['line_type'] ?? lineType;
 
-    final result = await showDialog<Map<String, dynamic>>(
+    final result = await showSafeDialog<Map<String, dynamic>>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.2),
       builder: (ctx) => AlertDialog(

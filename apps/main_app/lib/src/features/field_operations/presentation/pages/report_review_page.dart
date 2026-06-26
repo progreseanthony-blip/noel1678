@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
@@ -96,7 +97,7 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
 
   Future<void> _reject() async {
     final reason = _rejectReasonController.text.trim();
-    final confirm = await showDialog<bool>(
+    final confirm = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
@@ -366,7 +367,7 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
           final url = p is String ? p : (p as Map)['url'] as String?;
           if (url == null) return const SizedBox.shrink();
           return GestureDetector(
-            onTap: () => showDialog(
+            onTap: () => showSafeDialog(
               context: context,
               builder: (_) => Dialog(
                 backgroundColor: Colors.black,

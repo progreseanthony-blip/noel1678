@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:intl/intl.dart';
 import '../controllers/workers_controller.dart';
 import '../../../catalogs/presentation/controllers/catalogs_controller.dart';
@@ -59,7 +60,7 @@ class _WorkerProfileDialogState extends ConsumerState<WorkerProfileDialog> {
             icon: const Icon(Icons.edit_outlined, color: AppTheme.primaryGreen),
             onPressed: () {
               Navigator.pop(context);
-              showDialog(
+              showSafeDialog(
                 context: context,
                 builder: (context) => WorkerFormDialog(worker: widget.worker),
               );

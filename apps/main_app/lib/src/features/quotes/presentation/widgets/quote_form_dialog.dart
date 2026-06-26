@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:intl/intl.dart';
 import 'package:noel_app/src/features/catalogs/presentation/widgets/service_dialog.dart';
 import 'package:noel_app/src/features/catalogs/presentation/widgets/machinery_dialog.dart';
@@ -1674,7 +1675,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                                     () => _activeServiceIndex = serviceIndex,
                                   ),
                                   onTap: () async {
-                                    final result = await showDialog(
+                                    final result = await showSafeDialog(
                                       context: context,
                                       builder: (_) => ServiceEstimationDialog(
                                         service: {
@@ -3354,7 +3355,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   }
 
   Future<void> _showInstrumentSelector(ServiceEntry svc) async {
-    final result = await showDialog<List<Map<String, dynamic>>>(
+    final result = await showSafeDialog<List<Map<String, dynamic>>>(
       context: context,
       builder: (context) => MachinerySelectionDialog(
         serviceId: svc.catalogId ?? '',
@@ -3667,7 +3668,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     if (type == 'materials' || type == 'instruments') dialog = MachineryDialog();
 
     if (dialog != null) {
-      showDialog(
+      showSafeDialog(
         context: context,
         builder: (context) => dialog!,
       ).then((success) {

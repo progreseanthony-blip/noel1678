@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class StepMachinery extends StatefulWidget {
   final String projectId;
@@ -220,7 +221,7 @@ class _StepMachineryState extends State<StepMachinery> {
     String? targetSvc;
     Map<String, dynamic>? targetPm;
 
-    await showDialog<void>(
+    await showSafeDialog<void>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(

@@ -7,6 +7,7 @@ import 'package:noel_data/noel_data.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class PendingApprovalsPage extends ConsumerStatefulWidget {
   const PendingApprovalsPage({super.key});
@@ -64,7 +65,7 @@ class _PendingApprovalsPageState extends ConsumerState<PendingApprovalsPage> {
   }
 
   Future<void> _reject(String id) async {
-    final reason = await showDialog<String>(
+    final reason = await showSafeDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Reject Report'),

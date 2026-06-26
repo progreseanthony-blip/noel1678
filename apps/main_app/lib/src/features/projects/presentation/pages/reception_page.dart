@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../../../shared/widgets/sidebar.dart';
@@ -490,7 +491,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                     if (received > 0)
                       IconButton(
                         onPressed: () {
-                          showDialog(
+                          showSafeDialog(
                             context: context,
                             barrierColor: Colors.black.withOpacity(0.5),
                             builder: (_) => MachineryHistoryDialog(
@@ -514,7 +515,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                     if (!isComplete)
                       ElevatedButton.icon(
                         onPressed: () {
-                          showDialog(
+                          showSafeDialog(
                             context: context,
                             barrierColor: Colors.black.withOpacity(0.5),
                             builder: (_) => MachineryReceptionDialog(
@@ -648,7 +649,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                     if (received > 0)
                       IconButton(
                         onPressed: () {
-                          showDialog(
+                          showSafeDialog(
                             context: context,
                             barrierColor: Colors.black.withOpacity(0.5),
                             builder: (_) => MaterialHistoryDialog(
@@ -674,7 +675,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                     if (!isComplete)
                       ElevatedButton.icon(
                         onPressed: () {
-                          showDialog(
+                          showSafeDialog(
                             context: context,
                             barrierColor: Colors.black.withOpacity(0.5),
                             builder: (_) => MaterialReceptionDialog(
@@ -798,7 +799,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                     if (received > 0)
                       IconButton(
                         onPressed: () {
-                          showDialog(
+                          showSafeDialog(
                             context: context,
                             barrierColor: Colors.black.withOpacity(0.5),
                             builder: (_) => InstrumentHistoryDialog(
@@ -822,7 +823,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                     if (!isComplete)
                       ElevatedButton.icon(
                         onPressed: () {
-                          showDialog(
+                          showSafeDialog(
                             context: context,
                             barrierColor: Colors.black.withOpacity(0.5),
                             builder: (_) => InstrumentReceptionDialog(

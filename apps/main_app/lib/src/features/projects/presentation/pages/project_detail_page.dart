@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:noel_data/noel_data.dart';
@@ -829,9 +830,8 @@ currentPath: '/projects/${widget.projectId}',
                     onPressed: () async {
                       await _loadProjectData();
                       if (!mounted) return;
-                      final result = await showDialog(
+                      final result = await showSafeDialog(
                         context: context,
-                        barrierColor: Colors.black.withOpacity(0.4),
                         builder: (context) => _FullscreenTimelineDialog(
                           projectId: widget.projectId,
                           project: _project,
@@ -1154,9 +1154,8 @@ currentPath: '/projects/${widget.projectId}',
                     ),
                     ElevatedButton.icon(
                       onPressed: () {
-                        showDialog(
+                        showSafeDialog(
                           context: context,
-                          barrierColor: Colors.black.withOpacity(0.5),
                           builder: (_) => MachinerySchedulingDialog(
                             projectMachineryId: m['id'],
                             machineryName: mName,
@@ -1447,9 +1446,8 @@ currentPath: '/projects/${widget.projectId}',
                     ),
                     IconButton(
                       onPressed: () {
-                        showDialog(
+                        showSafeDialog(
                           context: context,
-                          barrierColor: Colors.black.withOpacity(0.5),
                           builder: (_) => InstrumentSchedulingDialog(
                             projectInstrumentId: m['id'],
                             instrumentName: mName,
@@ -1615,9 +1613,8 @@ currentPath: '/projects/${widget.projectId}',
                     const SizedBox(width: 16),
                     IconButton(
                       onPressed: () {
-                        showDialog(
+                        showSafeDialog(
                           context: context,
-                          barrierColor: Colors.black.withOpacity(0.5),
                           builder: (_) => LaborSchedulingDialog(
                             projectLaborId: l['id'],
                             roleName: roleName,
@@ -1636,9 +1633,8 @@ currentPath: '/projects/${widget.projectId}',
                     const SizedBox(width: 8),
                     IconButton(
                       onPressed: () {
-                        showDialog(
+                        showSafeDialog(
                           context: context,
-                          barrierColor: Colors.black.withOpacity(0.5),
                           builder: (_) => WorkerAssignmentDialog(
                             projectLaborId: l['id'],
                             roleName: roleName,
@@ -1670,9 +1666,8 @@ currentPath: '/projects/${widget.projectId}',
   void _showGanttDialog() {
     _loadProjectData().then((_) {
       if (!mounted) return;
-      showDialog(
+      showSafeDialog(
         context: context,
-        barrierColor: Colors.black.withOpacity(0.4),
         builder: (ctx) => _FullscreenTimelineDialog(
           projectId: widget.projectId,
           project: _project,

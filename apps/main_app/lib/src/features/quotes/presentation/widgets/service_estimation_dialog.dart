@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
@@ -1325,7 +1326,7 @@ class _ServiceEstimationDialogState
   /// Opens machinery selector.
   /// [forPrimaryId] == null → adding a primary; else adding support to that primary.
   Future<void> _showMachinerySelector({required String? forPrimaryId}) async {
-    final result = await showDialog<List<Map<String, dynamic>>>(
+    final result = await showSafeDialog<List<Map<String, dynamic>>>(
       context: context,
       builder: (context) => MachinerySelectionDialog(
         serviceId: widget.service['id']?.toString() ?? widget.service['catalog_service_id']?.toString() ?? '',
@@ -1708,7 +1709,7 @@ class _ServiceEstimationDialogState
   }
 
   void _showMaterialSelector() {
-    showDialog(
+    showSafeDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('Select Material', style: GoogleFonts.manrope(fontWeight: FontWeight.w800)),

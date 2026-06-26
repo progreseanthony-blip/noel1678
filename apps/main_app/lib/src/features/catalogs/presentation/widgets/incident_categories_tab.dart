@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class IncidentCategoriesTab extends ConsumerStatefulWidget {
   const IncidentCategoriesTab({super.key});
@@ -31,7 +32,7 @@ class _IncidentCategoriesTabState extends ConsumerState<IncidentCategoriesTab> {
   }
 
   Future<void> _create() async {
-    final result = await showDialog<Map<String, String>>(
+    final result = await showSafeDialog<Map<String, String>>(
       context: context,
       builder: (ctx) => _CategoryFormDialog(),
     );
@@ -45,7 +46,7 @@ class _IncidentCategoriesTabState extends ConsumerState<IncidentCategoriesTab> {
   }
 
   Future<void> _edit(Map<String, dynamic> cat) async {
-    final result = await showDialog<Map<String, String>>(
+    final result = await showSafeDialog<Map<String, String>>(
       context: context,
       builder: (ctx) => _CategoryFormDialog(initial: cat),
     );
@@ -59,7 +60,7 @@ class _IncidentCategoriesTabState extends ConsumerState<IncidentCategoriesTab> {
   }
 
   Future<void> _delete(String id) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Category'),

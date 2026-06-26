@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
@@ -118,7 +119,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
   }
 
   Future<void> _confirmDelete() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -167,7 +168,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
   }
 
   Future<void> _approveAndCreateProject() async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -509,9 +510,8 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                         Expanded(
                           child: OutlinedButton.icon(
                             onPressed: () {
-                              showDialog(
+                              showSafeDialog(
                                 context: context,
-                                barrierColor: Colors.black.withOpacity(0.2),
                                 builder: (_) => QuoteFormDialog(quoteToEdit: _quote),
                               ).then((updated) { if (updated == true) _loadData(); });
                             },
@@ -666,9 +666,8 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                                   cursor: SystemMouseCursors.click,
                                   child: GestureDetector(
                                     onTap: () {
-                                      showDialog(
+                                      showSafeDialog(
                                         context: context,
-                                        barrierColor: Colors.black.withOpacity(0.2),
                                         builder: (_) => QuoteFormDialog(quoteToEdit: _quote),
                                       ).then((updated) { if (updated == true) _loadData(); });
                                     },

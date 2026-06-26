@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -199,7 +200,7 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 30, offset: const Offset(0, 10)),
+              BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 30, offset: const Offset(0, 10)),
             ],
           ),
           child: Column(
@@ -207,7 +208,7 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
             children: [
               _buildHeader(),
               Flexible(
-                child: SingleChildScrollView(
+                child: ScrollIndicator(
                   padding: const EdgeInsets.all(32),
                   child: Form(
                     key: _formKey,
@@ -383,7 +384,10 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+        if (required)
+          RequiredLabel(label: label)
+        else
+          Text(label, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
@@ -400,7 +404,7 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
             focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: AppTheme.primaryGreen, width: 2)),
           ),
           keyboardType: keyboardType,
-          validator: required ? (value) => value == null || value.trim().isEmpty ? 'Required field' : null : null,
+          validator: required ? DialogValidators.required() : null,
         ),
       ],
     );
@@ -465,7 +469,7 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Default Operator Role', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+            const RequiredLabel(label: 'Default Operator Role'),
             if (_isLoadingRoles)
               const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
           ],
@@ -474,7 +478,7 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
         DropdownButtonFormField<String>(
           value: _selectedOperatorRoleId,
           isExpanded: true,
-          validator: (value) => value == null ? 'Required field' : null,
+          validator: DialogValidators.requiredDropdown<String>(),
           style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
           decoration: InputDecoration(
             hintText: 'Select an operator role...',

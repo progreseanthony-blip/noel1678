@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'labor_role_dialog.dart';
 
 class LaborRolesTab extends ConsumerStatefulWidget {
@@ -41,7 +42,7 @@ class _LaborRolesTabState extends ConsumerState<LaborRolesTab> {
   }
 
   void _showForm([Map<String, dynamic>? role]) {
-    showDialog(
+    showSafeDialog(
       context: context,
       builder: (context) => LaborRoleDialog(roleToEdit: role),
     ).then((success) {
@@ -134,7 +135,7 @@ class _LaborRolesTabState extends ConsumerState<LaborRolesTab> {
   }
 
   Future<void> _deleteRole(String id) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await showSafeDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Role'),

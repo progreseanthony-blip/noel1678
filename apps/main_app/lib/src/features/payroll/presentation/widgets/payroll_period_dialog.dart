@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class PayrollPeriodDialog extends ConsumerStatefulWidget {
   final String projectId;
@@ -90,7 +91,8 @@ class _PayrollPeriodDialogState extends ConsumerState<PayrollPeriodDialog> {
         padding: const EdgeInsets.all(28),
         child: Form(
           key: _formKey,
-          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(
               widget.periodToEdit != null ? 'Edit Period' : 'New Period',
               style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900),
@@ -160,6 +162,7 @@ class _PayrollPeriodDialogState extends ConsumerState<PayrollPeriodDialog> {
               ),
             ]),
           ]),
+          ),
         ),
       ),
     );

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 
 class CustomerFormDialog extends ConsumerStatefulWidget {
@@ -107,10 +108,11 @@ class _CustomerFormDialogState extends ConsumerState<CustomerFormDialog> {
         ),
         child: Form(
           key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -167,6 +169,7 @@ class _CustomerFormDialogState extends ConsumerState<CustomerFormDialog> {
                 ],
               ),
             ],
+            ),
           ),
         ),
       ),

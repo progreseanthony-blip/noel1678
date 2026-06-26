@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 /// Dialog to manage roles: list, add, edit, and delete.
 class RoleManagementDialog extends StatefulWidget {
@@ -38,7 +39,7 @@ class _RoleManagementDialogState extends State<RoleManagementDialog> {
   }
 
   Future<void> _addRole() async {
-    final result = await showDialog<bool>(
+    final result = await showSafeDialog<bool>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
       builder: (ctx) => const _RoleFormDialog(),
@@ -47,7 +48,7 @@ class _RoleManagementDialogState extends State<RoleManagementDialog> {
   }
 
   Future<void> _editRole(Map<String, dynamic> role) async {
-    final result = await showDialog<bool>(
+    final result = await showSafeDialog<bool>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
       builder: (ctx) => _RoleFormDialog(roleToEdit: role),
@@ -56,7 +57,7 @@ class _RoleManagementDialogState extends State<RoleManagementDialog> {
   }
 
   Future<void> _deleteRole(Map<String, dynamic> role) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => _DeleteConfirmDialog(roleName: role['name'] ?? ''),
     );

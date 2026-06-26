@@ -11,6 +11,7 @@ import '../providers/change_order_providers.dart';
 import '../providers/change_order_controller.dart';
 import '../utils/change_order_pdf_generator.dart';
 import '../../../../shared/widgets/sidebar.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class ChangeOrderDetailPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -67,7 +68,7 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
   }
 
   Future<void> _reject() async {
-    final reason = await showDialog<String>(
+    final reason = await showSafeDialog<String>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.2),
       builder: (ctx) => AlertDialog(

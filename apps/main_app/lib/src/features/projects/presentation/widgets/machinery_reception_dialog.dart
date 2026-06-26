@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class MachineryReceptionDialog extends StatefulWidget {
   final String projectId;
@@ -168,7 +169,7 @@ class _MachineryReceptionDialogState extends State<MachineryReceptionDialog> {
       if (activeInspection != null) {
         final otherProjectName = activeInspection['project_machinery']?['projects']?['title'] ?? 'another project';
         
-        final proceed = await showDialog<bool>(
+        final proceed = await showSafeDialog<bool>(
           context: context,
           barrierColor: Colors.black.withOpacity(0.6),
           builder: (_) => AlertDialog(
@@ -382,7 +383,8 @@ class _MachineryReceptionDialogState extends State<MachineryReceptionDialog> {
                                     label: 'Serial Number / PIN',
                                     controller: _serialController,
                                     icon: Icons.tag,
-                                    validator: (v) => v!.isEmpty ? 'Required' : null,
+                                    required: true,
+                                    validator: DialogValidators.required(),
                                   ),
                                 ),
                                 const SizedBox(width: 16),
@@ -407,7 +409,8 @@ class _MachineryReceptionDialogState extends State<MachineryReceptionDialog> {
                                     controller: _hourMeterController,
                                     icon: _odometerUnit == 'hours' ? Icons.timer_outlined : Icons.speed,
                                     keyboardType: TextInputType.number,
-                                    validator: (v) => v!.isEmpty ? 'Required' : null,
+                                    required: true,
+                                    validator: DialogValidators.required(),
                                   ),
                                 ),
                                 const SizedBox(width: 16),
@@ -656,12 +659,16 @@ class _MachineryReceptionDialogState extends State<MachineryReceptionDialog> {
     TextInputType? keyboardType,
     int maxLines = 1,
     String? hint,
+    bool required = false,
     String? Function(String?)? validator,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+        if (required)
+          RequiredLabel(label: label)
+        else
+          Text(label, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,

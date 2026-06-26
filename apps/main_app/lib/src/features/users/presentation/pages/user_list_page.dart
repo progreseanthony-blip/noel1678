@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
 
@@ -95,7 +96,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
 
 
   Future<void> _showUserForm({Map<String, dynamic>? user}) async {
-    final result = await showDialog<bool>(
+    final result = await showSafeDialog<bool>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.6),
       builder: (context) => UserFormDialog(userToEdit: user),
@@ -107,7 +108,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
   }
 
   void _showRoleManager() {
-    showDialog(
+    showSafeDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.6),
       builder: (context) => const RoleManagementDialog(),
