@@ -84,10 +84,14 @@ class _StepLaborState extends State<StepLabor> {
     return null;
   }
 
-  void _addEntry(String workerId, {String? plannedLaborId, bool isUnplanned = false}) {
-    final now = TimeOfDay.now();
-    final ci = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:00';
-    setState(() { _entries.add({ 'worker_id': workerId, 'project_labor_id': plannedLaborId, 'check_in_time': isUnplanned ? ci : null, 'check_out_time': null, 'regular_hours': 0.0, 'overtime_hours': 0.0, 'break_minutes': 30, 'total_net_hours': 0.0, 'is_unplanned': isUnplanned, 'deviation_reason_id': null, 'notes': '' }); });
+  void _addEntry(String workerId, {String? plannedLaborId, bool isUnplanned = false, String? checkInTime}) {
+    String? ci;
+    if (isUnplanned) {
+      ci = (checkInTime != null && checkInTime.isNotEmpty)
+          ? checkInTime
+          : '${TimeOfDay.now().hour.toString().padLeft(2, '0')}:${TimeOfDay.now().minute.toString().padLeft(2, '0')}:00';
+    }
+    setState(() { _entries.add({ 'worker_id': workerId, 'project_labor_id': plannedLaborId, 'check_in_time': ci, 'check_out_time': null, 'regular_hours': 0.0, 'overtime_hours': 0.0, 'break_minutes': 30, 'total_net_hours': 0.0, 'is_unplanned': isUnplanned, 'deviation_reason_id': null, 'notes': '' }); });
     _emit();
   }
 
@@ -101,7 +105,7 @@ class _StepLaborState extends State<StepLabor> {
     _emit();
   }
 
-  Future<void> _showReassignDialog(String workerId, String currentPlId) async {
+  Future<void> _showReassignDialog(String workerId, String currentPlId, {String? estimatedCheckIn}) async {
     final worker = widget.workers.firstWhere((w) => w['id'] == workerId, orElse: () => <String, dynamic>{});
     if (worker.isEmpty) return;
 
@@ -127,6 +131,28 @@ class _StepLaborState extends State<StepLabor> {
               if (currentSvc != null) ...[
                 Text('Current service:', style: TextStyle(fontSize: 11, color: AppTheme.slate400)),
                 Text(currentSvc!, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 12),
+              ],
+              if (estimatedCheckIn != null && estimatedCheckIn.isNotEmpty) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryGreen.withAlpha(15),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.primaryGreen.withAlpha(40)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.schedule, size: 16, color: AppTheme.primaryGreen),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Estimated start time: ${estimatedCheckIn.substring(0, 5)}',
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen),
+                      ),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 12),
               ],
               Text('Target service', style: TextStyle(fontSize: 11, color: AppTheme.slate400)),
@@ -191,7 +217,7 @@ class _StepLaborState extends State<StepLabor> {
                   return;
                 }
 
-                _addEntry(workerId, plannedLaborId: targetPlId, isUnplanned: true);
+                _addEntry(workerId, plannedLaborId: targetPlId, isUnplanned: true, checkInTime: estimatedCheckIn);
                 if (targetReason != null) {
                   final idx = _entryIndexFor(workerId, targetPlId);
                   if (idx >= 0) {
@@ -412,7 +438,21 @@ class _StepLaborState extends State<StepLabor> {
           const SizedBox(width: 6),
           Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(12)), child: Text('Net ${tn.toStringAsFixed(1)}h', style: _t(fs: 10, w: FontWeight.w700, c: AppTheme.slate600))),
           TextButton.icon(
-            onPressed: () => _showReassignDialog(e['worker_id'] as String, plId),
+            onPressed: () {
+              String? estCheckIn;
+              if (co != null && co.isNotEmpty) {
+                estCheckIn = co;
+              } else if (ci != null && ci.isNotEmpty && tn > 0) {
+                final totalSpan = tn + (tn >= 6 ? bm / 60.0 : 0);
+                final ip = ci.split(':');
+                final im = int.parse(ip[0]) * 60 + int.parse(ip[1]);
+                final endMin = im + (totalSpan * 60).round();
+                final endH = (endMin ~/ 60) % 24;
+                final endM = endMin % 60;
+                estCheckIn = '${endH.toString().padLeft(2, '0')}:${endM.toString().padLeft(2, '0')}:00';
+              }
+              _showReassignDialog(e['worker_id'] as String, plId, estimatedCheckIn: estCheckIn);
+            },
             icon: const Icon(Icons.swap_horiz, size: 14),
             label: Text('Reassign', style: _t(fs: 11, w: FontWeight.w600, c: AppTheme.primaryGreen)),
             style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
