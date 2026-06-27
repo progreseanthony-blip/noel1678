@@ -1259,6 +1259,297 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     );
   }
 
+  // ── Template Copy ──
+  Future<void> _showQuoteTemplatePicker() async {
+    final supabase = Supabase.instance.client;
+    List<Map<String, dynamic>> quotes;
+    try {
+      final response = await supabase
+          .from('quotes')
+          .select('id, title, client_name, quote_date, total_amount, status, quote_type')
+          .order('created_at', ascending: false)
+          .limit(100);
+      quotes = List<Map<String, dynamic>>.from(response ?? []);
+    } catch (_) {
+      quotes = [];
+    }
+    if (!mounted) return;
+
+    final searchCtrl = TextEditingController();
+    String query = '';
+
+    final result = await showSafeDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text('Copy from Existing Estimate', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800)),
+          content: SizedBox(
+            width: 600,
+            height: 480,
+            child: Column(
+              children: [
+                TextField(
+                  controller: searchCtrl,
+                  decoration: InputDecoration(
+                    hintText: 'Search by title or client...',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    suffixIcon: query.isNotEmpty
+                        ? IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () { searchCtrl.clear(); setDialogState(() => query = ''); })
+                        : null,
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+                  ),
+                  onChanged: (v) => setDialogState(() => query = v.toLowerCase().trim()),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: quotes.isEmpty
+                      ? Center(child: Text('No existing estimates found', style: GoogleFonts.manrope(color: AppTheme.slate400)))
+                      : ListView.separated(
+                          itemCount: quotes.where((q) {
+                            if (query.isEmpty) return true;
+                            return (q['title'] ?? '').toString().toLowerCase().contains(query) ||
+                                (q['client_name'] ?? '').toString().toLowerCase().contains(query);
+                          }).length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (context, index) {
+                            final filtered = quotes.where((q) {
+                              if (query.isEmpty) return true;
+                              return (q['title'] ?? '').toString().toLowerCase().contains(query) ||
+                                  (q['client_name'] ?? '').toString().toLowerCase().contains(query);
+                            }).toList();
+                            final q = filtered[index];
+                            final title = q['title'] ?? 'Untitled';
+                            final client = q['client_name'] ?? '—';
+                            final date = q['quote_date'] as String?;
+                            final dateFormatted = date != null ? DateFormat('MMM dd, yyyy').format(DateTime.parse(date)) : '—';
+                            final amount = (q['total_amount'] as num?)?.toDouble() ?? 0;
+                            final type = q['quote_type'] ?? 'standard';
+                            final typeLabel = type == 'staffing' ? 'Labor Supply' : 'Standard';
+                            final f = NumberFormat('#,##0');
+
+                            return ListTile(
+                              dense: true,
+                              leading: Container(
+                                width: 40, height: 40,
+                                decoration: BoxDecoration(
+                                  color: type == 'staffing' ? Colors.amber.withAlpha(20) : AppTheme.primaryGreen.withAlpha(20),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Icon(
+                                  type == 'staffing' ? Icons.people_outline : Icons.engineering_outlined,
+                                  color: type == 'staffing' ? Colors.amber : AppTheme.primaryGreen,
+                                  size: 20,
+                                ),
+                              ),
+                              title: Text(title, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700)),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('$client · $dateFormatted · $typeLabel', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500)),
+                                  if (amount > 0) Text('\$ ${f.format(amount)}', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+                                ],
+                              ),
+                              trailing: TextButton(
+                                onPressed: () => Navigator.pop(ctx, q),
+                                child: Text('Copy', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: GoogleFonts.manrope(fontWeight: FontWeight.w600, color: AppTheme.slate500))),
+          ],
+        ),
+      ),
+    );
+
+    searchCtrl.dispose();
+    if (result != null && mounted) {
+      await _populateFromTemplate(result['id'] as String);
+    }
+  }
+
+  Future<void> _populateFromTemplate(String quoteId) async {
+    setState(() => _isLoadingData = true);
+    try {
+      final supabase = Supabase.instance.client;
+      final quotesService = QuotesService(supabase);
+      final full = await quotesService.getFullQuoteForTemplate(quoteId);
+      if (full == null || !mounted) { setState(() => _isLoadingData = false); return; }
+
+      final type = full['quote_type'] ?? 'standard';
+      _quoteType = type == 'staffing' ? 'staffing' : 'standard';
+      _titleController.text = '';
+      _clientController.text = '';
+      _quoteDate = DateTime.now();
+      _selectedStatus = 'draft';
+      _selectedClientAddress = null;
+
+      final servicesList = full['services'] as List? ?? [];
+      final loadedServices = <ServiceEntry>[];
+      for (final svc in servicesList) {
+        final svcData = svc as Map<String, dynamic>;
+
+        final machList = svcData['machineries'] as List? ?? [];
+        final machineries = machList.map<MachineryEntry>((m) => MachineryEntry(
+          machineName: m['machine_name'] ?? '',
+          monthsToUse: (m['months_to_use'] as num?)?.toDouble() ?? 0,
+          monthlyRentCost: (m['monthly_rent_cost'] as num?)?.toDouble() ?? 0,
+          quantity: (m['quantity'] as num?)?.toDouble() ?? 1,
+          gallonsPerHour: (m['gallons_per_hour'] as num?)?.toDouble() ?? 0,
+          gallonCost: (m['gallon_cost'] as num?)?.toDouble() ?? 0,
+          deliveryCost: (m['delivery_cost'] as num?)?.toDouble() ?? 0,
+          isPrimaryMover: m['is_primary_mover'] as bool? ?? true,
+          parentMachineName: m['parent_machine_name'] as String?,
+        )).toList();
+
+        final laborList = svcData['labors'] as List? ?? [];
+        final labors = laborList.map<LaborEntry>((l) => LaborEntry(
+          roleName: l['role_name'] ?? '',
+          monthsToWork: (l['months_to_work'] as num?)?.toDouble() ?? 0,
+          employeesQuantity: (l['employees_quantity'] as num?)?.toDouble() ?? 1,
+          hourlyRate: (l['hourly_rate'] as num?)?.toDouble() ?? 0,
+          perDiem: (l['per_diem'] as num?)?.toDouble() ?? 0,
+        )).toList();
+
+        final matList = svcData['materials'] as List? ?? [];
+        final materials = matList.map<MaterialEntry>((m) => MaterialEntry(
+          materialName: m['material_name'] ?? '',
+          quantity: (m['quantity'] as num?)?.toDouble() ?? 0,
+          unitPrice: (m['unit_price'] as num?)?.toDouble() ?? 0,
+          unit: m['unit_name'] ?? 'und',
+          catalogId: m['material_id']?.toString(),
+        )).toList();
+
+        final instList = svcData['instruments'] as List? ?? [];
+        final instruments = instList.map<InstrumentEntry>((i) => InstrumentEntry(
+          instrumentName: i['instrument_name'] ?? '',
+          quantity: (i['quantity'] as num?)?.toDouble() ?? 1,
+          unitPrice: (i['unit_price'] as num?)?.toDouble() ?? 0,
+          days: (i['days'] as num?)?.toDouble() ?? 1,
+          catalogId: i['instrument_id']?.toString(),
+          notes: i['notes'],
+        )).toList();
+
+        final est = svcData['estimation'] as Map<String, dynamic>?;
+        final estResources = svcData['estimation_resources'] as List? ?? [];
+        Map<String, dynamic>? estimationData;
+        if (est != null) {
+          estimationData = {
+            'id': null,
+            'topsoil_volume': est['topsoil_volume'],
+            'compacted_volume': est['compacted_volume'],
+            'swell_factor': est['swell_factor'],
+            'total_cy_loose': est['total_cy_loose'],
+            'start_date': est['start_date'],
+            'end_date': est['end_date'],
+            'total_working_days': est['total_working_days'],
+            'working_days': est['total_working_days'],
+            'workingDays': est['total_working_days'],
+            'thickness_inches': est['thickness_inches'],
+            'gravel_thickness_inches': est['gravel_thickness_inches'],
+            'trench_width_inches': est['trench_width_inches'],
+            'trench_depth_inches': est['trench_depth_inches'],
+            'calculated_loose': est['total_cy_loose'],
+            'resources': estResources,
+            'materials': matList,
+          };
+        }
+
+        String? catalogId = svcData['service_id']?.toString();
+
+        loadedServices.add(ServiceEntry(
+          name: svcData['name'] ?? '',
+          unitOfMeasure: svcData['unit_of_measure'] ?? 'und',
+          quantity: (svcData['quantity'] as num?)?.toDouble() ?? 1,
+          overheadPercentage: (svcData['overhead_percentage'] as num?)?.toDouble() ?? 0,
+          profitPercentage: (svcData['profit_percentage'] as num?)?.toDouble() ?? 0,
+          directCost: (svcData['direct_cost'] as num?)?.toDouble() ?? 0,
+          isStaffingRole: _quoteType == 'staffing',
+          machineries: machineries,
+          labors: labors,
+          materials: materials,
+          instruments: instruments,
+          estimationData: estimationData,
+          catalogId: catalogId,
+        ));
+      }
+
+      for (final s in loadedServices) {
+        if (s.catalogId == null) {
+          final cat = _catalogServices.firstWhere(
+            (c) => c['description'] == s.name,
+            orElse: () => {},
+          );
+          if (cat.isNotEmpty) s.catalogId = cat['id']?.toString();
+        }
+      }
+
+      setState(() {
+        _services = loadedServices.isEmpty
+            ? [ServiceEntry(name: 'Service 1')]
+            : loadedServices;
+        if (_services.isNotEmpty) _activeServiceIndex = 0;
+        _isLoadingData = false;
+      });
+    } catch (e) {
+      setState(() {
+        _services = [ServiceEntry(name: 'Service 1')];
+        _isLoadingData = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading template: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
+  }
+
+  Widget _buildTemplateBanner() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 16),
+      child: InkWell(
+        onTap: _showQuoteTemplatePicker,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppTheme.primaryGreen.withAlpha(10),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppTheme.primaryGreen.withAlpha(30)),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(color: AppTheme.primaryGreen.withAlpha(20), shape: BoxShape.circle),
+                child: const Icon(Icons.file_copy_outlined, color: AppTheme.primaryGreen, size: 20),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Copy from existing estimate', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
+                    Text('Start with a proven quote configuration — services, resources and prices', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.primaryGreen),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   // ── Step Content ──
   Widget _buildCurrentStepContent() {
     switch (_currentStep) {
@@ -1288,6 +1579,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (!_isEditing) _buildTemplateBanner(),
           _sectionTitle('Estimate Details'),
           const SizedBox(height: 16),
           Row(

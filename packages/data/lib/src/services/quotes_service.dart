@@ -110,41 +110,55 @@ class QuotesService {
     return response;
   }
 
-  Future<List<Map<String, dynamic>>> getEstimationsForTemplate() async {
+  // ── Quote Templates ──
+  Future<List<Map<String, dynamic>>> getQuotesForTemplate() async {
     final response = await _supabase
-        .from('quote_service_estimations')
-        .select('''
-          id, total_cy_loose, total_working_days, start_date, created_at,
-          quote_services!inner(name, unit_of_measure, quotes!inner(title, customers!inner(name)))
-        ''')
-        .not('quote_services.quotes', 'is', null)
+        .from('quotes')
+        .select('id, title, client_name, quote_date, total_amount, status')
         .order('created_at', ascending: false)
         .limit(100);
     return List<Map<String, dynamic>>.from(response ?? []);
   }
 
-  Future<Map<String, dynamic>?> getEstimationFullData(String estimationId) async {
-    final estimation = await _supabase
-        .from('quote_service_estimations')
-        .select()
-        .eq('id', estimationId)
-        .maybeSingle();
-    if (estimation == null) return null;
+  Future<Map<String, dynamic>?> getFullQuoteForTemplate(String quoteId) async {
+    final quote = await _supabase.from('quotes').select().eq('id', quoteId).maybeSingle();
+    if (quote == null) return null;
 
-    final resources = await getResourcesForEstimation(estimationId);
-    final quoteServiceId = estimation['quote_service_id'] as String?;
-    List<Map<String, dynamic>> materials = [];
-    List<Map<String, dynamic>> instruments = [];
-    if (quoteServiceId != null) {
-      materials = await getMaterialsForService(quoteServiceId);
-      instruments = await getInstrumentsForService(quoteServiceId);
+    final services = await _supabase
+        .from('quote_services')
+        .select()
+        .eq('quote_id', quoteId)
+        .order('created_at');
+
+    final List<Map<String, dynamic>> servicesWithData = [];
+    for (final svc in services ?? []) {
+      final svcId = svc['id'] as String;
+
+      final machineries = await getMachineriesForService(svcId);
+      final labors = await getLaborsForService(svcId);
+      final materials = await getMaterialsForService(svcId);
+      final instruments = await getInstrumentsForService(svcId);
+
+      final estimation = await getEstimationForService(svcId);
+      List<Map<String, dynamic>> estimationResources = [];
+      if (estimation != null) {
+        estimationResources = await getResourcesForEstimation(estimation['id'] as String);
+      }
+
+      servicesWithData.add({
+        ...svc,
+        'machineries': machineries,
+        'labors': labors,
+        'materials': materials,
+        'instruments': instruments,
+        'estimation': estimation,
+        'estimation_resources': estimationResources,
+      });
     }
 
     return {
-      ...estimation,
-      'resources': resources,
-      'materials': materials,
-      'instruments': instruments,
+      ...quote,
+      'services': servicesWithData,
     };
   }
 
