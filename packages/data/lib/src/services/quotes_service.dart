@@ -110,6 +110,44 @@ class QuotesService {
     return response;
   }
 
+  Future<List<Map<String, dynamic>>> getEstimationsForTemplate() async {
+    final response = await _supabase
+        .from('quote_service_estimations')
+        .select('''
+          id, total_cy_loose, total_working_days, start_date, created_at,
+          quote_services!inner(name, unit_of_measure, quotes!inner(title, customers!inner(name)))
+        ''')
+        .not('quote_services.quotes', 'is', null)
+        .order('created_at', ascending: false)
+        .limit(100);
+    return List<Map<String, dynamic>>.from(response ?? []);
+  }
+
+  Future<Map<String, dynamic>?> getEstimationFullData(String estimationId) async {
+    final estimation = await _supabase
+        .from('quote_service_estimations')
+        .select()
+        .eq('id', estimationId)
+        .maybeSingle();
+    if (estimation == null) return null;
+
+    final resources = await getResourcesForEstimation(estimationId);
+    final quoteServiceId = estimation['quote_service_id'] as String?;
+    List<Map<String, dynamic>> materials = [];
+    List<Map<String, dynamic>> instruments = [];
+    if (quoteServiceId != null) {
+      materials = await getMaterialsForService(quoteServiceId);
+      instruments = await getInstrumentsForService(quoteServiceId);
+    }
+
+    return {
+      ...estimation,
+      'resources': resources,
+      'materials': materials,
+      'instruments': instruments,
+    };
+  }
+
   // ── Estimation Resources ──
   Future<List<Map<String, dynamic>>> getResourcesForEstimation(String estimationId) async {
     final response = await _supabase
