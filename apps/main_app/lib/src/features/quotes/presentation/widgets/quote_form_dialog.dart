@@ -118,6 +118,7 @@ class ServiceEntry {
   double overheadPercentage;
   double profitPercentage;
   double directCost;
+  double targetPrice;
   bool isStaffingRole;
   List<MachineryEntry> machineries;
   List<LaborEntry> labors;
@@ -134,6 +135,7 @@ class ServiceEntry {
     this.overheadPercentage = 0,
     this.profitPercentage = 0,
     this.directCost = 0,
+    this.targetPrice = 0,
     this.isStaffingRole = false,
     List<MachineryEntry>? machineries,
     List<LaborEntry>? labors,
@@ -172,6 +174,17 @@ class ServiceEntry {
   double get profitAmount => totalPlusOverhead * (profitPercentage / 100);
   double get totalSaleV2 => totalPlusOverhead + profitAmount;
   double get unitPrice => quantity > 0 ? totalSaleV2 / quantity : 0;
+
+  double get priceGap => targetPrice - totalSaleV2;
+  double get priceGapPercent =>
+      targetPrice > 0 ? (targetPrice - totalSaleV2).abs() / targetPrice * 100 : 0;
+  String get gapStatus => targetPrice <= 0
+      ? 'none'
+      : priceGapPercent < 2
+          ? 'green'
+          : priceGapPercent < 10
+              ? 'yellow'
+              : 'red';
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -720,8 +733,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             profitPercentage:
                 (svcData['profit_percentage'] as num?)?.toDouble() ?? 0,
             directCost: (svcData['direct_cost'] as num?)?.toDouble() ?? 0,
+            targetPrice: (svcData['target_price'] as num?)?.toDouble() ?? 0,
             isStaffingRole: _quoteType == 'staffing',
-            machineries: machineries,
+            machineries: machineries,  // _loadExistingData
             labors: labors,
             materials: materials,
             instruments: instruments,
@@ -847,6 +861,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 'overhead_percentage': svc.overheadPercentage,
                 'profit_percentage': svc.profitPercentage,
                 'direct_cost': svc.totalSaleV2,
+                'target_price': svc.targetPrice,
               })
               .eq('id', svcId);
 
@@ -867,6 +882,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 'overhead_percentage': svc.overheadPercentage,
                 'profit_percentage': svc.profitPercentage,
                 'direct_cost': svc.totalSaleV2,
+                'target_price': svc.targetPrice,
               })
               .select()
               .single();
@@ -1471,8 +1487,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           overheadPercentage: (svcData['overhead_percentage'] as num?)?.toDouble() ?? 0,
           profitPercentage: (svcData['profit_percentage'] as num?)?.toDouble() ?? 0,
           directCost: (svcData['direct_cost'] as num?)?.toDouble() ?? 0,
+          targetPrice: (svcData['target_price'] as num?)?.toDouble() ?? 0,
           isStaffingRole: _quoteType == 'staffing',
-          machineries: machineries,
+          machineries: machineries,  // _populateFromTemplate
           labors: labors,
           materials: materials,
           instruments: instruments,
@@ -1546,6 +1563,113 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // ── Target Price Gap ──
+
+  Widget _buildTargetPriceMini(ServiceEntry svc) {
+    final gap = svc.priceGap;
+    final pct = svc.priceGapPercent;
+    final color = svc.gapStatus == 'green'
+        ? AppTheme.primaryGreen
+        : svc.gapStatus == 'yellow'
+            ? Colors.orange
+            : AppTheme.errorRed;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withAlpha(15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withAlpha(50)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            gap <= 0 ? Icons.arrow_upward : Icons.arrow_downward,
+            size: 12, color: color,
+          ),
+          const SizedBox(width: 4),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '\$${_currencyFormat.format(gap.abs())}',
+                style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: color),
+              ),
+              Text(
+                '${pct.toStringAsFixed(1)}%',
+                style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w600, color: color),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickLevers(ServiceEntry svc) {
+    if (svc.targetPrice <= 0 || svc.gapStatus == 'green') return const SizedBox.shrink();
+
+    final gap = svc.priceGap;
+    final suggestions = <_LeverSuggestion>[];
+
+    if (svc.profitAmount > 0) {
+      final newProfit = (((svc.profitAmount - gap) / svc.totalPlusOverhead) * 100)
+          .clamp(5.0, 35.0);
+      suggestions.add(_LeverSuggestion(
+        label: 'Profit \u2192 ${newProfit.toStringAsFixed(1)}%',
+        icon: Icons.trending_down,
+        action: () => setState(() => svc.profitPercentage = newProfit),
+      ));
+    }
+
+    if (svc.overheadAmount > 0 && suggestions.length < 2) {
+      final newOH = (((svc.overheadAmount - gap) / svc.subTotal) * 100)
+          .clamp(5.0, 25.0);
+      suggestions.add(_LeverSuggestion(
+        label: 'OH \u2192 ${newOH.toStringAsFixed(1)}%',
+        icon: Icons.trending_down,
+        action: () => setState(() => svc.overheadPercentage = newOH),
+      ));
+    }
+
+    if (suggestions.isEmpty) return const SizedBox.shrink();
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('Quick fix:', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate400)),
+          const SizedBox(width: 6),
+          ...suggestions.map((s) => Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: InkWell(
+              onTap: s.action,
+              borderRadius: BorderRadius.circular(6),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withAlpha(15),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: Colors.orange.withAlpha(40)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(s.icon, size: 12, color: Colors.orange),
+                    const SizedBox(width: 4),
+                    Text(s.label, style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.orange)),
+                  ],
+                ),
+              ),
+            ),
+          )),
+        ],
       ),
     );
   }
@@ -1870,9 +1994,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                                       }
                                       if (_quoteType == 'staffing' && item['hourly_rate'] != null) {
                                         svc.directCost = (item['hourly_rate'] as num).toDouble();
-                                      }
-                                    }
-                                  });
+  }
+}
+                              });
                                 },
                                 onAddNew: () => _openCatalogItemAdd(_quoteType == 'staffing' ? 'labor' : 'services'),
                               ),
@@ -1954,6 +2078,23 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                               () => _activeServiceIndex = serviceIndex,
                             ),
                           ),
+                          const SizedBox(width: 10),
+                          _miniNumField(
+                            'Target \$',
+                            svc.targetPrice,
+                            70,
+                            (v) => setState(() {
+                              _activeServiceIndex = serviceIndex;
+                              svc.targetPrice = v;
+                            }),
+                            onTap: () => setState(
+                              () => _activeServiceIndex = serviceIndex,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          // Target gap indicator
+                          if (svc.targetPrice > 0) _buildTargetPriceMini(svc),
+                          if (svc.targetPrice > 0) _buildQuickLevers(svc),
                           // Work Projection Button (only for non-LS/non-staffing)
                           if (svc.unitOfMeasure.toLowerCase() != 'ls' && !svc.isStaffingRole) ...[
                             const SizedBox(width: 10),
@@ -2933,6 +3074,112 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   // ══════════════════════════════════════════════════════════════
   //  STEP 4: SUMMARY
   // ══════════════════════════════════════════════════════════════
+
+  Widget _buildTargetPriceSummary() {
+    final svcs = _services.where((s) => s.targetPrice > 0).toList();
+    if (svcs.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Target Price Summary', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+          const SizedBox(height: 16),
+          Table(
+            columnWidths: const {
+              0: FlexColumnWidth(2),
+              1: FlexColumnWidth(1.5),
+              2: FlexColumnWidth(1.5),
+              3: FlexColumnWidth(1.2),
+              4: FlexColumnWidth(0.8),
+            },
+            children: [
+              TableRow(
+                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0)))),
+                children: [
+                  _thCell('Service'),
+                  _thCell('Target'),
+                  _thCell('Current'),
+                  _thCell('Gap'),
+                  _thCell(''),
+                ],
+              ),
+              ...svcs.map((svc) {
+                final gap = svc.priceGap;
+                final color = svc.gapStatus == 'green'
+                    ? AppTheme.primaryGreen
+                    : svc.gapStatus == 'yellow'
+                        ? Colors.orange
+                        : AppTheme.errorRed;
+                return TableRow(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(svc.name, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900)),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text('\$${_currencyFormat.format(svc.targetPrice)}', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text('\$${_currencyFormat.format(svc.totalSaleV2)}', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate600)),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        gap <= 0 ? '-\$${_currencyFormat.format(gap.abs())}' : '+\$${_currencyFormat.format(gap.abs())}',
+                        style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: color),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Container(
+                        width: 10, height: 10,
+                        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                      ),
+                    ),
+                  ],
+                );
+              }),
+            ],
+          ),
+          const Divider(height: 24),
+          Builder(builder: (_) {
+            final totalTarget = svcs.fold<double>(0, (s, svc) => s + svc.targetPrice);
+            final totalCurrent = svcs.fold<double>(0, (s, svc) => s + svc.totalSaleV2);
+            final totalGap = totalTarget - totalCurrent;
+            final tColor = totalGap.abs() / (totalTarget > 0 ? totalTarget : 1) < 0.02
+                ? AppTheme.primaryGreen
+                : totalGap.abs() / (totalTarget > 0 ? totalTarget : 1) < 0.1
+                    ? Colors.orange
+                    : AppTheme.errorRed;
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                Text('Total: ', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+                Text('\$${_currencyFormat.format(totalTarget)} target  /  \$${_currencyFormat.format(totalCurrent)} current', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate600)),
+                const SizedBox(width: 16),
+                Text(totalGap <= 0 ? '-\$${_currencyFormat.format(totalGap.abs())}' : '+\$${_currencyFormat.format(totalGap.abs())}', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: tColor)),
+              ],
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _thCell(String text) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Text(text, style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate400)),
+  );
+
   Widget _buildStep5Summary() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(28),
@@ -2944,6 +3191,10 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
           ..._services.asMap().entries.map(
             (e) => _buildServiceSummaryCard(e.key, e.value),
           ),
+          if (_services.any((s) => s.targetPrice > 0)) ...[
+            const SizedBox(height: 20),
+            _buildTargetPriceSummary(),
+          ],
           const SizedBox(height: 20),
           _buildGrandTotal(),
         ],
@@ -4355,5 +4606,12 @@ class _AutoSelectFieldState extends State<_AutoSelectField> {
       onChanged: widget.onChanged,
     );
   }
+}
+
+class _LeverSuggestion {
+  final String label;
+  final IconData icon;
+  final VoidCallback action;
+  const _LeverSuggestion({required this.label, required this.icon, required this.action});
 }
 
