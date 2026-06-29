@@ -2092,9 +2092,6 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                             ),
                           ),
                           const SizedBox(width: 10),
-                          // Target gap indicator
-                          if (svc.targetPrice > 0) _buildTargetPriceMini(svc),
-                          if (svc.targetPrice > 0) _buildQuickLevers(svc),
                           // Work Projection Button (only for non-LS/non-staffing)
                           if (svc.unitOfMeasure.toLowerCase() != 'ls' && !svc.isStaffingRole) ...[
                             const SizedBox(width: 10),
@@ -2171,6 +2168,14 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
 
                         ],
                       ),
+                      if (svc.targetPrice > 0) ...[
+                        const SizedBox(height: 6),
+                        Row(children: [
+                          _buildTargetPriceMini(svc),
+                          const SizedBox(width: 8),
+                          _buildQuickLevers(svc),
+                        ]),
+                      ],
                       if (svc.estimationData != null) ...[
                         const SizedBox(height: 12),
                         _buildEstimationSummaryBoxes(svc),

@@ -1472,7 +1472,8 @@ class _ServiceEstimationDialogState
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _sectionHeader('Project Materials & Supplies'),
+              Flexible(child: _sectionHeader('Project Materials & Supplies')),
+              const SizedBox(width: 12),
               ElevatedButton.icon(
                 onPressed: _showMaterialSelector,
                 icon: const Icon(Icons.add_shopping_cart, size: 18),
@@ -1505,15 +1506,20 @@ class _ServiceEstimationDialogState
 
   Widget _emptyMaterialsPlaceholder() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.inventory_2_outlined, size: 64, color: AppTheme.slate200),
-          const SizedBox(height: 16),
-          Text('No materials added yet', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.slate400)),
-          const SizedBox(height: 8),
-          Text('Click "Add Material" to select supplies from the catalog', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400)),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.inventory_2_outlined, size: 64, color: AppTheme.slate200),
+            const SizedBox(height: 16),
+            Text('No materials added yet', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.slate400)),
+            const SizedBox(height: 8),
+            Text('Click "Add Material" to select supplies from the catalog', 
+                textAlign: TextAlign.center, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400)),
+          ],
+        ),
       ),
     );
   }
