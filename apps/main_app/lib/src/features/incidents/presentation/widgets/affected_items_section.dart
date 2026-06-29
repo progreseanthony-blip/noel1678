@@ -60,6 +60,9 @@ class AffectedItemsSection extends StatelessWidget {
     final qty = item['quantity_affected'] ?? 0;
     final unit = item['unit'] as String? ?? '';
     final rate = item['hourly_cost_rate'] ?? 0;
+    final dailyRate = (item['daily_rate'] as num?)?.toDouble() ?? 0;
+    final daysAffected = (item['days_affected'] as num?)?.toDouble() ?? 0;
+    final rentCost = (item['downtime_rent_cost'] as num?)?.toDouble() ?? 0;
     final desc = item['description'] as String? ?? '';
 
     return Card(
@@ -113,6 +116,20 @@ class AffectedItemsSection extends StatelessWidget {
                     style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate700),
                   ),
                 ),
+                if (dailyRate > 0 && daysAffected > 0) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withAlpha(15),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '\$${dailyRate.toStringAsFixed(0)}/day \u00d7 ${daysAffected.toStringAsFixed(0)}d = \$${rentCost.toStringAsFixed(0)}',
+                      style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.orange),
+                    ),
+                  ),
+                ],
                 if (editable && onRemoveItem != null) ...[
                   const SizedBox(height: 6),
                   SizedBox(

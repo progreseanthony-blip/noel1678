@@ -58,7 +58,7 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
           .eq('project_id', widget.projectId);
       final labor = await client
           .from('project_labor')
-          .select('id, role_name, expected_employees, active_employees, labor_roles(hourly_rate)')
+          .select('id, role_name, expected_employees, active_employees, quote_service_labors(hourly_rate)')
           .eq('project_id', widget.projectId);
       final instruments = await client
           .from('project_instruments')
@@ -339,7 +339,11 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
   double _quantity = 1;
   String _unit = '';
   double _hourlyCostRate = 0;
+  double _dailyRate = 0;
+  double _daysAffected = 0;
   final _rateCtrl = TextEditingController();
+  final _dailyRateCtrl = TextEditingController(text: '0');
+  final _daysCtrl = TextEditingController(text: '0');
 
   List<Map<String, dynamic>> get _currentList {
     switch (_selectedType) {
@@ -357,10 +361,12 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
       case 'machinery':
         final qsm = resource['quote_service_machineries'];
         final monthly = qsm is Map ? (qsm['monthly_rent_cost'] as num?)?.toDouble() ?? 0 : 0;
+        _dailyRate = monthly > 0 ? monthly / 30 : 0;
+        _dailyRateCtrl.text = _dailyRate > 0 ? _dailyRate.toStringAsFixed(0) : '0';
         return monthly > 0 ? monthly / 160 : 0;
       case 'labor':
-        final lr = resource['labor_roles'];
-        return lr is Map ? (lr['hourly_rate'] as num?)?.toDouble() ?? 0 : 0;
+        final qsl = resource['quote_service_labors'];
+        return qsl is Map ? (qsl['hourly_rate'] as num?)?.toDouble() ?? 0 : 0;
       case 'instrument':
         final qsi = resource['quote_service_instruments'];
         final price = qsi is Map ? (qsi['unit_price'] as num?)?.toDouble() ?? 0 : 0;
@@ -374,6 +380,8 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
   @override
   void dispose() {
     _rateCtrl.dispose();
+    _dailyRateCtrl.dispose();
+    _daysCtrl.dispose();
     super.dispose();
   }
 
@@ -413,7 +421,11 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
                     _selectedResourceId = v;
                     final selected = _currentList.cast<Map<String, dynamic>?>().firstWhere((r) => r?['id'] == v, orElse: () => null);
                     if (selected != null) {
-                      _unit = selected['unit_name'] as String? ?? selected['unit'] as String? ?? '';
+                      _unit = selected['unit_name'] as String? 
+                          ?? (_selectedType == 'machinery' ? 'hrs' 
+                          : _selectedType == 'labor' ? 'workers'
+                          : _selectedType == 'instrument' ? 'days'
+                          : '');
                       _hourlyCostRate = _suggestedRate(selected);
                       _rateCtrl.text = _hourlyCostRate > 0 ? _hourlyCostRate.toStringAsFixed(0) : '0';
                     }
@@ -446,6 +458,31 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
                 ),
                 onChanged: (v) => _hourlyCostRate = double.tryParse(v) ?? 0,
               ),
+              if (_selectedType == 'machinery') ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _dailyRateCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Daily Rent Rate (\$/day)',
+                    hintText: 'Auto-calculated from monthly rent / 30',
+                    border: OutlineInputBorder(),
+                    prefixText: '\$ ',
+                  ),
+                  onChanged: (v) => _dailyRate = double.tryParse(v) ?? 0,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _daysCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Days Affected',
+                    hintText: 'Number of calendar days machine was unavailable',
+                    border: OutlineInputBorder(),
+                  ),
+                  onChanged: (v) => _daysAffected = double.tryParse(v) ?? 0,
+                ),
+              ],
             ],
           ),
         ),
@@ -466,6 +503,8 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
               'quantity_affected': _quantity,
               'unit': _unit,
               'hourly_cost_rate': _hourlyCostRate,
+              if (_selectedType == 'machinery') 'daily_rate': _dailyRate,
+              if (_selectedType == 'machinery') 'days_affected': _daysAffected,
             });
           },
           child: const Text('Add'),
