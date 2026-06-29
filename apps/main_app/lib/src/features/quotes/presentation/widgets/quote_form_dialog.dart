@@ -1618,7 +1618,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     final suggestions = <_LeverSuggestion>[];
 
     if (svc.profitAmount > 0) {
-      final newProfit = (((svc.profitAmount - gap) / svc.totalPlusOverhead) * 100)
+      final newProfit = (((svc.profitAmount + gap) / svc.totalPlusOverhead) * 100)
           .clamp(5.0, 35.0);
       suggestions.add(_LeverSuggestion(
         label: 'Profit \u2192 ${newProfit.toStringAsFixed(1)}%',
@@ -1628,7 +1628,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     }
 
     if (svc.overheadAmount > 0 && suggestions.length < 2) {
-      final newOH = (((svc.overheadAmount - gap) / svc.subTotal) * 100)
+      final newOH = (((svc.overheadAmount + gap) / svc.subTotal) * 100)
           .clamp(5.0, 25.0);
       suggestions.add(_LeverSuggestion(
         label: 'OH \u2192 ${newOH.toStringAsFixed(1)}%',
