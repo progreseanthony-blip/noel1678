@@ -37,10 +37,56 @@ class AffectedItemsSection extends StatelessWidget {
       );
     }
 
+    final totalHourlyRate = items.fold<double>(0, (sum, item) {
+      final rate = item['hourly_cost_rate'] ?? 0;
+      return sum + (rate is num ? rate.toDouble() : 0);
+    });
+    final totalRentCost = items.fold<double>(0, (sum, item) {
+      final dailyRate = (item['daily_rate'] as num?)?.toDouble() ?? 0;
+      if (dailyRate > 0) {
+        final rent = item['downtime_rent_cost'] ?? 0;
+        return sum + (rent is num ? rent.toDouble() : 0);
+      }
+      return sum;
+    });
+    final hasRentCost = items.any((item) => (item['daily_rate'] as num?)?.toDouble() != null && (item['daily_rate'] as num?)!.toDouble() > 0);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         ...items.map((item) => _buildItemCard(item)),
+        Container(
+          margin: const EdgeInsets.only(top: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppTheme.slate50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppTheme.slate200),
+          ),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Total Hourly Rate', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 2),
+                  Text('\$${totalHourlyRate.toStringAsFixed(0)}/hr', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+                ],
+              ),
+            ),
+            if (hasRentCost)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('Total Rent Cost', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 2),
+                    Text('\$${totalRentCost.toStringAsFixed(0)}', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.orange)),
+                  ],
+                ),
+              ),
+          ]),
+        ),
         if (editable && onAddItem != null) ...[
           const SizedBox(height: 8),
           OutlinedButton.icon(

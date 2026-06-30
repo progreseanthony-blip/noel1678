@@ -6,6 +6,7 @@ class IncidentActionTimeline extends StatelessWidget {
   final String? currentUserId;
   final ValueChanged<String>? onComplete;
   final VoidCallback? onAddAction;
+  final ValueChanged<String>? onDeleteAction;
 
   const IncidentActionTimeline({
     super.key,
@@ -13,6 +14,7 @@ class IncidentActionTimeline extends StatelessWidget {
     this.currentUserId,
     this.onComplete,
     this.onAddAction,
+    this.onDeleteAction,
   });
 
   @override
@@ -49,8 +51,22 @@ class IncidentActionTimeline extends StatelessWidget {
 
   Widget _buildActionItem(Map<String, dynamic> action, int index) {
     final isCompleted = action['status'] == 'completed';
+    final isPending = action['status'] == 'pending';
     final desc = action['description'] as String? ?? '';
     final dueDate = action['due_date'] as String?;
+    bool isOverdue = false;
+    if (isPending && dueDate != null) {
+      try {
+        final due = DateTime.parse(dueDate);
+        if (due.isBefore(DateTime.now())) {
+          isOverdue = true;
+        }
+      } catch (_) {}
+    }
+
+    final circleColor = isOverdue ? Colors.deepOrange : (isCompleted ? AppTheme.primaryGreen : AppTheme.slate200);
+    final circleBorderColor = isOverdue ? Colors.deepOrange : (isCompleted ? AppTheme.primaryGreen : AppTheme.slate400);
+    final descColor = isCompleted ? AppTheme.slate400 : (isOverdue ? Colors.deepOrange : AppTheme.slate900);
 
     return Padding(
       padding: const EdgeInsets.only(left: 8),
@@ -63,15 +79,17 @@ class IncidentActionTimeline extends StatelessWidget {
                 width: 20, height: 20,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: isCompleted ? AppTheme.primaryGreen : AppTheme.slate200,
+                  color: circleColor,
                   border: Border.all(
-                    color: isCompleted ? AppTheme.primaryGreen : AppTheme.slate400,
+                    color: circleBorderColor,
                     width: 2,
                   ),
                 ),
                 child: isCompleted
                     ? const Icon(Icons.check, size: 12, color: Colors.white)
-                    : null,
+                    : isOverdue
+                        ? const Icon(Icons.warning_amber, size: 12, color: Colors.white)
+                        : null,
               ),
               if (index < actions.length - 1)
                 Expanded(
@@ -89,16 +107,23 @@ class IncidentActionTimeline extends StatelessWidget {
                       desc,
                       style: GoogleFonts.manrope(
                         fontSize: 13, fontWeight: FontWeight.w600,
-                        color: isCompleted ? AppTheme.slate400 : AppTheme.slate900,
+                        color: descColor,
                         decoration: isCompleted ? TextDecoration.lineThrough : null,
                       ),
                     ),
                     if (dueDate != null) ...[
                       const SizedBox(height: 2),
-                      Text(
-                        'Due: $dueDate',
-                        style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400),
-                      ),
+                      Row(children: [
+                        if (isOverdue)
+                          const Padding(
+                            padding: EdgeInsets.only(right: 4),
+                            child: Icon(Icons.warning_amber, size: 12, color: Colors.deepOrange),
+                          ),
+                        Text(
+                          'Due: $dueDate',
+                          style: GoogleFonts.manrope(fontSize: 11, color: isOverdue ? Colors.deepOrange : AppTheme.slate400),
+                        ),
+                      ]),
                     ],
                   ],
                 ),
@@ -115,6 +140,16 @@ class IncidentActionTimeline extends StatelessWidget {
                     foregroundColor: AppTheme.primaryGreen,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                   ),
+                ),
+              ),
+            if (onDeleteAction != null && !isCompleted)
+              SizedBox(
+                height: 28,
+                child: IconButton(
+                  onPressed: () => onDeleteAction!(action['id'] as String),
+                  icon: const Icon(Icons.close, size: 14, color: AppTheme.errorRed),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
                 ),
               ),
           ],

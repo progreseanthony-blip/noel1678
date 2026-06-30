@@ -1,15 +1,18 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
+import 'package:uuid/uuid.dart';
 
 class IncidentFormPage extends ConsumerStatefulWidget {
   final String projectId;
   final String? dailyReportId;
+  final String? incidentId;
 
-  const IncidentFormPage({super.key, required this.projectId, this.dailyReportId});
+  const IncidentFormPage({super.key, required this.projectId, this.dailyReportId, this.incidentId});
 
   @override
   ConsumerState<IncidentFormPage> createState() => _IncidentFormPageState();
@@ -17,9 +20,12 @@ class IncidentFormPage extends ConsumerStatefulWidget {
 
 class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
   final _formKey = GlobalKey<FormState>();
+  final _uuid = const Uuid();
   bool _isSubmitting = false;
   bool _isLoadingResources = true;
+  bool _isUploading = false;
 
+  List<String> _evidencePhotos = [];
   List<Map<String, dynamic>> _categories = [];
 
   String? _selectedCategoryId;
@@ -46,6 +52,21 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
     try {
       final service = ref.read(incidentsServiceProvider);
       _categories = await service.getCategories();
+
+      if (widget.incidentId != null) {
+        final incident = await service.getById(widget.incidentId!);
+        _selectedCategoryId = incident['category_id']?.toString();
+        _titleCtrl.text = incident['title'] ?? '';
+        _descCtrl.text = incident['description'] ?? '';
+        _priority = incident['priority'] ?? 'medium';
+        _actualExpensesCtrl.text = (incident['actual_expenses'] as num?)?.toString() ?? '';
+        final sd = incident['started_at'];
+        _startedAt = sd != null ? DateTime.parse(sd.toString()).toLocal() : DateTime.now();
+        final items = incident['incident_affected_items'] as List? ?? [];
+        _affectedItems.addAll(List<Map<String, dynamic>>.from(items.map((i) => Map<String, dynamic>.from(i))));
+        final photos = incident['evidence_photos'] as List? ?? [];
+        _evidencePhotos = List<String>.from(photos.map((p) => p.toString()));
+      }
 
       final client = Supabase.instance.client;
       final materials = await client
@@ -83,7 +104,7 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
     final date = await showDatePicker(
       context: context,
       initialDate: _startedAt,
-      firstDate: DateTime.now().subtract(const Duration(days: 30)),
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now(),
     );
     if (date == null || !mounted) return;
@@ -116,6 +137,41 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
     setState(() => _affectedItems.removeAt(index));
   }
 
+  void _removePhoto(int index) {
+    setState(() => _evidencePhotos.removeAt(index));
+  }
+
+  Future<void> _pickPhotos() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+
+    setState(() => _isUploading = true);
+    try {
+      for (final file in result.files) {
+        if (file.bytes == null) continue;
+        final ext = file.extension ?? 'jpg';
+        final path = '${widget.projectId}/${_uuid.v4()}.$ext';
+        await Supabase.instance.client.storage
+            .from('incident-photos')
+            .uploadBinary(path, file.bytes!);
+        final url = Supabase.instance.client.storage
+            .from('incident-photos')
+            .getPublicUrl(path);
+        _evidencePhotos.add(url);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload error: $e'), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
+    if (mounted) setState(() => _isUploading = false);
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     if (_selectedCategoryId == null) {
@@ -128,7 +184,7 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
       final service = ref.read(incidentsServiceProvider);
       final userId = Supabase.instance.client.auth.currentUser?.id;
 
-      final incident = await service.create({
+      final data = {
         'project_id': widget.projectId,
         if (widget.dailyReportId != null) 'daily_report_id': widget.dailyReportId,
         'category_id': _selectedCategoryId,
@@ -138,16 +194,25 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
         'reported_by': userId,
         'started_at': _startedAt.toUtc().toIso8601String(),
         'actual_expenses': double.tryParse(_actualExpensesCtrl.text) ?? 0,
-      });
+        'evidence_photos': _evidencePhotos,
+      };
 
-      for (final item in _affectedItems) {
-        await service.addAffectedItem(incident['id'], item);
+      if (widget.incidentId != null) {
+        await service.update(widget.incidentId!, data);
+        await service.deleteAllAffectedItems(widget.incidentId!);
+        for (final item in _affectedItems) {
+          await service.addAffectedItem(widget.incidentId!, item);
+        }
+      } else {
+        final incident = await service.create(data);
+        for (final item in _affectedItems) {
+          await service.addAffectedItem(incident['id'], item);
+        }
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Incident reported successfully'), backgroundColor: Colors.green),
-        );
+        final msg = widget.incidentId != null ? 'Incident updated successfully' : 'Incident reported successfully';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.green));
         context.pop();
       }
     } catch (e) {
@@ -178,7 +243,7 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.pop()),
-        title: const Text('Report Incident', style: TextStyle(fontSize: 16)),
+        title: Text(widget.incidentId != null ? 'Edit Incident' : 'Report Incident', style: const TextStyle(fontSize: 16)),
       ),
       body: _isLoadingResources
           ? const Center(child: CircularProgressIndicator())
@@ -295,13 +360,78 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
                       );
                     }),
 
+                  const SizedBox(height: 24),
+                  Row(children: [
+                    Text('Evidence Photos', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: _isUploading ? null : _pickPhotos,
+                      icon: _isUploading
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.add_a_photo, size: 18),
+                      label: Text(_isUploading ? 'Uploading...' : 'Add Photos'),
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  if (_evidencePhotos.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: AppTheme.slate50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppTheme.slate200),
+                      ),
+                      child: Center(
+                        child: Text('No photos added. Tap "Add Photos" to attach evidence.',
+                            style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 13)),
+                      ),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _evidencePhotos.asMap().entries.map((entry) {
+                        return Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(
+                                entry.value,
+                                width: 80,
+                                height: 80,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  width: 80, height: 80,
+                                  color: AppTheme.slate200,
+                                  child: const Icon(Icons.broken_image, color: AppTheme.slate400),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              top: 0, right: 0,
+                              child: GestureDetector(
+                                onTap: () => _removePhoto(entry.key),
+                                child: Container(
+                                  width: 20, height: 20,
+                                  decoration: const BoxDecoration(
+                                    color: AppTheme.errorRed,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.close, size: 12, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
                   const SizedBox(height: 32),
                   SizedBox(
                     height: 48,
                     child: FilledButton.icon(
                       onPressed: _isSubmitting ? null : _submit,
                       icon: _isSubmitting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
-                      label: Text(_isSubmitting ? 'Submitting...' : 'Report Incident'),
+                      label: Text(_isSubmitting ? 'Saving...' : (widget.incidentId != null ? 'Update Incident' : 'Report Incident')),
                       style: FilledButton.styleFrom(
                         backgroundColor: AppTheme.errorRed,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -337,7 +467,7 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
   String _selectedType = 'material';
   String? _selectedResourceId;
   double _quantity = 1;
-  String _unit = '';
+  final _unitCtrl = TextEditingController();
   double _hourlyCostRate = 0;
   double _dailyRate = 0;
   double _daysAffected = 0;
@@ -382,6 +512,7 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
     _rateCtrl.dispose();
     _dailyRateCtrl.dispose();
     _daysCtrl.dispose();
+    _unitCtrl.dispose();
     super.dispose();
   }
 
@@ -421,7 +552,7 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
                     _selectedResourceId = v;
                     final selected = _currentList.cast<Map<String, dynamic>?>().firstWhere((r) => r?['id'] == v, orElse: () => null);
                     if (selected != null) {
-                      _unit = selected['unit_name'] as String? 
+                      _unitCtrl.text = selected['unit_name'] as String? 
                           ?? (_selectedType == 'machinery' ? 'hrs' 
                           : _selectedType == 'labor' ? 'workers'
                           : _selectedType == 'instrument' ? 'days'
@@ -442,9 +573,8 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
               ),
               const SizedBox(height: 12),
               TextFormField(
-                initialValue: _unit,
+                controller: _unitCtrl,
                 decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder(), hintText: 'm³, units, hours...'),
-                onChanged: (v) => _unit = v,
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -501,7 +631,7 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
               if (_selectedType == 'instrument') 'project_instrument_id': _selectedResourceId,
               'resource_name': name,
               'quantity_affected': _quantity,
-              'unit': _unit,
+              'unit': _unitCtrl.text,
               'hourly_cost_rate': _hourlyCostRate,
               if (_selectedType == 'machinery') 'daily_rate': _dailyRate,
               if (_selectedType == 'machinery') 'days_affected': _daysAffected,

@@ -26,7 +26,7 @@ class IncidentsService {
   Future<Map<String, dynamic>> getById(String id) async {
     final response = await _supabase
         .from('incidents')
-        .select('*, incident_categories(name, icon, color), reported_by_profile:profiles!incidents_reported_by_fkey(name), incident_affected_items(*), incident_actions(*)')
+        .select('*, incident_categories(name, icon, color), reported_by_profile:profiles!incidents_reported_by_fkey(name), resolved_by_profile:profiles!incidents_resolved_by_fkey(name), incident_affected_items(*), incident_actions(*)')
         .eq('id', id)
         .single();
     return response;
@@ -67,6 +67,10 @@ class IncidentsService {
 
   Future<void> removeAffectedItem(String itemId) async {
     await _supabase.from('incident_affected_items').delete().eq('id', itemId);
+  }
+
+  Future<void> deleteAllAffectedItems(String incidentId) async {
+    await _supabase.from('incident_affected_items').delete().eq('incident_id', incidentId);
   }
 
   Future<Map<String, dynamic>> addAction(String incidentId, Map<String, dynamic> data) async {

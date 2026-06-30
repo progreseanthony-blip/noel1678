@@ -19,11 +19,19 @@ class _IncidentsListPageState extends ConsumerState<IncidentsListPage> {
   bool _isLoading = true;
   String? _error;
   String _statusFilter = 'all';
+  String _searchQuery = '';
+  final _searchCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -48,8 +56,15 @@ class _IncidentsListPageState extends ConsumerState<IncidentsListPage> {
   }
 
   List<Map<String, dynamic>> get _filtered {
-    if (_statusFilter == 'all') return _incidents;
-    return _incidents.where((i) => i['status'] == _statusFilter).toList();
+    var list = _incidents;
+    if (_searchQuery.isNotEmpty) {
+      list = list.where((i) {
+        final title = (i['title'] as String? ?? '').toLowerCase();
+        return title.contains(_searchQuery.toLowerCase());
+      }).toList();
+    }
+    if (_statusFilter == 'all') return list;
+    return list.where((i) => i['status'] == _statusFilter).toList();
   }
 
   @override
@@ -66,8 +81,14 @@ class _IncidentsListPageState extends ConsumerState<IncidentsListPage> {
           : _error != null
               ? Center(child: Text('Error: $_error', style: GoogleFonts.manrope(color: AppTheme.errorRed)))
               : Column(children: [
+                  _buildSearchBar(),
                   _buildFilterBar(),
-                  Expanded(child: _incidents.isEmpty ? _emptyState() : _buildList()),
+                  Expanded(
+                    child: RefreshIndicator(
+                      onRefresh: _loadData,
+                      child: _incidents.isEmpty ? ListView(children: [_emptyState()]) : _buildList(),
+                    ),
+                  ),
                 ]),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
@@ -82,25 +103,61 @@ class _IncidentsListPageState extends ConsumerState<IncidentsListPage> {
     );
   }
 
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: TextField(
+        controller: _searchCtrl,
+        decoration: InputDecoration(
+          hintText: 'Search incidents...',
+          hintStyle: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400),
+          prefixIcon: const Icon(Icons.search, size: 20, color: AppTheme.slate400),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear, size: 18, color: AppTheme.slate400),
+                  onPressed: () {
+                    _searchCtrl.clear();
+                    setState(() => _searchQuery = '');
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: AppTheme.slate50,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: BorderSide.none,
+          ),
+        ),
+        style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+        onChanged: (v) => setState(() => _searchQuery = v),
+      ),
+    );
+  }
+
   Widget _buildFilterBar() {
+    final statusCounts = <String, int>{
+      for (final s in ['open', 'in_progress', 'resolved', 'closed']) s: _incidents.where((i) => i['status'] == s).length,
+    };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(children: [
-        _filterChip('All', 'all'),
+        _filterChip('All', 'all', _incidents.length),
         const SizedBox(width: 8),
-        _filterChip('Open', 'open'),
+        _filterChip('Open', 'open', statusCounts['open'] ?? 0),
         const SizedBox(width: 8),
-        _filterChip('In Progress', 'in_progress'),
+        _filterChip('In Progress', 'in_progress', statusCounts['in_progress'] ?? 0),
         const SizedBox(width: 8),
-        _filterChip('Resolved', 'resolved'),
+        _filterChip('Resolved', 'resolved', statusCounts['resolved'] ?? 0),
         const SizedBox(width: 8),
-        _filterChip('Closed', 'closed'),
+        _filterChip('Closed', 'closed', statusCounts['closed'] ?? 0),
       ]),
     );
   }
 
-  Widget _filterChip(String label, String value) {
+  Widget _filterChip(String label, String value, int count) {
     final active = _statusFilter == value;
+    final displayLabel = value == 'all' ? label : '$label ($count)';
     return GestureDetector(
       onTap: () => setState(() => _statusFilter = value),
       child: Container(
@@ -110,7 +167,7 @@ class _IncidentsListPageState extends ConsumerState<IncidentsListPage> {
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
-          label,
+          displayLabel,
           style: GoogleFonts.manrope(
             fontSize: 12, fontWeight: FontWeight.w600,
             color: active ? Colors.white : AppTheme.slate600,

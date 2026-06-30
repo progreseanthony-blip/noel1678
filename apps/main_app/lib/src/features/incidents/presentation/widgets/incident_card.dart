@@ -16,8 +16,10 @@ class IncidentCard extends StatelessWidget {
     final catColorHex = category?['color'] as String? ?? '#EF4444';
     final catColor = Color(int.parse(catColorHex.replaceFirst('#', '0xFF')));
     final title = incident['title'] as String? ?? '';
+    final description = incident['description'] as String? ?? '';
     final priority = incident['priority'] as String? ?? 'medium';
     final status = incident['status'] as String? ?? 'open';
+    final startedAt = incident['started_at'] as String?;
     final timeImpact = incident['time_impact_hours'];
     final costImpact = incident['cost_impact'];
     final expenses = incident['actual_expenses'];
@@ -57,6 +59,14 @@ class IncidentCard extends StatelessWidget {
                         ),
                         maxLines: 1, overflow: TextOverflow.ellipsis,
                       ),
+                      if (description.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          description,
+                          style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500),
+                          maxLines: 1, overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                       const SizedBox(height: 2),
                       Text(
                         catName,
@@ -72,6 +82,13 @@ class IncidentCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 IncidentPriorityBadge(priority: priority),
               ]),
+              if (startedAt != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  _formatRelativeDate(startedAt),
+                  style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400),
+                ),
+              ],
               if (timeImpact != null || costImpact != null || (expenses != null && expenses > 0)) ...[
                 const SizedBox(height: 8),
                 Row(children: [
@@ -92,6 +109,24 @@ class IncidentCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _formatRelativeDate(String? dateStr) {
+    if (dateStr == null) return '';
+    try {
+      final dt = DateTime.parse(dateStr).toLocal();
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+      final dateDay = DateTime(dt.year, dt.month, dt.day);
+      final diff = today.difference(dateDay).inDays;
+      if (diff == 0) return 'Today';
+      if (diff == 1) return 'Yesterday';
+      if (diff < 7) return '$diff days ago';
+      const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      return '${months[dt.month - 1]} ${dt.day}';
+    } catch (_) {
+      return '';
+    }
   }
 
   Widget _metricChip(String label, Color color) {

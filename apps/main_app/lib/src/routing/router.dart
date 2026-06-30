@@ -159,6 +159,13 @@ final goRouter = GoRouter(
       ),
     ),
     GoRoute(
+      path: '/projects/:id/incidents/:incidentId/edit',
+      builder: (context, state) => IncidentFormPage(
+        projectId: state.pathParameters['id']!,
+        incidentId: state.pathParameters['incidentId'],
+      ),
+    ),
+    GoRoute(
       path: '/projects/:id/billing',
       builder: (context, state) => BillingListPage(projectId: state.pathParameters['id']!),
     ),

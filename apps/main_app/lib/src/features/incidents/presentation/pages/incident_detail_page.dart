@@ -40,26 +40,76 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
 
   Future<void> _addAction() async {
     final ctrl = TextEditingController();
-    final desc = await showSafeDialog<String>(
+    final result = await showSafeDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Add Action'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: 'Describe the action...'),
-          onSubmitted: (v) => Navigator.pop(ctx, v),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, ctrl.text), child: const Text('Add')),
-        ],
-      ),
+      builder: (ctx) {
+        DateTime? dueDate;
+        return StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Add Action'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Describe the action...',
+                    border: OutlineInputBorder(),
+                  ),
+                  onSubmitted: (v) => Navigator.pop(ctx, {
+                    'description': v.trim(),
+                    'due_date': dueDate?.toUtc().toIso8601String(),
+                  }),
+                ),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(
+                    child: Text(
+                      dueDate != null
+                          ? 'Due: ${dueDate!.year}-${dueDate!.month.toString().padLeft(2, '0')}-${dueDate!.day.toString().padLeft(2, '0')}'
+                          : 'Due date (optional)',
+                      style: GoogleFonts.manrope(fontSize: 13, color: dueDate != null ? AppTheme.slate900 : AppTheme.slate400),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      final date = await showDatePicker(
+                        context: context,
+                        initialDate: dueDate ?? DateTime.now(),
+                        firstDate: DateTime.now(),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                      );
+                      if (date != null) {
+                        setDialogState(() => dueDate = date);
+                      }
+                    },
+                    icon: const Icon(Icons.calendar_today, size: 16),
+                    label: Text(dueDate != null ? 'Change' : 'Pick Date', style: GoogleFonts.manrope(fontSize: 12)),
+                  ),
+                ]),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, {
+                  'description': ctrl.text.trim(),
+                  'due_date': dueDate?.toUtc().toIso8601String(),
+                }),
+                child: const Text('Add'),
+              ),
+            ],
+          ),
+        );
+      },
     );
-    if (desc == null || desc.trim().isEmpty) return;
+    if (result == null || (result['description'] as String).trim().isEmpty) return;
     try {
       await ref.read(incidentsServiceProvider).addAction(widget.incidentId, {
-        'description': desc.trim(),
+        'description': (result['description'] as String).trim(),
+        if (result['due_date'] != null) 'due_date': result['due_date'],
       });
       await _loadData();
     } catch (e) {
@@ -71,6 +121,32 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
     try {
       await ref.read(incidentsServiceProvider).completeAction(actionId);
       await _loadData();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
+  Future<void> _deleteAction(String actionId) async {
+    final confirmed = await showSafeDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Action'),
+        content: const Text('Remove this action? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.errorRed),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(incidentsServiceProvider).deleteAction(actionId);
+      await _loadData();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Action deleted'), backgroundColor: Colors.green));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
@@ -172,7 +248,50 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
     }
   }
 
+  void _showFullScreenPhoto(String url) {
+    showSafeDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        contentPadding: EdgeInsets.zero,
+        content: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.network(
+            url,
+            fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => Container(
+              height: 200,
+              color: AppTheme.slate200,
+              child: const Center(child: Icon(Icons.broken_image, size: 64, color: AppTheme.slate400)),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _startProgress() async {
+    final confirmed = await showSafeDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Start Progress'),
+        content: const Text('Move this incident to In Progress?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFF3B82F6)),
+            child: const Text('Start'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     try {
       await ref.read(incidentsServiceProvider).update(widget.incidentId, {'status': 'in_progress'});
       await _loadData();
@@ -192,9 +311,12 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
     final catName = category?['name'] as String? ?? 'General';
     final reporter = i['reported_by_profile'] as Map<String, dynamic>?;
     final reporterName = reporter?['name'] as String? ?? 'Unknown';
+    final resolver = i['resolved_by_profile'] as Map<String, dynamic>?;
+    final resolvedAt = i['resolved_at'] as String?;
     final items = List<Map<String, dynamic>>.from(i['incident_affected_items'] ?? []);
     final actions = List<Map<String, dynamic>>.from(i['incident_actions'] ?? []);
     final userId = Supabase.instance.client.auth.currentUser?.id;
+    final photos = List<String>.from((i['evidence_photos'] as List?)?.map((p) => p.toString()) ?? []);
     final status = i['status'] as String? ?? 'open';
     final isOpen = status == 'open' || status == 'in_progress';
     final isResolved = status == 'resolved';
@@ -203,7 +325,13 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.pop()),
-        title: Text(i['title'] as String? ?? '', style: GoogleFonts.manrope(fontSize: 14)),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(i['title'] as String? ?? '', style: GoogleFonts.manrope(fontSize: 14)),
+            Text('Incident Details', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400)),
+          ],
+        ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -231,6 +359,36 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
               Text(i['description'] as String? ?? 'No description',
                   style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate700)),
             ]),
+            if (photos.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              _section('Evidence Photos', [
+                SizedBox(
+                  height: 100,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: photos.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (_, idx) => GestureDetector(
+                      onTap: () => _showFullScreenPhoto(photos[idx]),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          photos[idx],
+                          width: 100,
+                          height: 100,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Container(
+                            width: 100, height: 100,
+                            color: AppTheme.slate200,
+                            child: const Icon(Icons.broken_image, color: AppTheme.slate400),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ]),
+            ],
             const SizedBox(height: 16),
             _section('Impact', [
               _infoRow('Started', _formatDate(i['started_at'])),
@@ -238,6 +396,11 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
               _infoRow('Time Lost', i['time_impact_hours'] != null ? '${(i['time_impact_hours'] as num).toStringAsFixed(1)}h' : '—'),
               _infoRow('Cost Impact (time×rate)', i['cost_impact'] != null ? '\$${(i['cost_impact'] as num).toStringAsFixed(0)}' : '—'),
               _infoRow('Actual Expenses', '\$${(i['actual_expenses'] as num?)?.toStringAsFixed(0) ?? '0'}'),
+              if (resolvedAt != null) ...[
+                const SizedBox(height: 4),
+                _infoRow('Resolved by', resolver?['name'] as String? ?? 'Unknown'),
+                _infoRow('Resolved at', _formatDate(resolvedAt)),
+              ],
             ]),
             const SizedBox(height: 16),
             _section('Reported by', [
@@ -261,7 +424,26 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
               currentUserId: userId,
               onComplete: isClosed ? null : _completeAction,
               onAddAction: isClosed ? null : _addAction,
+              onDeleteAction: isClosed ? null : _deleteAction,
             ),
+            if (!isClosed) ...[
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity, height: 44,
+                child: OutlinedButton.icon(
+                  onPressed: () async {
+                    await context.push('/projects/${widget.projectId}/incidents/${widget.incidentId}/edit');
+                    _loadData();
+                  },
+                  icon: const Icon(Icons.edit_outlined, size: 18),
+                  label: Text('Edit Incident', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primarySlate,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+            ],
             if (status == 'open') ...[
               const SizedBox(height: 24),
               SizedBox(
@@ -307,7 +489,36 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
                 ),
               ),
             ],
-            const SizedBox(height: 32),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity, height: 40,
+              child: TextButton.icon(
+                onPressed: () async {
+                  final confirmed = await showSafeDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Delete Incident'),
+                      content: const Text('This action cannot be undone. Are you sure?'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          style: FilledButton.styleFrom(backgroundColor: AppTheme.errorRed),
+                          child: const Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed == true && mounted) {
+                    await ref.read(incidentsServiceProvider).delete(widget.incidentId);
+                    if (mounted) context.pop();
+                  }
+                },
+                icon: const Icon(Icons.delete_outline, size: 16, color: AppTheme.errorRed),
+                label: Text('Delete Incident', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.errorRed)),
+              ),
+            ),
+            const SizedBox(height: 24),
           ],
         ),
       ),
