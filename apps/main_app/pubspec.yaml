@@ -21,8 +21,6 @@ version: 1.0.0+1
 environment:
   sdk: ^3.10.4
 
-resolution: workspace
-
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
 # consider running `flutter pub upgrade --major-versions`. Alternatively,
@@ -34,11 +32,11 @@ dependencies:
     sdk: flutter
   cupertino_icons: ^1.0.8
   noel_core:
-    any
+    path: ../../packages/core
   noel_data:
-    any
+    path: ../../packages/data
   noel_ui_components:
-    any
+    path: ../../packages/ui_components
   go_router: ^12.0.0
   flutter_riverpod: ^2.3.6
   intl: ^0.20.2

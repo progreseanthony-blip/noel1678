@@ -17,17 +17,18 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Resolve + Build All
+      - name: Generate Code (Data Package)
         run: |
-          dart pub get
           cd packages/data
+          flutter pub get
           dart run build_runner build --delete-conflicting-outputs
-          cd "$GITHUB_WORKSPACE"
+
+      - name: Build Web
+        run: |
           cd apps/main_app
+          flutter pub get
           dart run build_runner build --delete-conflicting-outputs
-          cd "$GITHUB_WORKSPACE"
-          set -a && source .env.production && set +a
-          cd apps/main_app
+          set -a && source ../../.env.production && set +a
           flutter build web --release \
             --dart-define=ENVIRONMENT=$ENVIRONMENT \
             --dart-define=SUPABASE_URL=$SUPABASE_URL \
