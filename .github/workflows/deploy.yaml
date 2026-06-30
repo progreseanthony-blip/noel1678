@@ -19,14 +19,14 @@ jobs:
 
       - name: Generate Code (Data Package)
         run: |
-          cd packages/data
           flutter pub get
+          cd packages/data
           dart run build_runner build --delete-conflicting-outputs
 
       - name: Build Web
         run: |
-          cd apps/main_app
           flutter pub get
+          cd apps/main_app
           # También corremos build_runner aquí por si Riverpod lo necesita en main_app
           dart run build_runner build --delete-conflicting-outputs
 
