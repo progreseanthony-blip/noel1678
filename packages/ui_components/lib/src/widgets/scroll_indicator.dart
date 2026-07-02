@@ -5,12 +5,16 @@ class ScrollIndicator extends StatefulWidget {
   final Widget child;
   final EdgeInsets? padding;
   final ScrollController? controller;
+  final Color backgroundColor;
+  final Color iconColor;
 
   const ScrollIndicator({
     super.key,
     required this.child,
     this.padding,
     this.controller,
+    this.backgroundColor = Colors.white,
+    this.iconColor = AppTheme.slate400,
   });
 
   @override
@@ -84,17 +88,17 @@ class _ScrollIndicatorState extends State<ScrollIndicator> {
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                        Colors.white.withValues(alpha: 0),
-                        Colors.white,
+                        widget.backgroundColor.withValues(alpha: 0),
+                        widget.backgroundColor,
                           ],
                         ),
                       ),
                       alignment: Alignment.bottomCenter,
-                      child: const Padding(
-                        padding: EdgeInsets.only(bottom: 8),
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
                         child: Icon(
                           Icons.keyboard_arrow_down,
-                          color: AppTheme.slate400,
+                          color: widget.iconColor,
                           size: 24,
                         ),
                       ),
