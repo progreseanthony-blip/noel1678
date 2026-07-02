@@ -61,11 +61,16 @@ class _DailyReportWizardPageState
   Future<void> _initialize() async {
     try {
       final service = ref.read(dailyReportServiceProvider);
-      final report = widget.reportId != null
-          ? await service.getReportById(widget.reportId!)
-          : await service.getOrCreateTodayReport(widget.projectId);
-      final reportId = report['id'] as String;
-      final reportDate = report['report_date'] as String? ?? DateTime.now().toIso8601String().split('T')[0];
+
+      String? reportId;
+      Map<String, dynamic>? report;
+      String reportDate = '';
+
+      if (widget.reportId != null) {
+        report = await service.getReportById(widget.reportId!);
+        reportId = report['id'] as String;
+        reportDate = report['report_date'] as String? ?? DateTime.now().toIso8601String().split('T')[0];
+      }
 
       final projectName = await Supabase.instance.client
           .from('projects')
@@ -75,13 +80,13 @@ class _DailyReportWizardPageState
           .then((p) => p['title'] as String? ?? '');
 
       final results = await Future.wait([
-        service.getLaborLogsForReport(reportId),
-        service.getMachineryLogsForReport(reportId),
-        service.getMaterialUsageForReport(reportId),
-        service.getPlannedLaborForProject(widget.projectId, reportDate),
-        service.getPlannedLaborForProject(widget.projectId, reportDate, filterByDate: false),
-        service.getPlannedMachineryForProject(widget.projectId, reportDate),
-        service.getPlannedMaterialsForProject(widget.projectId, reportDate),
+        if (reportId != null) service.getLaborLogsForReport(reportId) else Future.value(<Map<String, dynamic>>[]),
+        if (reportId != null) service.getMachineryLogsForReport(reportId) else Future.value(<Map<String, dynamic>>[]),
+        if (reportId != null) service.getMaterialUsageForReport(reportId) else Future.value(<Map<String, dynamic>>[]),
+        if (reportDate.isNotEmpty) service.getPlannedLaborForProject(widget.projectId, reportDate) else Future.value(<Map<String, dynamic>>[]),
+        if (reportDate.isNotEmpty) service.getPlannedLaborForProject(widget.projectId, reportDate, filterByDate: false) else Future.value(<Map<String, dynamic>>[]),
+        if (reportDate.isNotEmpty) service.getPlannedMachineryForProject(widget.projectId, reportDate) else Future.value(<Map<String, dynamic>>[]),
+        if (reportDate.isNotEmpty) service.getPlannedMaterialsForProject(widget.projectId, reportDate) else Future.value(<Map<String, dynamic>>[]),
         service.getProjectTasks(widget.projectId),
         service.getDeviationReasons(),
         ref.read(workersServiceProvider).getWorkers(),
@@ -94,7 +99,7 @@ class _DailyReportWizardPageState
       setState(() {
         _reportId = reportId;
         _projectName = projectName;
-        _reportData = report;
+        _reportData = report ?? {'report_date': '', 'day_type': 'working'};
         _laborLogs = List<Map<String, dynamic>>.from(results[0] as List);
         _machineryLogs = List<Map<String, dynamic>>.from(results[1] as List);
         _materialUsage = List<Map<String, dynamic>>.from(results[2] as List);
@@ -120,6 +125,7 @@ class _DailyReportWizardPageState
 
   Future<void> _saveReportHeader() async {
     if (_reportId == null) return;
+    if ((_reportData['report_date'] as String? ?? '').isEmpty) return;
     try {
       await ref.read(dailyReportServiceProvider).updateReport(_reportId!, {
         'weather_condition': _reportData['weather_condition'],
@@ -152,8 +158,8 @@ class _DailyReportWizardPageState
   void _onReportDataChanged(Map<String, dynamic> data) {
     final oldDate = _reportData['report_date'];
     final newDate = data['report_date'];
-    if (oldDate != newDate && newDate != null && _reportId != null) {
-      _switchToDate(newDate as String);
+    if (oldDate != newDate && newDate != null && (newDate as String).isNotEmpty) {
+      _switchToDate(newDate);
       return;
     }
     setState(() => _reportData = data);
