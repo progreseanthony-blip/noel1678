@@ -5,11 +5,13 @@ import 'package:noel_core/noel_core.dart';
 class StepGeneralInfo extends StatelessWidget {
   final Map<String, dynamic> reportData;
   final ValueChanged<Map<String, dynamic>> onChanged;
+  final bool isReadOnly;
 
   const StepGeneralInfo({
     super.key,
     required this.reportData,
     required this.onChanged,
+    this.isReadOnly = false,
   });
 
   static const List<String> weatherOptions = [
@@ -40,7 +42,11 @@ class StepGeneralInfo extends StatelessWidget {
       }
     } catch (_) {}
 
-    return Column(
+    return AbsorbPointer(
+      absorbing: isReadOnly,
+      child: Opacity(
+        opacity: isReadOnly ? 0.7 : 1.0,
+        child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _sectionLabel('Report Date'),
@@ -245,16 +251,18 @@ class StepGeneralInfo extends StatelessWidget {
           onChanged: (val) => _update('general_notes', val),
         ),
       ],
+        ),
+      ),
     );
   }
 
   static const List<String> _nonWorkingReasons = [
-    'Condiciones climáticas adversas',
-    'Condición de terreno imprevista',
-    'Falta de materiales',
-    'Urgencia solicitada por el cliente',
-    'Feriado',
-    'Otro',
+    'Adverse weather',
+    'Unforeseen terrain',
+    'Material shortage',
+    'Client urgency',
+    'Holiday',
+    'Other',
   ];
 
   Widget _dayTypeChip(String label, String value, IconData icon, Color color) {

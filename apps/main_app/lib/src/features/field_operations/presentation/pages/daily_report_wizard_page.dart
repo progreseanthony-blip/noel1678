@@ -324,6 +324,7 @@ class _DailyReportWizardPageState
             content: StepGeneralInfo(
               reportData: _reportData,
               onChanged: _onReportDataChanged,
+              isReadOnly: _reportData['status'] == 'approved' || _reportData['status'] == 'submitted',
             ),
           ),
           Step(
@@ -399,16 +400,6 @@ class _DailyReportWizardPageState
   }
 
   void _onStepContinue() async {
-    if (_currentStep == 0) await _saveReportHeader();
-    if (_currentStep == 1) await _saveLaborLogs();
-    if (_currentStep == 2) {
-      final ok = await _saveMachineryLogs();
-      if (!ok) return;
-    }
-    if (_currentStep == 3) {
-      final ok = await _saveMaterialUsage();
-      if (!ok) return;
-    }
     setState(() => _currentStep++);
   }
 
