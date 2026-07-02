@@ -66,9 +66,6 @@ class DailyReportService {
 
     if (recent != null) return recent;
 
-    final existing = await getReportByDate(projectId, today);
-    if (existing != null) return existing;
-
     final currentUserId = _supabase.auth.currentUser?.id;
     return createReport({
       'project_id': projectId,

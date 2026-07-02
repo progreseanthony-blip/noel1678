@@ -152,10 +152,96 @@ class _DailyReportWizardPageState
   void _onReportDataChanged(Map<String, dynamic> data) {
     final oldDate = _reportData['report_date'];
     final newDate = data['report_date'];
-    setState(() => _reportData = data);
     if (oldDate != newDate && newDate != null && _reportId != null) {
-      _reloadPlannedLabor(newDate as String);
-      _saveReportHeader();
+      _switchToDate(newDate as String);
+      return;
+    }
+    setState(() => _reportData = data);
+  }
+
+  Future<void> _switchToDate(String date) async {
+    final service = ref.read(dailyReportServiceProvider);
+    final existing = await service.getReportByDate(widget.projectId, date);
+
+    if (existing != null && existing['status'] == 'draft') {
+      final reportId = existing['id'] as String;
+      final results = await Future.wait([
+        service.getLaborLogsForReport(reportId),
+        service.getMachineryLogsForReport(reportId),
+        service.getMaterialUsageForReport(reportId),
+        service.getPlannedLaborForProject(widget.projectId, date),
+        service.getPlannedLaborForProject(widget.projectId, date, filterByDate: false),
+        service.getPlannedMachineryForProject(widget.projectId, date),
+        service.getPlannedMaterialsForProject(widget.projectId, date),
+        service.getProjectTasks(widget.projectId),
+        service.getDeviationReasons(),
+        ref.read(workersServiceProvider).getWorkers(),
+        ref.read(catalogsServiceProvider).getMachinery(),
+        ref.read(catalogsServiceProvider).getMaterials(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _reportId = reportId;
+        _reportData = Map<String, dynamic>.from(existing)..['report_date'] = date;
+        _laborLogs = List<Map<String, dynamic>>.from(results[0] as List);
+        _machineryLogs = List<Map<String, dynamic>>.from(results[1] as List);
+        _materialUsage = List<Map<String, dynamic>>.from(results[2] as List);
+        _plannedLabor = List<Map<String, dynamic>>.from(results[3] as List);
+        _unfilteredPlannedLabor = List<Map<String, dynamic>>.from(results[4] as List);
+        _plannedMachinery = List<Map<String, dynamic>>.from(results[5] as List);
+        _plannedMaterials = List<Map<String, dynamic>>.from(results[6] as List);
+        _projectTasks = List<Map<String, dynamic>>.from(results[7] as List);
+        _deviationReasons = List<Map<String, dynamic>>.from(results[8] as List);
+        _workers = List<Map<String, dynamic>>.from(results[9] as List);
+        _machineryCatalog = List<Map<String, dynamic>>.from(results[10] as List);
+        _materialsCatalog = List<Map<String, dynamic>>.from(results[11] as List);
+      });
+    } else if (existing != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('A report for $date already exists (${existing['status']})', style: GoogleFonts.manrope()),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      setState(() => _reportData['report_date'] = date);
+    } else {
+      final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+      final newReport = await service.createReport({
+        'project_id': widget.projectId,
+        'report_date': date,
+        'supervisor_id': currentUserId,
+        'status': 'draft',
+      });
+      final results = await Future.wait([
+        service.getPlannedLaborForProject(widget.projectId, date),
+        service.getPlannedLaborForProject(widget.projectId, date, filterByDate: false),
+        service.getPlannedMachineryForProject(widget.projectId, date),
+        service.getPlannedMaterialsForProject(widget.projectId, date),
+        service.getProjectTasks(widget.projectId),
+        service.getDeviationReasons(),
+        ref.read(workersServiceProvider).getWorkers(),
+        ref.read(catalogsServiceProvider).getMachinery(),
+        ref.read(catalogsServiceProvider).getMaterials(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _reportId = newReport['id'];
+        _reportData = newReport;
+        _laborLogs = [];
+        _machineryLogs = [];
+        _materialUsage = [];
+        _plannedLabor = List<Map<String, dynamic>>.from(results[0] as List);
+        _unfilteredPlannedLabor = List<Map<String, dynamic>>.from(results[1] as List);
+        _plannedMachinery = List<Map<String, dynamic>>.from(results[2] as List);
+        _plannedMaterials = List<Map<String, dynamic>>.from(results[3] as List);
+        _projectTasks = List<Map<String, dynamic>>.from(results[4] as List);
+        _deviationReasons = List<Map<String, dynamic>>.from(results[5] as List);
+        _workers = List<Map<String, dynamic>>.from(results[6] as List);
+        _machineryCatalog = List<Map<String, dynamic>>.from(results[7] as List);
+        _materialsCatalog = List<Map<String, dynamic>>.from(results[8] as List);
+      });
     }
   }
 
