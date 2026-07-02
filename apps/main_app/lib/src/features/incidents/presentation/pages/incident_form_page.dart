@@ -133,6 +133,29 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
     }
   }
 
+  Future<void> _editResourceItem(int index) async {
+    final item = _affectedItems[index];
+    final result = await showSafeDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => _AddResourceDialog(
+        materials: _projectMaterials,
+        machinery: _projectMachinery,
+        labor: _projectLabor,
+        instruments: _projectInstruments,
+        editMode: true,
+        initialType: item['affected_type'] as String? ?? 'material',
+        initialQuantity: (item['quantity_affected'] as num?)?.toDouble() ?? 1,
+        initialUnit: item['unit'] as String? ?? '',
+        initialHourlyRate: (item['hourly_cost_rate'] as num?)?.toDouble() ?? 0,
+        initialDailyRate: (item['daily_rate'] as num?)?.toDouble() ?? 0,
+        initialDaysAffected: (item['days_affected'] as num?)?.toDouble() ?? 0,
+      ),
+    );
+    if (result != null) {
+      setState(() => _affectedItems[index] = result);
+    }
+  }
+
   void _removeResourceItem(int index) {
     setState(() => _affectedItems.removeAt(index));
   }
@@ -352,6 +375,7 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
                           leading: Icon(Icons.inventory_2, color: AppTheme.slate500),
                           title: Text(entry.value['resource_name'] as String? ?? '', style: GoogleFonts.manrope(fontWeight: FontWeight.w600, fontSize: 13)),
                           subtitle: Text('${entry.value['affected_type']} - ${(rate as num).toStringAsFixed(0)} \$/hr'),
+                          onTap: () => _editResourceItem(entry.key),
                           trailing: IconButton(
                             icon: const Icon(Icons.close, size: 18, color: AppTheme.errorRed),
                             onPressed: () => _removeResourceItem(entry.key),
@@ -451,12 +475,26 @@ class _AddResourceDialog extends StatefulWidget {
   final List<Map<String, dynamic>> machinery;
   final List<Map<String, dynamic>> labor;
   final List<Map<String, dynamic>> instruments;
+  final bool editMode;
+  final String initialType;
+  final double initialQuantity;
+  final String initialUnit;
+  final double initialHourlyRate;
+  final double initialDailyRate;
+  final double initialDaysAffected;
 
   const _AddResourceDialog({
     required this.materials,
     required this.machinery,
     required this.labor,
     required this.instruments,
+    this.editMode = false,
+    this.initialType = 'material',
+    this.initialQuantity = 1,
+    this.initialUnit = '',
+    this.initialHourlyRate = 0,
+    this.initialDailyRate = 0,
+    this.initialDaysAffected = 0,
   });
 
   @override
@@ -464,16 +502,30 @@ class _AddResourceDialog extends StatefulWidget {
 }
 
 class _AddResourceDialogState extends State<_AddResourceDialog> {
-  String _selectedType = 'material';
+  late String _selectedType;
   String? _selectedResourceId;
-  double _quantity = 1;
-  final _unitCtrl = TextEditingController();
-  double _hourlyCostRate = 0;
-  double _dailyRate = 0;
-  double _daysAffected = 0;
-  final _rateCtrl = TextEditingController();
-  final _dailyRateCtrl = TextEditingController(text: '0');
-  final _daysCtrl = TextEditingController(text: '0');
+  late double _quantity;
+  late final TextEditingController _unitCtrl;
+  late double _hourlyCostRate;
+  late double _dailyRate;
+  late double _daysAffected;
+  late final TextEditingController _rateCtrl;
+  late final TextEditingController _dailyRateCtrl;
+  late final TextEditingController _daysCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedType = widget.editMode ? widget.initialType : 'material';
+    _quantity = widget.initialQuantity;
+    _unitCtrl = TextEditingController(text: widget.initialUnit);
+    _hourlyCostRate = widget.initialHourlyRate;
+    _dailyRate = widget.initialDailyRate;
+    _daysAffected = widget.initialDaysAffected;
+    _rateCtrl = TextEditingController(text: widget.initialHourlyRate > 0 ? widget.initialHourlyRate.toStringAsFixed(0) : '0');
+    _dailyRateCtrl = TextEditingController(text: widget.initialDailyRate > 0 ? widget.initialDailyRate.toStringAsFixed(0) : '0');
+    _daysCtrl = TextEditingController(text: widget.initialDaysAffected > 0 ? widget.initialDaysAffected.toStringAsFixed(0) : '0');
+  }
 
   List<Map<String, dynamic>> get _currentList {
     switch (_selectedType) {
@@ -519,7 +571,7 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Add Affected Resource'),
+      title: Text(widget.editMode ? 'Edit Affected Resource' : 'Add Affected Resource'),
       content: SizedBox(
         width: double.maxFinite,
         child: SingleChildScrollView(
@@ -534,7 +586,7 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
                   DropdownMenuItem(value: 'labor', child: Text('Labor/Personnel')),
                   DropdownMenuItem(value: 'instrument', child: Text('Instrument')),
                 ],
-                onChanged: (v) => setState(() {
+                onChanged: widget.editMode ? null : (v) => setState(() {
                   _selectedType = v!;
                   _selectedResourceId = null;
                 }),
@@ -566,7 +618,7 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
               ),
               const SizedBox(height: 12),
               TextFormField(
-                initialValue: '1',
+                initialValue: widget.editMode ? widget.initialQuantity.toString() : '1',
                 keyboardType: TextInputType.number,
                 decoration: const InputDecoration(labelText: 'Quantity Affected', border: OutlineInputBorder()),
                 onChanged: (v) => _quantity = double.tryParse(v) ?? 1,
@@ -637,7 +689,7 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
               if (_selectedType == 'machinery') 'days_affected': _daysAffected,
             });
           },
-          child: const Text('Add'),
+          child: Text(widget.editMode ? 'Update' : 'Add'),
         ),
       ],
     );
