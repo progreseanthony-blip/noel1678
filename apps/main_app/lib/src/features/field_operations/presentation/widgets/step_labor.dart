@@ -270,6 +270,101 @@ class _StepLaborState extends State<StepLabor> {
 
   String? _fmtDateRange(dynamic s, dynamic e) { if (s == null && e == null) return null; String f(dynamic d) { if (d == null) return '?'; try { final dt = DateTime.parse(d.toString().split(' ')[0]); const ms = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return '${ms[dt.month-1]} ${dt.day}'; } catch (_) { return '?'; } } return '${f(s)} \u2192 ${f(e)}'; }
 
+  Widget _buildWeatherDayButton() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.orange.withAlpha(12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange.withAlpha(40)),
+      ),
+      child: Row(children: [
+        const Icon(Icons.thunderstorm, size: 16, color: Colors.orange),
+        const SizedBox(width: 8),
+        Text('Weather / Non-working day?', style: _t(fs: 11, w: FontWeight.w600, c: Colors.orange)),
+        const Spacer(),
+        TextButton.icon(
+          onPressed: _markAllWorkersAbsent,
+          icon: const Icon(Icons.person_off, size: 14, color: Colors.orange),
+          label: Text('Mark All Absent', style: _t(fs: 11, w: FontWeight.w700, c: Colors.orange)),
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+        ),
+        const SizedBox(width: 4),
+        TextButton.icon(
+          onPressed: _creditMinimumHours,
+          icon: const Icon(Icons.more_time, size: 14, color: Colors.orange),
+          label: Text('Credit 1h', style: _t(fs: 11, w: FontWeight.w700, c: Colors.orange)),
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _markAllWorkersAbsent() async {
+    final confirmed = await showSafeDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Mark All Workers Absent', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+        content: Text('All ${widget.plannedLabor.length} workers will be marked absent for this day.\n\nContinue?', style: GoogleFonts.manrope(fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.orange),
+            child: const Text('Mark All Absent'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      setState(() {
+        for (final pl in widget.plannedLabor) {
+          final asigns = pl['project_labor_assignments'] as List? ?? [];
+          for (final a in asigns) {
+            final w = (a as Map<String, dynamic>?)?['workers'] as Map<String, dynamic>?;
+            final wid = w?['id'] as String?;
+            if (wid != null && !_isInEntries(wid) && !_absentWorkers.containsKey(wid)) {
+              _absentWorkers[wid] = null;
+            }
+          }
+        }
+      });
+      _emit();
+    }
+  }
+
+  Future<void> _creditMinimumHours() async {
+    final confirmed = await showSafeDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Credit Minimum Hours', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+        content: Text('All workers without entries will receive 1 hour credit (check-in at 7:00 AM, check-out at 8:00 AM).\n\nContinue?', style: GoogleFonts.manrope(fontSize: 13)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
+            child: const Text('Credit 1 Hour'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      for (final pl in widget.plannedLabor) {
+        final asigns = pl['project_labor_assignments'] as List? ?? [];
+        for (final a in asigns) {
+          final w = (a as Map<String, dynamic>?)?['workers'] as Map<String, dynamic>?;
+          final wid = w?['id'] as String?;
+          if (wid != null && !_isInEntries(wid) && !_absentWorkers.containsKey(wid)) {
+            _addEntry(wid, plannedLaborId: pl['id'] as String, isUnplanned: true, checkInTime: '07:00:00');
+            final idx = _entryIndexFor(wid, pl['id'] as String);
+            if (idx >= 0) _updateEntryField(idx, 'check_out_time', '08:00:00');
+          }
+        }
+      }
+    }
+  }
+
   Future<void> _pickTime(BuildContext ctx, String? cur, ValueChanged<String> cb) async {
     TimeOfDay i; if (cur != null && cur.isNotEmpty) { final p = cur.split(':'); i = TimeOfDay(hour: int.parse(p[0]), minute: int.parse(p[1])); } else { final n = TimeOfDay.now(); i = TimeOfDay(hour: n.hour, minute: (n.minute ~/ 15) * 15); }
     final p = await showTimePicker(context: ctx, initialTime: i); if (p != null) cb('${p.hour.toString().padLeft(2, '0')}:${p.minute.toString().padLeft(2, '0')}:00');
@@ -291,6 +386,10 @@ class _StepLaborState extends State<StepLabor> {
     final fl = _filteredLabor(); final g = _groupByService(fl);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       _buildServiceFilter(), const SizedBox(height: 12),
+      if (!widget.isReadOnly && fl.isNotEmpty) ...[
+        _buildWeatherDayButton(),
+        const SizedBox(height: 8),
+      ],
       if (fl.isEmpty) _empty('No workers scheduled for this date')
       else ...[ ...g.entries.map((svc) => _buildServiceGroup(svc.key, svc.value)),
         const SizedBox(height: 12),

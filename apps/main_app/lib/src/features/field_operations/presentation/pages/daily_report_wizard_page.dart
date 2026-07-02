@@ -125,6 +125,9 @@ class _DailyReportWizardPageState
         'weather_condition': _reportData['weather_condition'],
         'general_notes': _reportData['general_notes'],
         'report_date': _reportData['report_date'],
+        'day_type': _reportData['day_type'] ?? 'working',
+        'non_working_reason': _reportData['non_working_reason'],
+        'stopped_at': _reportData['stopped_at'],
       });
     } catch (e) {
       debugPrint('Error saving report: $e');
