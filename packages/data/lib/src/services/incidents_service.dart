@@ -104,6 +104,31 @@ class IncidentsService {
     return List<Map<String, dynamic>>.from(response ?? []);
   }
 
+  Future<Map<String, int>> getDashboardStatusCounts() async {
+    final response = await _supabase
+        .from('incidents')
+        .select('status');
+    final counts = <String, int>{'open': 0, 'in_progress': 0, 'resolved': 0, 'closed': 0};
+    for (final r in response ?? []) {
+      final s = r['status'] as String?;
+      if (s != null && counts.containsKey(s)) counts[s] = (counts[s] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  Future<Map<String, double>> getDashboardKPIs() async {
+    final response = await _supabase
+        .from('incidents')
+        .select('time_impact_hours, cost_impact, actual_expenses');
+    double time = 0, cost = 0, expenses = 0;
+    for (final r in response ?? []) {
+      time += (r['time_impact_hours'] as num?)?.toDouble() ?? 0;
+      cost += (r['cost_impact'] as num?)?.toDouble() ?? 0;
+      expenses += (r['actual_expenses'] as num?)?.toDouble() ?? 0;
+    }
+    return {'totalTime': time, 'totalCost': cost, 'totalExpenses': expenses};
+  }
+
   Future<List<Map<String, dynamic>>> getCategories() async {
     final response = await _supabase
         .from('incident_categories')

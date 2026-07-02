@@ -16,6 +16,8 @@ class IncidentsDashboardPage extends ConsumerStatefulWidget {
 
 class _IncidentsDashboardPageState extends ConsumerState<IncidentsDashboardPage> {
   List<Map<String, dynamic>> _incidents = [];
+  Map<String, int> _statusCounts = {};
+  Map<String, double> _kpiData = {};
   bool _isLoading = true;
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -29,7 +31,14 @@ class _IncidentsDashboardPageState extends ConsumerState<IncidentsDashboardPage>
     setState(() => _isLoading = true);
     try {
       final service = ref.read(incidentsServiceProvider);
-      _incidents = await service.getAllOpen();
+      final results = await Future.wait([
+        service.getAllOpen(),
+        service.getDashboardStatusCounts(),
+        service.getDashboardKPIs(),
+      ]);
+      _incidents = results[0] as List<Map<String, dynamic>>;
+      _statusCounts = results[1] as Map<String, int>;
+      _kpiData = results[2] as Map<String, double>;
     } catch (_) {}
     if (mounted) setState(() => _isLoading = false);
   }
@@ -95,18 +104,9 @@ class _IncidentsDashboardPageState extends ConsumerState<IncidentsDashboardPage>
       return const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen));
     }
 
-    final totalTime = _incidents.fold<double>(0, (sum, i) {
-      final t = i['time_impact_hours'];
-      return sum + (t != null ? (t as num).toDouble() : 0);
-    });
-    final totalCost = _incidents.fold<double>(0, (sum, i) {
-      final t = i['cost_impact'];
-      return sum + (t != null ? (t as num).toDouble() : 0);
-    });
-    final totalExpenses = _incidents.fold<double>(0, (sum, i) {
-      final t = i['actual_expenses'];
-      return sum + (t != null ? (t as num).toDouble() : 0);
-    });
+    final totalTime = _kpiData['totalTime'] ?? 0;
+    final totalCost = _kpiData['totalCost'] ?? 0;
+    final totalExpenses = _kpiData['totalExpenses'] ?? 0;
     final criticalCount = _incidents.where((i) => i['priority'] == 'critical').length;
 
     return Column(children: [
@@ -163,8 +163,8 @@ class _IncidentsDashboardPageState extends ConsumerState<IncidentsDashboardPage>
 
   Widget _buildSummaryBar(double totalTime, double totalCost, double totalExpenses, int criticalCount) {
     return Container(
-      margin: const EdgeInsets.all(32),
-      padding: const EdgeInsets.all(20),
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
@@ -183,23 +183,19 @@ class _IncidentsDashboardPageState extends ConsumerState<IncidentsDashboardPage>
   Widget _summaryItem(IconData icon, String value, String label, Color color) {
     return Expanded(
       child: Column(children: [
-        Icon(icon, color: color, size: 24),
-        const SizedBox(height: 8),
-        Text(value, style: GoogleFonts.manrope(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+        Icon(icon, color: color, size: 18),
         const SizedBox(height: 4),
-        Text(label, style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400, fontWeight: FontWeight.w600)),
+        Text(value, style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+        const SizedBox(height: 2),
+        Text(label, style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate400, fontWeight: FontWeight.w600)),
       ]),
     );
   }
 
   Widget _buildStatusChart() {
-    final statusCounts = <String, int>{
-      'open': _incidents.where((i) => i['status'] == 'open').length,
-      'in_progress': _incidents.where((i) => i['status'] == 'in_progress').length,
-      'resolved': _incidents.where((i) => i['status'] == 'resolved').length,
-      'closed': _incidents.where((i) => i['status'] == 'closed').length,
-    };
-    final total = _incidents.length;
+    final statusCounts = _statusCounts.isNotEmpty ? _statusCounts
+        : <String, int>{'open': 0, 'in_progress': 0, 'resolved': 0, 'closed': 0};
+    final total = statusCounts.values.fold<int>(0, (a, b) => a + b);
     final maxCount = statusCounts.values.fold(0, (a, b) => a > b ? a : b);
 
     final segments = [
@@ -210,8 +206,8 @@ class _IncidentsDashboardPageState extends ConsumerState<IncidentsDashboardPage>
     ];
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(32, 0, 32, 16),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),

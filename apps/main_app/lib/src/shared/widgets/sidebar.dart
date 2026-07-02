@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
-class Sidebar extends StatelessWidget {
+class Sidebar extends StatefulWidget {
   final String userName;
   final String userEmail;
   final VoidCallback onLogout;
@@ -20,9 +20,108 @@ class Sidebar extends StatelessWidget {
   });
 
   @override
+  State<Sidebar> createState() => _SidebarState();
+}
+
+class _SidebarState extends State<Sidebar> {
+  final ScrollController _scrollController = ScrollController();
+
+  final _userMgmtKey = GlobalKey();
+  final _estimatesKey = GlobalKey();
+  final _resourcePlanningKey = GlobalKey();
+  final _receptionKey = GlobalKey();
+  final _dailyReportsKey = GlobalKey();
+  final _pendingApprovalsKey = GlobalKey();
+  final _incidentsKey = GlobalKey();
+  final _laborCostKey = GlobalKey();
+  final _productionMetricsKey = GlobalKey();
+  final _monitoringDashKey = GlobalKey();
+  final _billingKey = GlobalKey();
+  final _changeOrdersKey = GlobalKey();
+  final _customersKey = GlobalKey();
+  final _catalogsKey = GlobalKey();
+  final _workersKey = GlobalKey();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollToActiveItem();
+  }
+
+  @override
+  void didUpdateWidget(covariant Sidebar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.currentPath != oldWidget.currentPath) {
+      _scrollToActiveItem();
+    }
+  }
+
+  void _scrollToActiveItem() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 350), () {
+        if (!mounted) return;
+        _scrollToActiveKey();
+      });
+    });
+  }
+
+  void _scrollToActiveKey() {
+    final path = widget.currentPath;
+    GlobalKey? activeKey;
+
+    if (path == '/' || path.startsWith('/users')) {
+      activeKey = _userMgmtKey;
+    } else if (path.startsWith('/quotes')) {
+      activeKey = _estimatesKey;
+    } else if (path == '/projects' || path.endsWith('/baseline')) {
+      activeKey = _resourcePlanningKey;
+    } else if (path.contains('/reception')) {
+      activeKey = _receptionKey;
+    } else if (path.startsWith('/daily-reports/pending')) {
+      activeKey = _pendingApprovalsKey;
+    } else if (path.startsWith('/daily-reports') || path.contains('/daily-report')) {
+      activeKey = _dailyReportsKey;
+    } else if (path.startsWith('/incidents') || path.contains('/incidents')) {
+      activeKey = _incidentsKey;
+    } else if (path.contains('/payroll') || path.contains('/labor-cost')) {
+      activeKey = _laborCostKey;
+    } else if (path.contains('/production-measurement')) {
+      activeKey = _productionMetricsKey;
+    } else if (path.contains('/monitoring')) {
+      activeKey = _monitoringDashKey;
+    } else if (path.contains('/billing')) {
+      activeKey = _billingKey;
+    } else if (path.contains('/change-orders')) {
+      activeKey = _changeOrdersKey;
+    } else if (path.startsWith('/customers')) {
+      activeKey = _customersKey;
+    } else if (path.startsWith('/catalogs')) {
+      activeKey = _catalogsKey;
+    } else if (path.startsWith('/workers')) {
+      activeKey = _workersKey;
+    }
+
+    if (activeKey?.currentContext != null) {
+      Scrollable.ensureVisible(
+        activeKey!.currentContext!,
+        alignment: 0.35,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final currentPath = widget.currentPath;
     return Container(
-      width: width,
+      width: widget.width,
       color: const Color(0xFF0F172A),
       child: Column(
         children: [
@@ -47,28 +146,32 @@ class Sidebar extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Padding(
+            child: ScrollIndicator(
+              controller: _scrollController,
+              backgroundColor: const Color(0xFF0F172A),
+              iconColor: AppTheme.primaryGreen,
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: SingleChildScrollView(
-                child: Column(
+              child: Column(
                 children: [
-                  _NavItem(icon: Icons.group_outlined, label: 'User Management', isActive: currentPath.startsWith('/users') || currentPath == '/', onTap: () => context.go('/users')),
+                  _NavItem(key: _userMgmtKey, icon: Icons.group_outlined, label: 'User Management', isActive: currentPath.startsWith('/users') || currentPath == '/', onTap: () => context.go('/users')),
                   const SizedBox(height: 4),
-                  _NavItem(icon: Icons.request_quote_rounded, label: 'Estimates', isActive: currentPath.startsWith('/quotes'), onTap: () => context.go('/quotes')),
+                  _NavItem(key: _estimatesKey, icon: Icons.request_quote_rounded, label: 'Estimates', isActive: currentPath.startsWith('/quotes'), onTap: () => context.go('/quotes')),
                   const SizedBox(height: 4),
                   _ExpandableNavItem(
                     icon: Icons.rocket_launch_outlined,
                     label: 'Projects',
                     isActive: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/billing') || currentPath.startsWith('/change-orders') || currentPath.startsWith('/incidents') || currentPath.startsWith('/reception'),
                     initiallyExpanded: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/billing') || currentPath.startsWith('/change-orders') || currentPath.startsWith('/incidents') || currentPath.startsWith('/reception'),
+                    scrollController: _scrollController,
                     children: [
                       _SubExpandableNavItem(
                         label: 'Planning',
                         isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline') || currentPath.contains('/reception')) || currentPath.startsWith('/reception'),
                         initiallyExpanded: true,
+                        scrollController: _scrollController,
                         children: [
-                          _SubNavItem(icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')), left: 36, onTap: () => context.go('/projects')),
-                          _SubNavItem(icon: Icons.inventory, label: 'Reception', isActive: currentPath.contains('/reception'), left: 36, onTap: () {
+                          _SubNavItem(key: _resourcePlanningKey, icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')), onTap: () => context.go('/projects')),
+                          _SubNavItem(key: _receptionKey, icon: Icons.inventory, label: 'Reception', isActive: currentPath.contains('/reception'), onTap: () {
                             final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
                             if (projectId.isNotEmpty) {
                               context.go('/projects/$projectId/reception');
@@ -82,26 +185,28 @@ class Sidebar extends StatelessWidget {
                         label: 'Field Execution',
                         isActive: currentPath.startsWith('/daily-reports') || currentPath.startsWith('/incidents'),
                         initiallyExpanded: currentPath.startsWith('/daily-reports') || currentPath.startsWith('/incidents'),
+                        scrollController: _scrollController,
                         children: [
-                          _SubNavItem(icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), left: 36, onTap: () => context.go('/daily-reports')),
-                          _SubNavItem(icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), left: 36, onTap: () => context.go('/daily-reports/pending')),
-                          _SubNavItem(icon: Icons.warning_amber_rounded, label: 'Incidents', isActive: currentPath.startsWith('/incidents') || currentPath.contains('/incidents'), left: 36, onTap: () => context.go('/incidents')),
+                          _SubNavItem(key: _dailyReportsKey, icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), onTap: () => context.go('/daily-reports')),
+                          _SubNavItem(key: _pendingApprovalsKey, icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), onTap: () => context.go('/daily-reports/pending')),
+                          _SubNavItem(key: _incidentsKey, icon: Icons.warning_amber_rounded, label: 'Incidents', isActive: currentPath.startsWith('/incidents') || currentPath.contains('/incidents'), onTap: () => context.go('/incidents')),
                         ],
                       ),
                       _SubExpandableNavItem(
                         label: 'Monitoring',
                         isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.contains('/production-measurement') || currentPath.contains('/monitoring') || currentPath.contains('/billing') || currentPath.contains('/change-orders'),
                         initiallyExpanded: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.contains('/production-measurement') || currentPath.contains('/monitoring') || currentPath.contains('/billing') || currentPath.contains('/change-orders'),
+                        scrollController: _scrollController,
                         children: [
-                          _SubNavItem(icon: Icons.attach_money, label: 'Labor Cost', isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost'), left: 36, onTap: () => context.go('/labor-cost')),
-                          _SubNavItem(icon: Icons.speed, label: 'Production Metrics', isActive: currentPath.contains('/production-measurement'), left: 36, onTap: () => context.go('/production-measurement')),
-                          _SubNavItem(icon: Icons.dashboard, label: 'Monitoring Dashboard', isActive: currentPath.contains('/monitoring'), left: 36, onTap: () => context.go('/monitoring')),
-                          _SubNavItem(icon: Icons.receipt_long_outlined, label: 'Billing', isActive: currentPath.contains('/billing'), left: 36, onTap: () {
+                          _SubNavItem(key: _laborCostKey, icon: Icons.attach_money, label: 'Labor Cost', isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost'), onTap: () => context.go('/labor-cost')),
+                          _SubNavItem(key: _productionMetricsKey, icon: Icons.speed, label: 'Production Metrics', isActive: currentPath.contains('/production-measurement'), onTap: () => context.go('/production-measurement')),
+                          _SubNavItem(key: _monitoringDashKey, icon: Icons.dashboard, label: 'Monitoring Dashboard', isActive: currentPath.contains('/monitoring'), onTap: () => context.go('/monitoring')),
+                          _SubNavItem(key: _billingKey, icon: Icons.receipt_long_outlined, label: 'Billing', isActive: currentPath.contains('/billing'), onTap: () {
                             final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
                             if (projectId.isNotEmpty) context.go('/projects/$projectId/billing');
                             else context.go('/billing');
                           }),
-                          _SubNavItem(icon: Icons.swap_horizontal_circle_outlined, label: 'Change Orders', isActive: currentPath.contains('/change-orders'), left: 36, onTap: () {
+                          _SubNavItem(key: _changeOrdersKey, icon: Icons.swap_horizontal_circle_outlined, label: 'Change Orders', isActive: currentPath.contains('/change-orders'), onTap: () {
                             final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
                             if (projectId.isNotEmpty) context.go('/projects/$projectId/change-orders');
                             else context.go('/change-orders');
@@ -111,14 +216,13 @@ class Sidebar extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  _NavItem(icon: Icons.person_search_outlined, label: 'Customers', isActive: currentPath.startsWith('/customers'), onTap: () => context.go('/customers')),
+                  _NavItem(key: _customersKey, icon: Icons.person_search_outlined, label: 'Customers', isActive: currentPath.startsWith('/customers'), onTap: () => context.go('/customers')),
                   const SizedBox(height: 4),
-                  _NavItem(icon: Icons.folder_copy_outlined, label: 'Catalogs', isActive: currentPath.startsWith('/catalogs'), onTap: () => context.go('/catalogs')),
+                  _NavItem(key: _catalogsKey, icon: Icons.folder_copy_outlined, label: 'Catalogs', isActive: currentPath.startsWith('/catalogs'), onTap: () => context.go('/catalogs')),
                   const SizedBox(height: 4),
-                  _NavItem(icon: Icons.engineering_outlined, label: 'Workers', isActive: currentPath.startsWith('/workers'), onTap: () => context.go('/workers')),
+                  _NavItem(key: _workersKey, icon: Icons.engineering_outlined, label: 'Workers', isActive: currentPath.startsWith('/workers'), onTap: () => context.go('/workers')),
                 ],
               ),
-            ),
             ),
           ),
           Container(
@@ -143,15 +247,15 @@ class Sidebar extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(userName, style: GoogleFonts.manrope(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
-                            Text(userEmail, style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 11), overflow: TextOverflow.ellipsis),
+                            Text(widget.userName, style: GoogleFonts.manrope(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis),
+                            Text(widget.userEmail, style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 11), overflow: TextOverflow.ellipsis),
                           ],
                         ),
                       ),
                       MouseRegion(
                         cursor: SystemMouseCursors.click,
                         child: GestureDetector(
-                          onTap: onLogout,
+                          onTap: widget.onLogout,
                           child: const Icon(Icons.logout, color: AppTheme.slate400, size: 18),
                         ),
                       ),
@@ -173,7 +277,7 @@ class _NavItem extends StatefulWidget {
   final bool isActive;
   final VoidCallback onTap;
 
-  const _NavItem({required this.icon, required this.label, required this.isActive, required this.onTap});
+  const _NavItem({super.key, required this.icon, required this.label, required this.isActive, required this.onTap});
 
   @override
   State<_NavItem> createState() => _NavItemState();
@@ -217,8 +321,16 @@ class _ExpandableNavItem extends StatefulWidget {
   final bool isActive;
   final bool initiallyExpanded;
   final List<Widget> children;
+  final ScrollController? scrollController;
 
-  const _ExpandableNavItem({required this.icon, required this.label, required this.isActive, required this.initiallyExpanded, required this.children});
+  const _ExpandableNavItem({
+    required this.icon,
+    required this.label,
+    required this.isActive,
+    required this.initiallyExpanded,
+    required this.children,
+    this.scrollController,
+  });
 
   @override
   State<_ExpandableNavItem> createState() => _ExpandableNavItemState();
@@ -242,6 +354,26 @@ class _ExpandableNavItemState extends State<_ExpandableNavItem> {
     }
   }
 
+  void _toggleExpand() {
+    final wasExpanded = _isExpanded;
+    setState(() => _isExpanded = !_isExpanded);
+    final controller = widget.scrollController;
+    if (!wasExpanded && controller != null && controller.hasClients) {
+      Future.delayed(const Duration(milliseconds: 250), () {
+        if (controller.hasClients) {
+          final position = controller.position;
+          if (position.extentAfter < 140) {
+            controller.animateTo(
+              position.pixels + 140,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+            );
+          }
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final color = widget.isActive ? AppTheme.primaryGreen : (_isHovered ? Colors.white : AppTheme.slate400);
@@ -251,7 +383,7 @@ class _ExpandableNavItemState extends State<_ExpandableNavItem> {
         onExit: (_) => setState(() => _isHovered = false),
         cursor: SystemMouseCursors.click,
         child: GestureDetector(
-          onTap: () => setState(() => _isExpanded = !_isExpanded),
+          onTap: _toggleExpand,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -271,7 +403,16 @@ class _ExpandableNavItemState extends State<_ExpandableNavItem> {
       AnimatedCrossFade(
         duration: const Duration(milliseconds: 200),
         crossFadeState: _isExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-        firstChild: Padding(padding: const EdgeInsets.only(left: 12), child: Column(children: widget.children)),
+        firstChild: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: Container(
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: AppTheme.slate700, width: 1.5)),
+            ),
+            padding: const EdgeInsets.only(left: 10),
+            child: Column(children: widget.children),
+          ),
+        ),
         secondChild: const SizedBox.shrink(),
       ),
     ]);
@@ -283,12 +424,14 @@ class _SubExpandableNavItem extends StatefulWidget {
   final bool isActive;
   final bool initiallyExpanded;
   final List<Widget> children;
+  final ScrollController? scrollController;
 
   const _SubExpandableNavItem({
     required this.label,
     required this.isActive,
     required this.initiallyExpanded,
     required this.children,
+    this.scrollController,
   });
 
   @override
@@ -313,19 +456,39 @@ class _SubExpandableNavItemState extends State<_SubExpandableNavItem> {
     }
   }
 
+  void _toggleExpand() {
+    final wasExpanded = _isExpanded;
+    setState(() => _isExpanded = !_isExpanded);
+    final controller = widget.scrollController;
+    if (!wasExpanded && controller != null && controller.hasClients) {
+      Future.delayed(const Duration(milliseconds: 250), () {
+        if (controller.hasClients) {
+          final position = controller.position;
+          if (position.extentAfter < 120) {
+            controller.animateTo(
+              position.pixels + 120,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+            );
+          }
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final color = widget.isActive ? AppTheme.primaryGreen : (_isHovered ? Colors.white : AppTheme.slate500);
+    final color = widget.isActive ? AppTheme.primaryGreen : (_isHovered ? Colors.white : AppTheme.slate400);
     return Column(children: [
       MouseRegion(
         onEnter: (_) => setState(() => _isHovered = true),
         onExit: (_) => setState(() => _isHovered = false),
         cursor: SystemMouseCursors.click,
         child: GestureDetector(
-          onTap: () => setState(() => _isExpanded = !_isExpanded),
+          onTap: _toggleExpand,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.only(left: 32, right: 16, top: 8, bottom: 8),
+            padding: const EdgeInsets.only(left: 32, right: 16, top: 10, bottom: 10),
             decoration: BoxDecoration(
               color: widget.isActive
                   ? AppTheme.primaryGreen.withOpacity(0.08)
@@ -336,7 +499,7 @@ class _SubExpandableNavItemState extends State<_SubExpandableNavItem> {
                   : null,
             ),
             child: Row(children: [
-              Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 12, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
+              Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 13, fontWeight: FontWeight.w600, letterSpacing: 0.5)),
               const Spacer(),
               AnimatedRotation(duration: const Duration(milliseconds: 200), turns: _isExpanded ? 0.5 : 0.0, child: Icon(Icons.expand_more, color: color, size: 16)),
             ]),
@@ -346,7 +509,16 @@ class _SubExpandableNavItemState extends State<_SubExpandableNavItem> {
       AnimatedCrossFade(
         duration: const Duration(milliseconds: 200),
         crossFadeState: _isExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
-        firstChild: Padding(padding: const EdgeInsets.only(left: 10), child: Column(children: widget.children)),
+        firstChild: Padding(
+          padding: const EdgeInsets.only(left: 10),
+          child: Container(
+            decoration: const BoxDecoration(
+              border: Border(left: BorderSide(color: Color(0xFF334155), width: 1.5)),
+            ),
+            padding: const EdgeInsets.only(left: 8),
+            child: Column(children: widget.children),
+          ),
+        ),
         secondChild: const SizedBox.shrink(),
       ),
     ]);
@@ -358,9 +530,8 @@ class _SubNavItem extends StatefulWidget {
   final String label;
   final bool isActive;
   final VoidCallback onTap;
-  final double left;
 
-  const _SubNavItem({required this.icon, required this.label, required this.isActive, required this.onTap, this.left = 36});
+  const _SubNavItem({super.key, required this.icon, required this.label, required this.isActive, required this.onTap});
 
   @override
   State<_SubNavItem> createState() => _SubNavItemState();
@@ -380,7 +551,7 @@ class _SubNavItemState extends State<_SubNavItem> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: EdgeInsets.only(left: widget.left, right: 16, top: 8, bottom: 8),
+          padding: const EdgeInsets.only(left: 28, right: 16, top: 10, bottom: 10),
           decoration: BoxDecoration(
             color: widget.isActive ? AppTheme.primaryGreen.withOpacity(0.08) : (_isHovered ? Colors.white.withOpacity(0.03) : Colors.transparent),
             borderRadius: BorderRadius.circular(8),
@@ -389,7 +560,7 @@ class _SubNavItemState extends State<_SubNavItem> {
             Icon(widget.icon, color: color, size: 16),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 12, fontWeight: widget.isActive ? FontWeight.w600 : FontWeight.w500), overflow: TextOverflow.ellipsis),
+              child: Text(widget.label, style: GoogleFonts.manrope(color: color, fontSize: 13, fontWeight: widget.isActive ? FontWeight.w600 : FontWeight.w500, letterSpacing: 0.3), overflow: TextOverflow.ellipsis),
             ),
           ]),
         ),

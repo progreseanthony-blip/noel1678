@@ -135,6 +135,11 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
 
   Future<void> _editResourceItem(int index) async {
     final item = _affectedItems[index];
+    final type = item['affected_type'] as String? ?? 'material';
+    final initialResourceId = type == 'material' ? item['project_material_id']?.toString()
+        : type == 'machinery' ? item['project_machinery_id']?.toString()
+        : type == 'labor' ? item['project_labor_id']?.toString()
+        : item['project_instrument_id']?.toString();
     final result = await showSafeDialog<Map<String, dynamic>>(
       context: context,
       builder: (ctx) => _AddResourceDialog(
@@ -143,7 +148,8 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
         labor: _projectLabor,
         instruments: _projectInstruments,
         editMode: true,
-        initialType: item['affected_type'] as String? ?? 'material',
+        initialType: type,
+        initialResourceId: initialResourceId,
         initialQuantity: (item['quantity_affected'] as num?)?.toDouble() ?? 1,
         initialUnit: item['unit'] as String? ?? '',
         initialHourlyRate: (item['hourly_cost_rate'] as num?)?.toDouble() ?? 0,
@@ -482,6 +488,7 @@ class _AddResourceDialog extends StatefulWidget {
   final double initialHourlyRate;
   final double initialDailyRate;
   final double initialDaysAffected;
+  final String? initialResourceId;
 
   const _AddResourceDialog({
     required this.materials,
@@ -495,6 +502,7 @@ class _AddResourceDialog extends StatefulWidget {
     this.initialHourlyRate = 0,
     this.initialDailyRate = 0,
     this.initialDaysAffected = 0,
+    this.initialResourceId,
   });
 
   @override
@@ -517,6 +525,7 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
   void initState() {
     super.initState();
     _selectedType = widget.editMode ? widget.initialType : 'material';
+    _selectedResourceId = widget.editMode ? widget.initialResourceId : null;
     _quantity = widget.initialQuantity;
     _unitCtrl = TextEditingController(text: widget.initialUnit);
     _hourlyCostRate = widget.initialHourlyRate;
