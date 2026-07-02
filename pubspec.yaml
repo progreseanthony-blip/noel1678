@@ -1,3 +1,21 @@
 name: noel_workspace
 environment:
   sdk: '>=3.10.4 <4.0.0'
+
+dev_dependencies:
+  melos: ^7.0.0
+
+melos:
+  scripts:
+    get:
+      run: melos exec -- "flutter pub get"
+      description: Run 'flutter pub get' in all packages.
+    gen:
+      run: melos exec -- "flutter pub run build_runner build --delete-conflicting-outputs"
+      description: Run build_runner in all packages.
+    upgrade:
+      run: melos exec -- "flutter pub upgrade"
+      description: Run 'flutter pub upgrade' in all packages.
+    dev:
+      run: powershell -ExecutionPolicy Bypass -File scripts/run_dev.ps1
+      description: Run app in Chrome using .env config (requires melos get + melos gen first).
