@@ -155,14 +155,15 @@ class _DailyReportWizardPageState
     } else {
       double partialRatio;
       if (dayType == 'non_working') {
-        partialRatio = 0;
+        partialRatio = 1.0;
       } else {
         final stoppedAt = _reportData['stopped_at'] as String? ?? '';
         final parts = stoppedAt.split(':');
         final hours = (int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 0);
         final minutes = (int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0);
         final stoppedHour = hours + minutes / 60;
-        partialRatio = (stoppedHour / 8).clamp(0.0, 1.0);
+        final workedHours = (stoppedHour - 7).clamp(0.0, 8.0);
+        partialRatio = 1.0 - (workedHours / 8.0);
       }
       await client.from('project_non_working_days').upsert({
         'project_id': widget.projectId,
