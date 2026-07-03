@@ -810,134 +810,140 @@ currentPath: '/projects/${widget.projectId}',
                 ),
               ),
               const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      _project?['title'] ?? 'Unknown Project',
-                      style: GoogleFonts.manrope(
-                        fontSize: isMobile ? 20 : 28,
-                        fontWeight: FontWeight.w800,
-                        color: AppTheme.slate900,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                  ),
-                  _buildStatusBadge(_project?['status'] ?? 'active'),
-                  const SizedBox(width: 12),
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      await _loadProjectData();
-                      if (!mounted) return;
-                      final result = await showSafeDialog(
-                        context: context,
-                        builder: (context) => _FullscreenTimelineDialog(
-                          projectId: widget.projectId,
-                          project: _project,
-                          machinery: _machinery,
-                          labor: _labor,
-                          instruments: _instruments,
-                          selectedServiceFilter: _selectedServiceFilter,
-                          onSaveBaseline: _saveBaselinePlanning,
-                          isSavingBaseline: _isSavingBaseline,
-                          baselineVersion: _baselineVersion,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _project?['title'] ?? 'Unknown Project',
+                          style: GoogleFonts.manrope(
+                            fontSize: isMobile ? 20 : 28,
+                            fontWeight: FontWeight.w800,
+                            color: AppTheme.slate900,
+                            letterSpacing: -0.5,
+                          ),
                         ),
-                      );
-                      if (result == 'navigate_to_baseline' && mounted) {
-                        debugPrint('Gantt → Baseline navigation triggered');
-                        context.push('/projects/${widget.projectId}/baseline');
-                      }
-                    },
-                    icon: const Icon(Icons.calendar_month, size: 16, color: Colors.white),
-                    label: Text('View Timeline', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryGreen,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                      minimumSize: const Size(0, 36),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      final result = await context.push('/projects/${widget.projectId}/baseline');
-                      if (mounted) {
-                        if (result == true || result == 'show_gantt') {
-                          debugPrint('Baseline → Gantt navigation triggered');
-                          _showGanttDialog();
-                        } else {
-                          _loadProjectData();
-                        }
-                      }
-                    },
-                    icon: _baselineVersion != null
-                        ? Badge(
-                            label: Text('v$_baselineVersion'),
-                            backgroundColor: AppTheme.primaryGreen,
-                            child: const Icon(Icons.analytics_outlined, size: 16, color: Colors.white),
-                          )
-                        : const Icon(Icons.analytics_outlined, size: 16, color: Colors.white),
-                    label: Text('Baseline', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.slate900,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                      minimumSize: const Size(0, 36),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: () => context.push('/projects/${widget.projectId}/production-measurement'),
-                    icon: const Icon(Icons.speed, size: 16, color: Colors.white),
-                    label: Text('Metrics', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF0F766E),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                      minimumSize: const Size(0, 36),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: () => context.push('/projects/${widget.projectId}/reception'),
-                    icon: const Icon(Icons.inventory, size: 16, color: Colors.white),
-                    label: Text('Reception', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                      minimumSize: const Size(0, 36),
-                    ),
-                  ),
-                  if (_baselineVersion != null) ...[
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                    onPressed: _recalculateSchedule,
-                    icon: const Icon(Icons.refresh, size: 16, color: Colors.white),
-                    label: Text('Recalc Schedule', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orange,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                      minimumSize: const Size(0, 36),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  ElevatedButton.icon(
-                      onPressed: _isSavingBaseline ? null : _createNewBaselineRevision,
-                      icon: _isSavingBaseline
-                          ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Icon(Icons.add_box_outlined, size: 16, color: Colors.white),
-                      label: Text(_isSavingBaseline ? '...' : 'New Revision', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF6366F1),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                        minimumSize: const Size(0, 36),
                       ),
-                    ),
-                  ],
+                      const SizedBox(width: 12),
+                      _buildStatusBadge(_project?['status'] ?? 'active'),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          await _loadProjectData();
+                          if (!mounted) return;
+                          final result = await showSafeDialog(
+                            context: context,
+                            builder: (context) => _FullscreenTimelineDialog(
+                              projectId: widget.projectId,
+                              project: _project,
+                              machinery: _machinery,
+                              labor: _labor,
+                              instruments: _instruments,
+                              selectedServiceFilter: _selectedServiceFilter,
+                              onSaveBaseline: _saveBaselinePlanning,
+                              isSavingBaseline: _isSavingBaseline,
+                              baselineVersion: _baselineVersion,
+                            ),
+                          );
+                          if (result == 'navigate_to_baseline' && mounted) {
+                            debugPrint('Gantt → Baseline navigation triggered');
+                            context.push('/projects/${widget.projectId}/baseline');
+                          }
+                        },
+                        icon: const Icon(Icons.calendar_month, size: 16, color: Colors.white),
+                        label: Text('View Timeline', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryGreen,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                          minimumSize: const Size(0, 36),
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          final result = await context.push('/projects/${widget.projectId}/baseline');
+                          if (mounted) {
+                            if (result == true || result == 'show_gantt') {
+                              debugPrint('Baseline → Gantt navigation triggered');
+                              _showGanttDialog();
+                            } else {
+                              _loadProjectData();
+                            }
+                          }
+                        },
+                        icon: _baselineVersion != null
+                            ? Badge(
+                                label: Text('v$_baselineVersion'),
+                                backgroundColor: AppTheme.primaryGreen,
+                                child: const Icon(Icons.analytics_outlined, size: 16, color: Colors.white),
+                              )
+                            : const Icon(Icons.analytics_outlined, size: 16, color: Colors.white),
+                        label: Text('Baseline', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.slate900,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                          minimumSize: const Size(0, 36),
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () => context.push('/projects/${widget.projectId}/production-measurement'),
+                        icon: const Icon(Icons.speed, size: 16, color: Colors.white),
+                        label: Text('Metrics', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF0F766E),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                          minimumSize: const Size(0, 36),
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () => context.push('/projects/${widget.projectId}/reception'),
+                        icon: const Icon(Icons.inventory, size: 16, color: Colors.white),
+                        label: Text('Reception', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                          minimumSize: const Size(0, 36),
+                        ),
+                      ),
+                      if (_baselineVersion != null) ...[
+                        ElevatedButton.icon(
+                          onPressed: _recalculateSchedule,
+                          icon: const Icon(Icons.refresh, size: 16, color: Colors.white),
+                          label: Text('Recalc Schedule', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.orange,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                            minimumSize: const Size(0, 36),
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: _isSavingBaseline ? null : _createNewBaselineRevision,
+                          icon: _isSavingBaseline
+                              ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                              : const Icon(Icons.add_box_outlined, size: 16, color: Colors.white),
+                          label: Text(_isSavingBaseline ? '...' : 'New Revision', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF6366F1),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                            minimumSize: const Size(0, 36),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
               const SizedBox(height: 4),
