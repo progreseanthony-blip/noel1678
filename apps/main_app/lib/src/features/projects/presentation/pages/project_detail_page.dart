@@ -911,8 +911,20 @@ currentPath: '/projects/${widget.projectId}',
                     ),
                   ),
                   if (_baselineVersion != null) ...[
-                    const SizedBox(width: 8),
-                    ElevatedButton.icon(
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
+                    onPressed: _recalculateSchedule,
+                    icon: const Icon(Icons.refresh, size: 16, color: Colors.white),
+                    label: Text('Recalc Schedule', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orange,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                      minimumSize: const Size(0, 36),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton.icon(
                       onPressed: _isSavingBaseline ? null : _createNewBaselineRevision,
                       icon: _isSavingBaseline
                           ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
@@ -1681,6 +1693,132 @@ currentPath: '/projects/${widget.projectId}',
         ),
       );
     });
+  }
+
+  Future<void> _recalculateSchedule() async {
+    final supabase = Supabase.instance.client;
+
+    final nwDays = await supabase
+        .from('project_non_working_days')
+        .select('date, partial_ratio, reason')
+        .eq('project_id', widget.projectId);
+
+    final fullDays = <String>[];
+    final partialDays = <Map<String, dynamic>>[];
+    double totalExtension = 0;
+    for (final nw in nwDays ?? []) {
+      final ratio = (nw['partial_ratio'] as num?)?.toDouble() ?? 0;
+      if (ratio >= 1.0) {
+        fullDays.add((nw['date'] as String).split('T')[0]);
+        totalExtension += 1.0;
+      } else if (ratio > 0) {
+        partialDays.add(nw);
+        totalExtension += ratio;
+      }
+    }
+
+    if (!mounted) return;
+
+    final confirmed = await showSafeDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Schedule Impact Summary', style: GoogleFonts.manrope(fontWeight: FontWeight.w800)),
+        content: SizedBox(
+          width: 400,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (fullDays.isNotEmpty)
+                Text('${fullDays.length} full non-working days', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900)),
+              if (partialDays.isNotEmpty)
+                Text('${partialDays.length} partial days (${(totalExtension - fullDays.length).toStringAsFixed(1)} days lost)',
+                    style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900)),
+              const SizedBox(height: 12),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text('Recommended extension: ${totalExtension.toStringAsFixed(1)} days',
+                  style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
+              const SizedBox(height: 4),
+              Text('This will extend end dates of all resources by the accumulated non-working days.',
+                  style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.manrope(fontWeight: FontWeight.w600))),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
+            child: Text('Apply Extension (${totalExtension.toStringAsFixed(1)}d)', style: GoogleFonts.manrope(fontWeight: FontWeight.w600)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _applyScheduleExtension(totalExtension);
+    }
+  }
+
+  Future<void> _applyScheduleExtension(double extensionDays) async {
+    final supabase = Supabase.instance.client;
+    final duration = extensionDays.round();
+
+    try {
+      int updated = 0;
+      for (final m in _machinery) {
+        final endDateStr = m['end_date'] as String?;
+        if (endDateStr != null && endDateStr.isNotEmpty) {
+          final endDate = DateTime.tryParse(endDateStr);
+          if (endDate != null) {
+            final newEnd = endDate.add(Duration(days: duration));
+            await supabase.from('project_machinery').update({
+              'end_date': newEnd.toIso8601String(),
+            }).eq('id', m['id']);
+            updated++;
+          }
+        }
+      }
+      for (final l in _labor) {
+        final endDateStr = l['end_date'] as String?;
+        if (endDateStr != null && endDateStr.isNotEmpty) {
+          final endDate = DateTime.tryParse(endDateStr);
+          if (endDate != null) {
+            final newEnd = endDate.add(Duration(days: duration));
+            await supabase.from('project_labor').update({
+              'end_date': newEnd.toIso8601String(),
+            }).eq('id', l['id']);
+            updated++;
+          }
+        }
+      }
+      for (final i in _instruments) {
+        final endDateStr = i['end_date'] as String?;
+        if (endDateStr != null && endDateStr.isNotEmpty) {
+          final endDate = DateTime.tryParse(endDateStr);
+          if (endDate != null) {
+            final newEnd = endDate.add(Duration(days: duration));
+            await supabase.from('project_instruments').update({
+              'end_date': newEnd.toIso8601String(),
+            }).eq('id', i['id']);
+            updated++;
+          }
+        }
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$updated resources extended by $duration days'), backgroundColor: AppTheme.primaryGreen),
+        );
+        _loadProjectData();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
   }
 
   bool _isSavingBaseline = false;
