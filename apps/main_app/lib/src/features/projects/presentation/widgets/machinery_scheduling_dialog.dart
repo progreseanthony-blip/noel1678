@@ -23,6 +23,7 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
   bool _isLoading = true;
   double? _stipulatedDays;
   String? _quoteServiceId;
+  Map<String, double> _nonWorkingDays = {};
   
   // Virtual units: index -> {startDate, endDate, assignmentId}
   final Map<int, Map<String, dynamic>> _unitPlans = {};
@@ -42,11 +43,11 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
     double remaining = duration;
     
     while (remaining > 0) {
-      double contribution = 0;
-      if (current.weekday >= 1 && current.weekday <= 5) {
-        contribution = 1.0;
-      } else if (current.weekday == 6) {
-        contribution = 0.5;
+      double contribution = getWorkingDayContribution(current, _nonWorkingDays);
+      
+      if (contribution <= 0) {
+        current = current.add(const Duration(days: 1));
+        continue;
       }
       
       if (remaining <= contribution) {
@@ -54,9 +55,6 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
       } else {
         remaining -= contribution;
         current = current.add(const Duration(days: 1));
-        if (current.weekday == 7) {
-          current = current.add(const Duration(days: 1));
-        }
       }
     }
     return current;
@@ -69,11 +67,12 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
       // 1. Get machinery details and stipulated duration
       final mRes = await supabase
           .from('project_machinery')
-          .select('quote_service_id, calculation_metadata, quote_service_machineries(quote_services(quote_service_estimations(total_working_days)))')
+          .select('project_id, quote_service_id, calculation_metadata, quote_service_machineries(quote_services(quote_service_estimations(total_working_days)))')
           .eq('id', widget.projectMachineryId)
           .single();
       
       _quoteServiceId = mRes['quote_service_id'];
+      final projectId = mRes['project_id'];
       
       dynamic duration;
       try {
@@ -143,6 +142,20 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
           }
         }
       }
+
+      // Load non-working days
+      try {
+        final nwDays = await supabase
+            .from('project_non_working_days')
+            .select('date, partial_ratio')
+            .eq('project_id', projectId);
+        _nonWorkingDays.clear();
+        for (final nw in nwDays ?? []) {
+          final dateStr = nw['date'] as String?;
+          final ratio = (nw['partial_ratio'] as num?)?.toDouble() ?? 0;
+          if (dateStr != null) _nonWorkingDays[dateStr.split('T')[0]] = ratio;
+        }
+      } catch (_) {}
 
       if (mounted) {
         setState(() {

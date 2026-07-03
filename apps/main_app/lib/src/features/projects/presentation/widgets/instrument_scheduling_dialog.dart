@@ -23,6 +23,7 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
   bool _isLoading = true;
   double? _stipulatedDays;
   String? _quoteServiceId;
+  Map<String, double> _nonWorkingDays = {};
   
   final Map<int, Map<String, dynamic>> _unitPlans = {};
   final Set<int> _selectedUnits = {};
@@ -41,11 +42,11 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
     double remaining = duration;
     
     while (remaining > 0) {
-      double contribution = 0;
-      if (current.weekday >= 1 && current.weekday <= 5) {
-        contribution = 1.0;
-      } else if (current.weekday == 6) {
-        contribution = 0.5;
+      double contribution = getWorkingDayContribution(current, _nonWorkingDays);
+      
+      if (contribution <= 0) {
+        current = current.add(const Duration(days: 1));
+        continue;
       }
       
       if (remaining <= contribution) {
@@ -53,9 +54,6 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
       } else {
         remaining -= contribution;
         current = current.add(const Duration(days: 1));
-        if (current.weekday == 7) {
-          current = current.add(const Duration(days: 1));
-        }
       }
     }
     return current;
@@ -67,11 +65,12 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
 
       final mRes = await supabase
           .from('project_instruments')
-          .select('quote_service_id, quote_service_instruments(quote_services(quote_service_estimations(total_working_days)))')
+          .select('project_id, quote_service_id, quote_service_instruments(quote_services(quote_service_estimations(total_working_days)))')
           .eq('id', widget.projectInstrumentId)
           .single();
       
       _quoteServiceId = mRes['quote_service_id'];
+      final projectId = mRes['project_id'];
       
       dynamic duration;
       try {
@@ -112,6 +111,20 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
           _batchEndDate = DateTime.parse(laborAssign['end_date']);
         }
       }
+
+      // Load non-working days
+      try {
+        final nwDays = await supabase
+            .from('project_non_working_days')
+            .select('date, partial_ratio')
+            .eq('project_id', projectId);
+        _nonWorkingDays.clear();
+        for (final nw in nwDays ?? []) {
+          final dateStr = nw['date'] as String?;
+          final ratio = (nw['partial_ratio'] as num?)?.toDouble() ?? 0;
+          if (dateStr != null) _nonWorkingDays[dateStr.split('T')[0]] = ratio;
+        }
+      } catch (_) {}
 
       if (mounted) {
         setState(() {

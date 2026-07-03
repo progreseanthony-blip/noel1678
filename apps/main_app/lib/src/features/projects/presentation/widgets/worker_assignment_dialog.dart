@@ -29,6 +29,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
   double? _stipulatedDays;
   DateTime? _startDate;
   DateTime? _endDate;
+  Map<String, double> _nonWorkingDays = {};
   String? _limitError;
   final Set<String> _processingWorkers = {};
   final _searchController = TextEditingController();
@@ -61,11 +62,11 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
     double remaining = duration;
     
     while (remaining > 0) {
-      double contribution = 0;
-      if (current.weekday >= 1 && current.weekday <= 5) {
-        contribution = 1.0;
-      } else if (current.weekday == 6) {
-        contribution = 0.5;
+      double contribution = getWorkingDayContribution(current, _nonWorkingDays);
+      
+      if (contribution <= 0) {
+        current = current.add(const Duration(days: 1));
+        continue;
       }
       
       if (remaining <= contribution) {
@@ -73,9 +74,6 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       } else {
         remaining -= contribution;
         current = current.add(const Duration(days: 1));
-        if (current.weekday == 7) {
-          current = current.add(const Duration(days: 1));
-        }
       }
     }
     return current;
@@ -204,6 +202,23 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
           }
         }
       }
+
+      // Load non-working days
+      try {
+        final projectId = laborData['project_id'];
+        if (projectId != null) {
+          final nwDays = await supabase
+              .from('project_non_working_days')
+              .select('date, partial_ratio')
+              .eq('project_id', projectId);
+          _nonWorkingDays.clear();
+          for (final nw in nwDays ?? []) {
+            final dateStr = nw['date'] as String?;
+            final ratio = (nw['partial_ratio'] as num?)?.toDouble() ?? 0;
+            if (dateStr != null) _nonWorkingDays[dateStr.split('T')[0]] = ratio;
+          }
+        }
+      } catch (_) {}
 
       if (mounted) {
         setState(() {

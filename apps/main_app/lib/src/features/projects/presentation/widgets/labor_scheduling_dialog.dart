@@ -24,6 +24,7 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
   DateTime? _startDate;
   DateTime? _endDate;
   double? _stipulatedDays;
+  Map<String, double> _nonWorkingDays = {};
 
   @override
   void initState() {
@@ -34,21 +35,20 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
   DateTime _calculateEndDate(DateTime start, double duration) {
     DateTime current = start;
     double remaining = duration;
+    
     while (remaining > 0) {
-      double contribution = 0;
-      if (current.weekday >= 1 && current.weekday <= 5) {
-        contribution = 1.0;
-      } else if (current.weekday == 6) {
-        contribution = 0.5;
+      double contribution = getWorkingDayContribution(current, _nonWorkingDays);
+      
+      if (contribution <= 0) {
+        current = current.add(const Duration(days: 1));
+        continue;
       }
+      
       if (remaining <= contribution) {
         remaining = 0;
       } else {
         remaining -= contribution;
         current = current.add(const Duration(days: 1));
-        if (current.weekday == 7) {
-          current = current.add(const Duration(days: 1));
-        }
       }
     }
     return current;
@@ -59,11 +59,27 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
       final supabase = Supabase.instance.client;
       final data = await supabase
           .from('project_labor')
-          .select('start_date, end_date, quote_service_labors(quote_services(quote_service_estimations(total_working_days)))')
+          .select('project_id, start_date, end_date, quote_service_labors(quote_services(quote_service_estimations(total_working_days)))')
           .eq('id', widget.projectLaborId)
           .maybeSingle();
 
       if (data == null) return;
+
+      final projectId = data['project_id'];
+
+      // Load non-working days
+      try {
+        final nwDays = await supabase
+            .from('project_non_working_days')
+            .select('date, partial_ratio')
+            .eq('project_id', projectId);
+        _nonWorkingDays.clear();
+        for (final nw in nwDays ?? []) {
+          final dateStr = nw['date'] as String?;
+          final ratio = (nw['partial_ratio'] as num?)?.toDouble() ?? 0;
+          if (dateStr != null) _nonWorkingDays[dateStr.split('T')[0]] = ratio;
+        }
+      } catch (_) {}
 
       if (mounted) {
         setState(() {

@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'schedule_utils.dart';
 
 class EstimationCalculator {
   static Map<String, dynamic> calculate({
@@ -17,6 +18,7 @@ class EstimationCalculator {
     double gravelThicknessInches = 0,
     double trenchWidthInches = 0,
     double trenchDepthInches = 0,
+    Map<String, double> nonWorkingDays = const {},
   }) {
     double totalTarget;
     double totalCYLoose;
@@ -83,11 +85,10 @@ class EstimationCalculator {
 
     while (remainingTarget > 0 && daysCount < maxDays) {
       double dayProduction = 0;
-      bool isSaturday = currentDate.weekday == DateTime.saturday;
-      bool isSunday = currentDate.weekday == DateTime.sunday;
+      final contribution = getWorkingDayContribution(currentDate, nonWorkingDays);
 
-      if (!isSunday) {
-        final factor = isSaturday ? 0.5 : 1.0;
+      if (contribution > 0) {
+        final factor = contribution; // already incorporates Sat/Sun/non-working
         
         for (var res in resources) {
           final type = res['machinery_type']?.toString() ?? 'hauling';
@@ -119,7 +120,7 @@ class EstimationCalculator {
           dailySchedule.add({
             'date': currentDate,
             'production': productionToApply,
-            'isSaturday': isSaturday,
+            'contribution': contribution,
             'resources': resources.map((res) {
               final type = res['machinery_type']?.toString() ?? 'hauling';
               final qty = (res['quantity'] as num?)?.toDouble() ?? 0.0;
@@ -153,11 +154,10 @@ class EstimationCalculator {
           });
         }
       } else {
-        // Sunday - No production
         dailySchedule.add({
             'date': currentDate,
             'production': 0,
-            'isSunday': true,
+            'contribution': 0,
         });
       }
 

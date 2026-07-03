@@ -1888,6 +1888,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
   bool _isUpdatingRight = false;
   String _selectedServiceFilter = 'All Services';
   final Map<String, bool> _expandedServices = {};
+  Map<String, double> _nonWorkingDays = {};
   // Baseline metrics
   double _baselineOriginalCost = 0;
   double _baselineDeviationCost = 0;
@@ -1900,6 +1901,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
   void initState() {
     super.initState();
     _selectedServiceFilter = widget.selectedServiceFilter;
+    _loadNonWorkingDays();
 
     _leftScrollController.addListener(() {
       if (_isUpdatingRight) return;
@@ -2041,19 +2043,45 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
     return {'plannedStart': plannedStart, 'plannedEnd': plannedEnd};
   }
 
+  Future<void> _loadNonWorkingDays() async {
+    try {
+      final supabase = Supabase.instance.client;
+      final nwDays = await supabase
+          .from('project_non_working_days')
+          .select('date, partial_ratio')
+          .eq('project_id', widget.projectId);
+      _nonWorkingDays.clear();
+      for (final nw in nwDays ?? []) {
+        final dateStr = nw['date'] as String?;
+        final ratio = (nw['partial_ratio'] as num?)?.toDouble() ?? 0;
+        if (dateStr != null) _nonWorkingDays[dateStr.split('T')[0]] = ratio;
+      }
+      if (mounted) setState(() {});
+    } catch (_) {}
+  }
+
   Widget _buildRowBackground(int totalDays, double dayWidth, bool isService, DateTime minVal) {
     return Row(
       children: List.generate(totalDays, (index) {
         final day = minVal.add(Duration(days: index));
         final isSunday = day.weekday == DateTime.sunday;
+        final key = '${day.year}-${day.month.toString().padLeft(2, '0')}-${day.day.toString().padLeft(2, '0')}';
+        final nwRatio = _nonWorkingDays[key] ?? 0;
+        final isNonWorking = nwRatio >= 1.0;
+        final isPartial = nwRatio > 0 && nwRatio < 1.0;
         return Container(
           width: dayWidth,
           height: isService ? 52 : 44,
           decoration: BoxDecoration(
-            color: isSunday ? const Color(0xFFFEF2F2).withOpacity(0.5) : null,
+            color: isNonWorking ? const Color(0xFFFEF3C7).withOpacity(0.6)
+                : isPartial ? const Color(0xFFFEF3C7).withOpacity(0.3)
+                : isSunday ? const Color(0xFFFEF2F2).withOpacity(0.5)
+                : null,
             border: Border(
               right: BorderSide(
-                color: isSunday ? const Color(0xFFFECACA) : const Color(0xFFE2E8F0).withOpacity(0.4),
+                color: isNonWorking ? const Color(0xFFF59E0B).withOpacity(0.3)
+                    : isSunday ? const Color(0xFFFECACA)
+                    : const Color(0xFFE2E8F0).withOpacity(0.4),
                 width: 1,
               ),
             ),
