@@ -11,8 +11,9 @@ class StepLabor extends StatefulWidget {
   final bool isReadOnly;
   final ValueChanged<List<Map<String, dynamic>>> onLogsChanged;
   final VoidCallback? onNavigateToBaseline;
+  final String? stoppedAt;
 
-  const StepLabor({super.key, required this.plannedLabor, required this.laborLogs, required this.workers, required this.deviationReasons, required this.isReadOnly, required this.onLogsChanged, this.onNavigateToBaseline});
+  const StepLabor({super.key, required this.plannedLabor, required this.laborLogs, required this.workers, required this.deviationReasons, required this.isReadOnly, required this.onLogsChanged, this.onNavigateToBaseline, this.stoppedAt});
 
   @override
   State<StepLabor> createState() => _StepLaborState();
@@ -296,6 +297,15 @@ class _StepLaborState extends State<StepLabor> {
           label: Text('Credit 1h', style: _t(fs: 11, w: FontWeight.w700, c: Colors.orange)),
           style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
         ),
+        if (widget.stoppedAt != null && widget.stoppedAt!.isNotEmpty) ...[
+          const SizedBox(width: 4),
+          TextButton.icon(
+            onPressed: () => _stopAllAt(widget.stoppedAt!),
+            icon: const Icon(Icons.stop, size: 14, color: AppTheme.errorRed),
+            label: Text('Stop All at ${widget.stoppedAt!.substring(0, 5)}', style: _t(fs: 11, w: FontWeight.w700, c: AppTheme.errorRed)),
+            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+          ),
+        ],
       ]),
     );
   }
@@ -361,6 +371,16 @@ class _StepLaborState extends State<StepLabor> {
             if (idx >= 0) _updateEntryField(idx, 'check_out_time', '08:00:00');
           }
         }
+      }
+    }
+  }
+
+  void _stopAllAt(String stoppedAt) {
+    for (final entry in _entries) {
+      if (entry['check_in_time'] != null && (entry['check_in_time'] as String).isNotEmpty
+          && (entry['check_out_time'] == null || (entry['check_out_time'] as String?)?.isEmpty == true)) {
+        final idx = _entries.indexOf(entry);
+        _updateEntryField(idx, 'check_out_time', stoppedAt);
       }
     }
   }

@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../remote/supabase_client.dart';
+import 'daily_report_service.dart';
 
 part 'production_measurement_service.g.dart';
 
@@ -220,14 +221,15 @@ class ProductionMeasurementService {
     final cpi = totalActualCost > 0 ? totalEarnedValue / totalActualCost : 1.0;
     final eac = cpi > 0 ? totalPlannedCost / cpi : totalPlannedCost;
 
-    // SPI based on time elapsed
+    // SPI based on effective days (excluding non-working days)
     double spi = 1.0;
     if (project['start_date'] != null && project['end_date'] != null) {
       final start = DateTime.tryParse(project['start_date']?.toString() ?? '');
       final end = DateTime.tryParse(project['end_date']?.toString() ?? '');
       if (start != null && end != null && end.isAfter(start)) {
-        final totalDays = end.difference(start).inDays;
-        final elapsed = DateTime.now().difference(start).inDays;
+        final reportService = DailyReportService(_supabase);
+        final totalDays = await reportService.getEffectiveElapsedDays(projectId, start, end);
+        final elapsed = await reportService.getEffectiveElapsedDays(projectId, start, DateTime.now());
         if (totalDays > 0 && elapsed > 0) {
           final pv = (elapsed / totalDays) * totalPlannedCost;
           spi = pv > 0 ? totalEarnedValue / pv : 1.0;

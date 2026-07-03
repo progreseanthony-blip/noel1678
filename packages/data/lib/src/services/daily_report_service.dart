@@ -34,6 +34,28 @@ class DailyReportService {
     return response;
   }
 
+  Future<double> getEffectiveElapsedDays(String projectId, DateTime start, DateTime end) async {
+    final nwDays = await _supabase
+        .from('project_non_working_days')
+        .select('date, partial_ratio')
+        .eq('project_id', projectId);
+    final ratios = <String, double>{};
+    for (final nw in nwDays ?? []) {
+      final dateStr = nw['date'] as String?;
+      final ratio = (nw['partial_ratio'] as num?)?.toDouble() ?? 0;
+      if (dateStr != null) ratios[dateStr.split('T')[0]] = ratio;
+    }
+    double effectiveDays = 0;
+    for (var d = start; !d.isAfter(end); d = d.add(const Duration(days: 1))) {
+      final key = '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      final nwRatio = ratios[key] ?? 0;
+      if (nwRatio >= 1.0) continue;
+      final dayWeight = d.weekday == DateTime.saturday ? 0.5 : 1.0;
+      effectiveDays += dayWeight * (1.0 - nwRatio);
+    }
+    return effectiveDays.clamp(0, 999999);
+  }
+
   Future<Map<String, dynamic>?> getReportByDate(String projectId, String date) async {
     final response = await _supabase
         .from('daily_reports')

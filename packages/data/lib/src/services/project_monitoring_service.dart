@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'daily_report_service.dart';
 
 class ProjectMonitoringService {
   final SupabaseClient _supabase;
@@ -54,7 +55,10 @@ class ProjectMonitoringService {
 
     final start = DateTime.tryParse(project?['start_date']?.toString() ?? '');
     final now = DateTime.now();
-    final elapsedDays = start != null ? now.difference(start).inDays.clamp(0, 9999) : 0;
+    final reportService = DailyReportService(_supabase);
+    final elapsedDays = start != null
+        ? await reportService.getEffectiveElapsedDays(projectId, start, now)
+        : 0.0;
 
     final plannedServices = await _supabase
         .from('quote_services')

@@ -135,8 +135,42 @@ class _DailyReportWizardPageState
         'non_working_reason': _reportData['non_working_reason'],
         'stopped_at': _reportData['stopped_at'],
       });
+      await _syncNonWorkingDays();
     } catch (e) {
       debugPrint('Error saving report: $e');
+    }
+  }
+
+  Future<void> _syncNonWorkingDays() async {
+    final dayType = _reportData['day_type'] as String? ?? 'working';
+    final reportDate = _reportData['report_date'] as String?;
+    if (reportDate == null || reportDate.isEmpty) return;
+
+    final client = Supabase.instance.client;
+
+    if (dayType == 'working') {
+      await client.from('project_non_working_days').delete()
+          .eq('project_id', widget.projectId)
+          .eq('date', reportDate);
+    } else {
+      double partialRatio;
+      if (dayType == 'non_working') {
+        partialRatio = 0;
+      } else {
+        final stoppedAt = _reportData['stopped_at'] as String? ?? '';
+        final parts = stoppedAt.split(':');
+        final hours = (int.tryParse(parts.isNotEmpty ? parts[0] : '') ?? 0);
+        final minutes = (int.tryParse(parts.length > 1 ? parts[1] : '') ?? 0);
+        final stoppedHour = hours + minutes / 60;
+        partialRatio = (stoppedHour / 8).clamp(0.0, 1.0);
+      }
+      await client.from('project_non_working_days').upsert({
+        'project_id': widget.projectId,
+        'date': reportDate,
+        'reason': _reportData['non_working_reason'],
+        'partial_ratio': partialRatio,
+        'daily_report_id': _reportId,
+      });
     }
   }
 
@@ -431,6 +465,7 @@ class _DailyReportWizardPageState
               isReadOnly: _reportData['status'] == 'approved' || _reportData['status'] == 'submitted',
               onLogsChanged: _onLaborLogsChanged,
               onNavigateToBaseline: _navigateToBaseline,
+              stoppedAt: _reportData['stopped_at'] as String?,
             ),
           ),
           Step(

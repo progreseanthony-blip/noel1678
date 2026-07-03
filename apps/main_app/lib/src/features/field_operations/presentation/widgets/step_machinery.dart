@@ -50,11 +50,11 @@ class _StepMachineryState extends State<StepMachinery> {
   Map<String, List<double>> _rawProdList = {};
   Map<String, List<double>> _machineryProdList = {};
   Map<String, Map<String, Map<String, dynamic>>> _estimationTargets = {};
-  final Set<String> _nonWorkingDates = {};
+  final Map<String, double> _nonWorkingDays = {};
 
-  bool _isNonWorkingDay(DateTime date) {
+  double _nonWorkingRatio(DateTime date) {
     final key = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-    return _nonWorkingDates.contains(key);
+    return _nonWorkingDays[key] ?? 0.0;
   }
 
   @override
@@ -95,12 +95,13 @@ class _StepMachineryState extends State<StepMachinery> {
 
       final nwDays = await Supabase.instance.client
           .from('project_non_working_days')
-          .select('date')
+          .select('date, partial_ratio')
           .eq('project_id', widget.projectId);
-      _nonWorkingDates.clear();
+      _nonWorkingDays.clear();
       for (final nw in nwDays ?? []) {
         final dateStr = nw['date'] as String?;
-        if (dateStr != null) _nonWorkingDates.add(dateStr.split('T')[0]);
+        final ratio = (nw['partial_ratio'] as num?)?.toDouble() ?? 0;
+        if (dateStr != null) _nonWorkingDays[dateStr.split('T')[0]] = ratio;
       }
       _estimationTargets = est;
       _rawProd = rawProd;
@@ -640,8 +641,10 @@ class _StepMachineryState extends State<StepMachinery> {
           : DateTime.now();
       double effectiveDays = 0;
       for (var d = startDate; !d.isAfter(refDate); d = d.add(const Duration(days: 1))) {
-        if (_isNonWorkingDay(d)) continue;
-        effectiveDays += d.weekday == DateTime.saturday ? 0.5 : 1.0;
+        final nwRatio = _nonWorkingRatio(d);
+        if (nwRatio >= 1.0) continue;
+        final dayWeight = d.weekday == DateTime.saturday ? 0.5 : 1.0;
+        effectiveDays += dayWeight * (1.0 - nwRatio);
       }
       return effectiveDays.clamp(1.0, 9999.0);
     } catch (_) {
