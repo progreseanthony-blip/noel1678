@@ -791,7 +791,10 @@ currentPath: '/projects/${widget.projectId}',
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Header Section
-        Container(
+        Flexible(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.only(bottom: 8),
+            child: Container(
           width: double.infinity,
           color: Colors.white,
           padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, isMobile ? 12 : 16, isMobile ? 16 : 32, 0),
@@ -975,7 +978,9 @@ currentPath: '/projects/${widget.projectId}',
                       Tab(text: 'Labor'),
                     ],
               ),
-            ],
+              ],
+            ),
+          ),
           ),
         ),
         
