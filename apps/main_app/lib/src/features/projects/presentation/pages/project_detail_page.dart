@@ -791,13 +791,10 @@ currentPath: '/projects/${widget.projectId}',
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Header Section
-        Flexible(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.only(bottom: 8),
-            child: Container(
+        Container(
           width: double.infinity,
           color: Colors.white,
-          padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, isMobile ? 12 : 16, isMobile ? 16 : 32, 0),
+          padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, isMobile ? 8 : 12, isMobile ? 16 : 32, 0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -978,9 +975,7 @@ currentPath: '/projects/${widget.projectId}',
                       Tab(text: 'Labor'),
                     ],
               ),
-              ],
-            ),
-          ),
+            ],
           ),
         ),
         
@@ -1708,12 +1703,10 @@ currentPath: '/projects/${widget.projectId}',
 
   Future<void> _recalculateSchedule() async {
     final supabase = Supabase.instance.client;
-
     final nwDays = await supabase
         .from('project_non_working_days')
         .select('date, partial_ratio, reason')
         .eq('project_id', widget.projectId);
-
     final fullDays = <String>[];
     final partialDays = <Map<String, dynamic>>[];
     double totalExtension = 0;
@@ -1727,9 +1720,7 @@ currentPath: '/projects/${widget.projectId}',
         totalExtension += ratio;
       }
     }
-
     if (!mounted) return;
-
     final confirmed = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1743,39 +1734,29 @@ currentPath: '/projects/${widget.projectId}',
               if (fullDays.isNotEmpty)
                 Text('${fullDays.length} full non-working days', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900)),
               if (partialDays.isNotEmpty)
-                Text('${partialDays.length} partial days (${(totalExtension - fullDays.length).toStringAsFixed(1)} days lost)',
+                Text('${partialDays.length} partial days (${(totalExtension - fullDays.length).toStringAsFixed(1)}d lost)',
                     style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900)),
-              const SizedBox(height: 12),
-              const Divider(),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12), const Divider(), const SizedBox(height: 8),
               Text('Recommended extension: ${totalExtension.toStringAsFixed(1)} days',
                   style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
-              const SizedBox(height: 4),
-              Text('This will extend end dates of all resources by the accumulated non-working days.',
-                  style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400)),
             ],
           ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.manrope(fontWeight: FontWeight.w600))),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
-            child: Text('Apply Extension (${totalExtension.toStringAsFixed(1)}d)', style: GoogleFonts.manrope(fontWeight: FontWeight.w600)),
+            child: Text('Apply Extension', style: GoogleFonts.manrope(fontWeight: FontWeight.w600)),
           ),
         ],
       ),
     );
-
-    if (confirmed == true && mounted) {
-      await _applyScheduleExtension(totalExtension);
-    }
+    if (confirmed == true && mounted) await _applyScheduleExtension(totalExtension);
   }
 
   Future<void> _applyScheduleExtension(double extensionDays) async {
     final supabase = Supabase.instance.client;
     final duration = extensionDays.round();
-
     try {
       int updated = 0;
       for (final m in _machinery) {
@@ -1783,10 +1764,7 @@ currentPath: '/projects/${widget.projectId}',
         if (endDateStr != null && endDateStr.isNotEmpty) {
           final endDate = DateTime.tryParse(endDateStr);
           if (endDate != null) {
-            final newEnd = endDate.add(Duration(days: duration));
-            await supabase.from('project_machinery').update({
-              'end_date': newEnd.toIso8601String(),
-            }).eq('id', m['id']);
+            await supabase.from('project_machinery').update({'end_date': endDate.add(Duration(days: duration)).toIso8601String()}).eq('id', m['id']);
             updated++;
           }
         }
@@ -1796,10 +1774,7 @@ currentPath: '/projects/${widget.projectId}',
         if (endDateStr != null && endDateStr.isNotEmpty) {
           final endDate = DateTime.tryParse(endDateStr);
           if (endDate != null) {
-            final newEnd = endDate.add(Duration(days: duration));
-            await supabase.from('project_labor').update({
-              'end_date': newEnd.toIso8601String(),
-            }).eq('id', l['id']);
+            await supabase.from('project_labor').update({'end_date': endDate.add(Duration(days: duration)).toIso8601String()}).eq('id', l['id']);
             updated++;
           }
         }
@@ -1809,26 +1784,17 @@ currentPath: '/projects/${widget.projectId}',
         if (endDateStr != null && endDateStr.isNotEmpty) {
           final endDate = DateTime.tryParse(endDateStr);
           if (endDate != null) {
-            final newEnd = endDate.add(Duration(days: duration));
-            await supabase.from('project_instruments').update({
-              'end_date': newEnd.toIso8601String(),
-            }).eq('id', i['id']);
+            await supabase.from('project_instruments').update({'end_date': endDate.add(Duration(days: duration)).toIso8601String()}).eq('id', i['id']);
             updated++;
           }
         }
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$updated resources extended by $duration days'), backgroundColor: AppTheme.primaryGreen),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$updated resources extended by $duration days'), backgroundColor: AppTheme.primaryGreen));
         _loadProjectData();
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.errorRed),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.errorRed));
     }
   }
 
