@@ -5,6 +5,7 @@ import 'package:noel_data/noel_data.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 import 'service_dialog.dart';
+import '../../../weekly_inspections/presentation/widgets/threshold_config_dialog.dart';
 
 class ServicesTab extends ConsumerStatefulWidget {
   const ServicesTab({super.key});
@@ -120,6 +121,7 @@ class _ServicesTabState extends ConsumerState<ServicesTab> {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
+                        IconButton(onPressed: () => _showThreshold(item), icon: const Icon(Icons.tune, color: AppTheme.primaryGreen, size: 18), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
                         IconButton(onPressed: () => _showForm(item), icon: const Icon(Icons.edit_outlined, color: AppTheme.slate500, size: 18), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
                         IconButton(onPressed: () => _deleteItem(item['id']), icon: const Icon(Icons.delete_outline, color: AppTheme.errorRed, size: 18), padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32)),
                       ],
@@ -157,5 +159,15 @@ class _ServicesTabState extends ConsumerState<ServicesTab> {
         }
       }
     }
+  }
+
+  void _showThreshold(Map<String, dynamic> service) {
+    showSafeDialog(
+      context: context,
+      builder: (context) => ThresholdConfigDialog(
+        service: service,
+        onSaved: _loadData,
+      ),
+    );
   }
 }

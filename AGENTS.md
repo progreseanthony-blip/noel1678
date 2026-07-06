@@ -11,22 +11,32 @@ packages/data/              # noel_data: Supabase client, Riverpod services
 packages/ui_components/     # noel_ui_components: shared widgets (stub)
 ```
 
+## Melos 7 migration complete
+- Project uses Dart pub workspaces (`workspace:` key in root `pubspec.yaml`)
+- All Melos config lives under `melos:` key in root `pubspec.yaml` (no more `melos.yaml`)
+- All packages have `resolution: workspace` in their `pubspec.yaml`
+- Local package deps use `any` version constraint (workspace resolution handles linking)
+
 ## Required command order
 Always run in this sequence:
-1. `melos get` — fetches deps across all packages
-2. `melos gen` — runs `build_runner build --delete-conflicting-outputs` everywhere
+1. `dart pub get` (at repo root) — resolves workspace deps via `melos` dev dependency
+2. `melos run gen` — runs `build_runner build --delete-conflicting-outputs` everywhere
    - Must be re-run after any change to Riverpod annotated services or data models
    - `.g.dart` files are **gitignored** and must be regenerated locally
+   - **Note:** `melos run gen` uses `melos exec` internally — if `melos` is not in PATH, run build_runner manually in each package:
+     - `packages/core`
+     - `packages/data`
+     - `apps/main_app`
 3. Build/run the app
 
 ## How to run
 ```bash
 # Required before first run / after dependency changes
-melos get   # Fetches deps across all packages
-melos gen   # Runs build_runner everywhere
+dart pub get  # Resolves workspace deps
+melos run gen   # Runs build_runner everywhere
 
 # Development (Chrome) — loads config from .env
-melos dev
+melos run dev
 
 # Production web build — loads config from .env.production (CI does this automatically)
 # Config is passed via --dart-define, sourced from .env.production in the deploy workflow
@@ -62,6 +72,12 @@ melos dev
 - `.github/workflows/deploy.yaml` — triggers on push to `master`/`main`
 - Builds web, pushes Supabase migrations, deploys to Firebase Hosting
 - Required secrets: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_ID`, `FIREBASE_TOKEN`, `FIREBASE_PROJECT_ID`
+
+## ⚠️ Database safety rules
+- NEVER run `supabase db reset` unless the user explicitly requests it
+- ALWAYS run `scripts/db_backup.ps1` BEFORE any destructive DB operation
+- `supabase db reset` DROPS ALL DATA — warn the user clearly before executing
+- Backups are stored in `backups/` and are git-committed
 
 ## Git conventions
 - Feature branches: `feat/description`

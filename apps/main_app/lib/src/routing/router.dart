@@ -36,6 +36,11 @@ import '../features/change_orders/presentation/pages/change_orders_list_page.dar
 import '../features/change_orders/presentation/pages/change_order_form_page.dart';
 import '../features/change_orders/presentation/pages/change_order_detail_page.dart';
 import '../features/change_orders/presentation/pages/change_orders_projects_page.dart';
+import '../features/weekly_inspections/presentation/pages/weekly_inspections_list_page.dart';
+import '../features/weekly_inspections/presentation/pages/weekly_inspections_projects_page.dart';
+import '../features/weekly_inspections/presentation/pages/inspection_form_page.dart';
+import '../features/weekly_inspections/presentation/pages/inspection_detail_page.dart';
+import '../features/weekly_inspections/presentation/pages/reconciliation_page.dart';
 final goRouter = GoRouter(
   initialLocation: '/signin',
   routes: [
@@ -232,6 +237,45 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/customers',
       builder: (context, state) => const CustomersListPage(),
+    ),
+    GoRoute(
+      path: '/weekly-inspections',
+      builder: (context, state) => const WeeklyInspectionsProjectsPage(),
+    ),
+    GoRoute(
+      path: '/projects/:id/weekly-inspections',
+      builder: (context, state) => WeeklyInspectionsListPage(
+        projectId: state.pathParameters['id']!,
+      ),
+    ),
+    GoRoute(
+      path: '/projects/:id/weekly-inspections/new',
+      builder: (context, state) => InspectionFormPage(
+        projectId: state.pathParameters['id']!,
+      ),
+    ),
+    GoRoute(
+      path: '/projects/:id/weekly-inspections/:inspectionId',
+      builder: (context, state) => InspectionDetailPage(
+        projectId: state.pathParameters['id']!,
+        inspectionId: state.pathParameters['inspectionId']!,
+      ),
+    ),
+    GoRoute(
+      path: '/projects/:id/weekly-inspections/:inspectionId/edit',
+      builder: (context, state) => InspectionFormPage(
+        projectId: state.pathParameters['id']!,
+        inspectionId: state.pathParameters['inspectionId'],
+      ),
+    ),
+    GoRoute(
+      path: '/projects/:id/weekly-inspections/:inspectionId/reconcile',
+      builder: (context, state) => ReconciliationPage(
+        projectId: state.pathParameters['id']!,
+        inspectionId: state.pathParameters['inspectionId']!,
+        comparisonId: state.uri.queryParameters['comparisonId']!,
+        serviceId: state.uri.queryParameters['serviceId']!,
+      ),
     ),
   ],
 );

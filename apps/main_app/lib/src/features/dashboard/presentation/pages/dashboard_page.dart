@@ -2,12 +2,40 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:noel_data/noel_data.dart';
 
-class DashboardPage extends ConsumerWidget {
+class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends ConsumerState<DashboardPage> {
+  int _pendingReconciliations = 0;
+  int _exceedsThreshold = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStats();
+  }
+
+  Future<void> _loadStats() async {
+    try {
+      final service = InspectionService(Supabase.instance.client);
+      final stats = await service.getInspectionDashboardStats();
+      if (mounted) {
+        setState(() {
+          _pendingReconciliations = (stats['pending_approval_count'] as int?) ?? 0;
+          _exceedsThreshold = (stats['exceeds_threshold_count'] as int?) ?? 0;
+        });
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
     final name = user?.userMetadata?['name'] ?? 'Usuario';
     final email = user?.email ?? '';
@@ -70,6 +98,29 @@ class DashboardPage extends ConsumerWidget {
                     ),
                   ),
                 ),
+                if (_pendingReconciliations > 0 || _exceedsThreshold > 0) ...[
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 56,
+                    child: ElevatedButton.icon(
+                      onPressed: () => context.push('/monitoring'),
+                      icon: const Icon(Icons.compare_arrows, color: Colors.orange),
+                      label: Text(
+                        'Conciliaciones pendientes: $_pendingReconciliations (${_exceedsThreshold} sin atender)',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange.withOpacity(0.15),
+                        foregroundColor: Colors.orange,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(color: Colors.orange.withOpacity(0.3)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

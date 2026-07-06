@@ -38,6 +38,7 @@ class _SidebarState extends State<Sidebar> {
   final _monitoringDashKey = GlobalKey();
   final _billingKey = GlobalKey();
   final _changeOrdersKey = GlobalKey();
+  final _weeklyInspectionsKey = GlobalKey();
   final _customersKey = GlobalKey();
   final _catalogsKey = GlobalKey();
   final _workersKey = GlobalKey();
@@ -93,6 +94,8 @@ class _SidebarState extends State<Sidebar> {
       activeKey = _billingKey;
     } else if (path.contains('/change-orders')) {
       activeKey = _changeOrdersKey;
+    } else if (path.startsWith('/weekly-inspections')) {
+      activeKey = _weeklyInspectionsKey;
     } else if (path.startsWith('/customers')) {
       activeKey = _customersKey;
     } else if (path.startsWith('/catalogs')) {
@@ -160,8 +163,8 @@ class _SidebarState extends State<Sidebar> {
                   _ExpandableNavItem(
                     icon: Icons.rocket_launch_outlined,
                     label: 'Projects',
-                    isActive: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/billing') || currentPath.startsWith('/change-orders') || currentPath.startsWith('/incidents') || currentPath.startsWith('/reception'),
-                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/billing') || currentPath.startsWith('/change-orders') || currentPath.startsWith('/incidents') || currentPath.startsWith('/reception'),
+                    isActive: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/billing') || currentPath.startsWith('/change-orders') || currentPath.startsWith('/incidents') || currentPath.startsWith('/reception') || currentPath.startsWith('/weekly-inspections'),
+                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/billing') || currentPath.startsWith('/change-orders') || currentPath.startsWith('/incidents') || currentPath.startsWith('/reception') || currentPath.startsWith('/weekly-inspections'),
                     scrollController: _scrollController,
                     children: [
                       _SubExpandableNavItem(
@@ -183,13 +186,14 @@ class _SidebarState extends State<Sidebar> {
                       ),
                       _SubExpandableNavItem(
                         label: 'Field Execution',
-                        isActive: currentPath.startsWith('/daily-reports') || currentPath.startsWith('/incidents'),
-                        initiallyExpanded: currentPath.startsWith('/daily-reports') || currentPath.startsWith('/incidents'),
+                        isActive: currentPath.startsWith('/daily-reports') || currentPath.startsWith('/incidents') || currentPath.startsWith('/weekly-inspections'),
+                        initiallyExpanded: currentPath.startsWith('/daily-reports') || currentPath.startsWith('/incidents') || currentPath.startsWith('/weekly-inspections'),
                         scrollController: _scrollController,
                         children: [
                           _SubNavItem(key: _dailyReportsKey, icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), onTap: () => context.go('/daily-reports')),
                           _SubNavItem(key: _pendingApprovalsKey, icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), onTap: () => context.go('/daily-reports/pending')),
                           _SubNavItem(key: _incidentsKey, icon: Icons.warning_amber_rounded, label: 'Incidents', isActive: currentPath.startsWith('/incidents') || currentPath.contains('/incidents'), onTap: () => context.go('/incidents')),
+                          _SubNavItem(key: _weeklyInspectionsKey, icon: Icons.satellite_alt, label: 'Weekly Inspections', isActive: currentPath.startsWith('/weekly-inspections') || currentPath.contains('/weekly-inspections'), onTap: () => context.go('/weekly-inspections')),
                         ],
                       ),
                       _SubExpandableNavItem(
