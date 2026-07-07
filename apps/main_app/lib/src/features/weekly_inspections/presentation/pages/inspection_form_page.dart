@@ -175,14 +175,14 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
           .replaceAll(RegExp(r'[^a-zA-Z0-9.\-_]'), '_');
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_$cleanName';
 
-      await storage.from('inspections').uploadBinary(
+      await storage.from('equipment').uploadBinary(
             fileName,
             Uint8List.fromList(bytes),
             fileOptions:
                 const FileOptions(cacheControl: '3600', upsert: false),
           );
 
-      final publicUrl = storage.from('inspections').getPublicUrl(fileName);
+      final publicUrl = storage.from('equipment').getPublicUrl(fileName);
 
       uploaded.add({
         'url': publicUrl,
@@ -227,13 +227,7 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
       final dateStr =
           '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
 
-      List<Map<String, String>> uploadedFiles;
-      try {
-        uploadedFiles = await _uploadPendingFiles();
-      } catch (uploadErr) {
-        debugPrint('Evidence upload failed: $uploadErr');
-        uploadedFiles = [];
-      }
+      final uploadedFiles = await _uploadPendingFiles();
       final allEvidence = [..._evidenceFiles, ...uploadedFiles];
 
       final inspectionData = {
