@@ -274,24 +274,12 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
         }
       }
 
-      if (!_isEditing) {
-        await service.submitInspection(inspectionId);
-      }
-      try {
-        await service.runComparison(inspectionId);
-      } catch (compErr) {
-        debugPrint('Comparison failed, will need manual retry: $compErr');
-      }
-      if (!_isEditing) {
-        await service.approveInspection(inspectionId);
-      }
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(_isEditing
-                ? 'Inspection updated successfully.'
-                : 'Inspection created successfully.'),
+                ? 'Draft updated successfully.'
+                : 'Draft saved successfully.'),
             backgroundColor: AppTheme.primaryGreen,
           ),
         );
@@ -501,60 +489,93 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
                       ),
                     ),
                   ),
-                ...(_evidenceFiles.map((e) => Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.image,
-                              size: 16, color: AppTheme.primaryGreen),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              e['description'] ?? e['url'] ?? '',
-                              style: GoogleFonts.manrope(
-                                fontSize: 12,
-                                color: AppTheme.slate200,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    ..._evidenceFiles.map((e) => Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.network(
+                                e['url'] ?? '',
+                                width: 100,
+                                height: 75,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => Container(
+                                  width: 100,
+                                  height: 75,
+                                  color: AppTheme.slate700,
+                                  child: const Icon(Icons.image, color: AppTheme.slate500, size: 24),
+                                ),
                               ),
-                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                          GestureDetector(
-                            onTap: () =>
-                                setState(() => _evidenceFiles.remove(e)),
-                            child: const Icon(Icons.close,
-                                size: 16, color: AppTheme.errorRed),
-                          ),
-                        ],
-                      ),
-                    ))),
-                ...(_pendingEvidenceFiles.asMap().entries.map((entry) =>
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.image_outlined,
-                              size: 16, color: Colors.orange),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              entry.value['fileName'] ?? '',
-                              style: GoogleFonts.manrope(
-                                fontSize: 12,
-                                color: Colors.orange,
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: GestureDetector(
+                                onTap: () => setState(() => _evidenceFiles.remove(e)),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Icon(Icons.close, size: 14, color: Colors.white),
+                                ),
                               ),
-                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                          GestureDetector(
-                            onTap: () => setState(
-                                () => _pendingEvidenceFiles.removeAt(entry.key)),
-                            child: const Icon(Icons.close,
-                                size: 16, color: AppTheme.errorRed),
-                          ),
-                        ],
-                      ),
-                    ))),
-                const SizedBox(height: 8),
+                          ],
+                        )),
+                    ..._pendingEvidenceFiles.asMap().entries.map((entry) => Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.memory(
+                                Uint8List.fromList(entry.value['bytes'] as List<int>),
+                                width: 100,
+                                height: 75,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) => Container(
+                                  width: 100,
+                                  height: 75,
+                                  color: AppTheme.slate700,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(Icons.image_outlined, color: Colors.orange, size: 24),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        entry.value['fileName'] ?? '',
+                                        style: GoogleFonts.manrope(fontSize: 8, color: Colors.orange),
+                                        textAlign: TextAlign.center,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            Positioned(
+                              top: 2,
+                              right: 2,
+                              child: GestureDetector(
+                                onTap: () => setState(
+                                    () => _pendingEvidenceFiles.removeAt(entry.key)),
+                                child: Container(
+                                  padding: const EdgeInsets.all(2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Icon(Icons.close, size: 14, color: Colors.white),
+                                ),
+                              ),
+                            ),
+                          ],
+                        )),
+                  ],
+                ),
                 OutlinedButton.icon(
                   onPressed: _addEvidence,
                   icon: const Icon(Icons.add, size: 16),
@@ -617,8 +638,8 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
                     _isSaving
                         ? 'Saving...'
                         : _isEditing
-                            ? 'Update Inspection & Run Comparison'
-                            : 'Save Inspection & Run Comparison',
+                            ? 'Update Draft'
+                            : 'Save as Draft',
                     style: GoogleFonts.manrope(
                       fontWeight: FontWeight.w700,
                       fontSize: 14,

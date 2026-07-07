@@ -94,7 +94,7 @@ class _SidebarState extends State<Sidebar> {
       activeKey = _billingKey;
     } else if (path.contains('/change-orders')) {
       activeKey = _changeOrdersKey;
-    } else if (path.startsWith('/weekly-inspections')) {
+    } else if (path.startsWith('/weekly-inspections') || path.contains('/weekly-inspections')) {
       activeKey = _weeklyInspectionsKey;
     } else if (path.startsWith('/customers')) {
       activeKey = _customersKey;
@@ -186,8 +186,8 @@ class _SidebarState extends State<Sidebar> {
                       ),
                       _SubExpandableNavItem(
                         label: 'Field Execution',
-                        isActive: currentPath.startsWith('/daily-reports') || currentPath.startsWith('/incidents') || currentPath.startsWith('/weekly-inspections'),
-                        initiallyExpanded: currentPath.startsWith('/daily-reports') || currentPath.startsWith('/incidents') || currentPath.startsWith('/weekly-inspections'),
+                        isActive: currentPath.startsWith('/daily-reports') || currentPath.startsWith('/incidents') || currentPath.startsWith('/weekly-inspections') || currentPath.contains('/weekly-inspections'),
+                        initiallyExpanded: currentPath.startsWith('/daily-reports') || currentPath.startsWith('/incidents') || currentPath.startsWith('/weekly-inspections') || currentPath.contains('/weekly-inspections'),
                         scrollController: _scrollController,
                         children: [
                           _SubNavItem(key: _dailyReportsKey, icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), onTap: () => context.go('/daily-reports')),
@@ -516,10 +516,19 @@ class _SubExpandableNavItemState extends State<_SubExpandableNavItem> {
         firstChild: Padding(
           padding: const EdgeInsets.only(left: 10),
           child: Container(
-            decoration: const BoxDecoration(
-              border: Border(left: BorderSide(color: Color(0xFF334155), width: 1.5)),
+            decoration: BoxDecoration(
+              border: const Border(left: BorderSide(color: Color(0xFF334155), width: 1.5)),
+              color: Colors.white.withOpacity(0.03),
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
             ),
-            padding: const EdgeInsets.only(left: 8),
+            padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
             child: Column(children: widget.children),
           ),
         ),

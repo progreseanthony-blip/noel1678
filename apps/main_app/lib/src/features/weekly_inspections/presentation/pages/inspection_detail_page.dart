@@ -144,6 +144,150 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
     }
   }
 
+  Future<void> _showFullImage(String url, String description) async {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: InteractiveViewer(
+                maxScale: 5.0,
+                child: Image.network(
+                  url,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    padding: const EdgeInsets.all(40),
+                    color: AppTheme.slate700,
+                    child: const Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.broken_image, color: AppTheme.slate500, size: 48),
+                        SizedBox(height: 8),
+                        Text('Could not load image', style: TextStyle(color: AppTheme.slate400)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (description.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  description,
+                  style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 12),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitInspection() async {
+    try {
+      final service = InspectionService(Supabase.instance.client);
+      await service.submitInspection(widget.inspectionId);
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Inspection submitted for approval.'),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
+  }
+
+  Future<void> _approveInspection() async {
+    try {
+      final service = InspectionService(Supabase.instance.client);
+      await service.runComparison(widget.inspectionId);
+      await service.approveInspection(widget.inspectionId);
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Inspection approved and comparison completed.'),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectInspection() async {
+    final reasonController = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: Text('Reject Inspection', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
+        content: TextField(
+          controller: reasonController,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'Reason for rejection',
+            border: OutlineInputBorder(),
+          ),
+          style: GoogleFonts.manrope(fontSize: 13, color: Colors.white),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, reasonController.text.trim()),
+            child: const Text('Reject', style: TextStyle(color: Colors.orange)),
+          ),
+        ],
+      ),
+    );
+
+    if (reason == null || reason.isEmpty || !mounted) return;
+
+    try {
+      final service = InspectionService(Supabase.instance.client);
+      await service.rejectInspection(widget.inspectionId, reason);
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Inspection rejected and returned to draft.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = Supabase.instance.client.auth.currentUser;
@@ -337,52 +481,121 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
                     ),
                   ),
                 ],
-                if (status == 'draft' || status == 'submitted') ...[
+                if (status == 'draft') ...[
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      if (status == 'draft' || status == 'submitted')
-                        Expanded(
-                          child: SizedBox(
-                            height: 36,
-                            child: OutlinedButton.icon(
-                              onPressed: () => context.push(
-                                '/projects/${widget.projectId}/weekly-inspections/${widget.inspectionId}/edit',
-                              ),
-                              icon: const Icon(Icons.edit, size: 16),
-                              label: Text(
-                                'Edit',
-                                style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.blue,
-                                side: const BorderSide(color: Colors.blue),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
+                      Expanded(
+                        child: SizedBox(
+                          height: 36,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _submitInspection(),
+                            icon: const Icon(Icons.send, size: 16),
+                            label: Text('Submit for Approval',
+                                style: GoogleFonts.manrope(fontWeight: FontWeight.w600, fontSize: 12)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
                           ),
                         ),
-                      if (status == 'draft') ...[
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: SizedBox(
-                            height: 36,
-                            child: OutlinedButton.icon(
-                              onPressed: () => _deleteInspection(),
-                              icon: const Icon(Icons.delete_outline, size: 16),
-                              label: Text(
-                                'Delete',
-                                style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600),
-                              ),
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: AppTheme.errorRed,
-                                side: const BorderSide(color: AppTheme.errorRed),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: SizedBox(
+                          height: 36,
+                          child: OutlinedButton.icon(
+                            onPressed: () => context.push(
+                              '/projects/${widget.projectId}/weekly-inspections/${widget.inspectionId}/edit',
+                            ),
+                            icon: const Icon(Icons.edit, size: 16),
+                            label: Text('Edit',
+                                style: GoogleFonts.manrope(fontWeight: FontWeight.w600, fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.blue,
+                              side: const BorderSide(color: Colors.blue),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             ),
                           ),
                         ),
-                      ],
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: SizedBox(
+                          height: 36,
+                          child: OutlinedButton.icon(
+                            onPressed: () => _deleteInspection(),
+                            icon: const Icon(Icons.delete_outline, size: 16),
+                            label: Text('Delete',
+                                style: GoogleFonts.manrope(fontWeight: FontWeight.w600, fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.errorRed,
+                              side: const BorderSide(color: AppTheme.errorRed),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (status == 'submitted') ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 36,
+                          child: ElevatedButton.icon(
+                            onPressed: () => _approveInspection(),
+                            icon: const Icon(Icons.check_circle, size: 16),
+                            label: Text('Approve',
+                                style: GoogleFonts.manrope(fontWeight: FontWeight.w600, fontSize: 12)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.primaryGreen,
+                              foregroundColor: const Color(0xFF0F172A),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: SizedBox(
+                          height: 36,
+                          child: OutlinedButton.icon(
+                            onPressed: () => _rejectInspection(),
+                            icon: const Icon(Icons.undo, size: 16),
+                            label: Text('Reject',
+                                style: GoogleFonts.manrope(fontWeight: FontWeight.w600, fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.orange,
+                              side: const BorderSide(color: Colors.orange),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: SizedBox(
+                          height: 36,
+                          child: OutlinedButton.icon(
+                            onPressed: () => context.push(
+                              '/projects/${widget.projectId}/weekly-inspections/${widget.inspectionId}/edit',
+                            ),
+                            icon: const Icon(Icons.edit, size: 16),
+                            label: Text('Edit',
+                                style: GoogleFonts.manrope(fontWeight: FontWeight.w600, fontSize: 12)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.blue,
+                              side: const BorderSide(color: Colors.blue),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -396,38 +609,51 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
             _buildSectionTitle('Evidence Files', Icons.photo_library_outlined),
             const SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: const Color(0xFF1E293B),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: const Color(0xFF334155)),
               ),
-              child: Column(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: evidenceFiles.map((e) {
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 6),
-                    child: Row(
-                      children: [
-                        Icon(
-                          e['type'] == 'photo'
-                              ? Icons.image
-                              : Icons.insert_drive_file,
-                          size: 16,
-                          color: AppTheme.primaryGreen,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            e['description'] ?? e['url'] ?? '',
-                            style: GoogleFonts.manrope(
-                              fontSize: 12,
-                              color: AppTheme.slate200,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+                  final url = e['url'] ?? '';
+                  final desc = e['description'] ?? '';
+                  final isPhoto = e['type'] == 'photo';
+
+                  return Stack(
+                    children: [
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () => _showFullImage(url, desc),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: isPhoto && url.isNotEmpty
+                                ? Image.network(
+                                    url,
+                                    width: 120,
+                                    height: 90,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) => Container(
+                                      width: 120,
+                                      height: 90,
+                                      color: AppTheme.slate700,
+                                      child: const Icon(Icons.broken_image, color: AppTheme.slate500, size: 28),
+                                    ),
+                                  )
+                                : Container(
+                                    width: 120,
+                                    height: 90,
+                                    color: AppTheme.slate700,
+                                    child: const Icon(Icons.insert_drive_file, color: AppTheme.slate500, size: 28),
+                                  ),
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   );
                 }).toList(),
               ),

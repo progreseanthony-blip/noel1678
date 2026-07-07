@@ -65,6 +65,22 @@ class InspectionService {
     }).eq('id', id);
   }
 
+  Future<void> rejectInspection(String id, String reason) async {
+    final current = await _supabase
+        .from('weekly_inspections')
+        .select('general_notes')
+        .eq('id', id)
+        .maybeSingle();
+    final existing = current?['general_notes'] as String? ?? '';
+    final updatedNotes = existing.isNotEmpty
+        ? '$existing\n\nRejection reason: $reason'
+        : 'Rejection reason: $reason';
+    await _supabase.from('weekly_inspections').update({
+      'status': 'draft',
+      'general_notes': updatedNotes,
+    }).eq('id', id);
+  }
+
   // ── Inspection Details ──
 
   Future<List<Map<String, dynamic>>> getInspectionDetails(String inspectionId) async {
@@ -161,8 +177,9 @@ class InspectionService {
       final totalPlanned =
           (detail['total_planned_quantity'] as num?)?.toDouble() ?? 0;
 
+      final unit = detail['unit']?.toString() ?? '';
       final accumulatedQty = await _accumulateDailyProgress(
-          projectId, quoteServiceId, inspectionDate);
+          projectId, quoteServiceId, inspectionDate, unit);
 
       final deviationAbs = (accumulatedQty - measuredQuantity).abs();
       final deviationPct =
@@ -221,31 +238,25 @@ class InspectionService {
   }
 
   Future<double> _accumulateDailyProgress(
-      String projectId, String quoteServiceId, String upToDate) async {
+      String projectId, String quoteServiceId, String upToDate, String unit) async {
+    final unitLower = unit.toLowerCase();
+    final isVolumeUnit = unitLower == 'cy' || unitLower == 'ft2' || unitLower == 'sqft' || unitLower == 'sf';
     double total = 0;
 
     // Machinery production logs
     final machResult = await _supabase
         .from('report_machinery_logs')
-        .select('production_value, daily_reports!inner(report_date, status), project_machinery!inner(project_id, quote_service_id)')
+        .select('production_value, daily_reports!inner(report_date, status), '
+            'project_machinery!inner(project_id, quote_service_id), '
+            'machinery!inner(capacity_yards)')
         .eq('project_machinery.project_id', projectId)
         .eq('project_machinery.quote_service_id', quoteServiceId)
         .lte('daily_reports.report_date', upToDate)
         .in_('daily_reports.status', ['submitted', 'approved']);
     for (final log in machResult ?? []) {
-      total += (log['production_value'] as num?)?.toDouble() ?? 0;
-    }
-
-    // Material usage
-    final matResult = await _supabase
-        .from('report_material_usage')
-        .select('quantity_used, daily_reports!inner(report_date, status), project_materials!inner(project_id, quote_service_id)')
-        .eq('project_materials.project_id', projectId)
-        .eq('project_materials.quote_service_id', quoteServiceId)
-        .lte('daily_reports.report_date', upToDate)
-        .in_('daily_reports.status', ['submitted', 'approved']);
-    for (final log in matResult ?? []) {
-      total += (log['quantity_used'] as num?)?.toDouble() ?? 0;
+      final prod = (log['production_value'] as num?)?.toDouble() ?? 0;
+      final cap = (log['machinery']?['capacity_yards'] as num?)?.toDouble() ?? 0;
+      total += isVolumeUnit && cap > 0 ? prod * cap : prod;
     }
 
     return total;
@@ -341,9 +352,10 @@ class InspectionService {
       final machLogs = await _supabase
           .from('report_machinery_logs')
           .select(
-              'id, production_value, production_unit, total_hours, machinery!inner(description), project_machinery!inner(machinery_name)')
+              'id, production_value, production_unit, total_hours, machinery!inner(description), project_machinery!inner(machinery_name, is_principal)')
           .eq('daily_report_id', reportId)
-          .eq('project_machinery.quote_service_id', quoteServiceId);
+          .eq('project_machinery.quote_service_id', quoteServiceId)
+          .eq('project_machinery.is_principal', true);
 
       final matUsage = await _supabase
           .from('report_material_usage')
