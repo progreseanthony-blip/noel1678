@@ -6,12 +6,16 @@ class ComparisonResultRow extends StatelessWidget {
   final Map<String, dynamic> comparison;
   final VoidCallback? onReconcile;
   final VoidCallback? onRetryComparison;
+  final VoidCallback? onApproveReconciliation;
+  final VoidCallback? onRejectReconciliation;
 
   const ComparisonResultRow({
     super.key,
     required this.comparison,
     this.onReconcile,
     this.onRetryComparison,
+    this.onApproveReconciliation,
+    this.onRejectReconciliation,
   });
 
   @override
@@ -166,7 +170,53 @@ class ComparisonResultRow extends StatelessWidget {
             ],
           ),
 
-          if (exceeds && status != 'reconciled') ...[
+          if (status == 'pending_approval') ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                if (onApproveReconciliation != null)
+                  Expanded(
+                    child: SizedBox(
+                      height: 36,
+                      child: ElevatedButton.icon(
+                        onPressed: onApproveReconciliation,
+                        icon: const Icon(Icons.check_circle, size: 16),
+                        label: Text(
+                          'Approve',
+                          style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryGreen,
+                          foregroundColor: const Color(0xFF0F172A),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                  ),
+                if (onRejectReconciliation != null) ...[
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: SizedBox(
+                      height: 36,
+                      child: OutlinedButton.icon(
+                        onPressed: onRejectReconciliation,
+                        icon: const Icon(Icons.undo, size: 16),
+                        label: Text(
+                          'Reject',
+                          style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.errorRed,
+                          side: const BorderSide(color: AppTheme.errorRed),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ] else if (exceeds && status != 'reconciled') ...[
             const SizedBox(height: 12),
             Row(
               children: [

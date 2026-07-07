@@ -238,6 +238,13 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
               _pendingReasons[key] = reasonController.text.trim();
               Navigator.pop(ctx);
               _recalcTotals();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Adjustment pending. Submit for Approval when finished.'),
+                  backgroundColor: Colors.orange,
+                  duration: Duration(seconds: 3),
+                ),
+              );
             },
             child: Text(
               'Apply',
@@ -760,6 +767,34 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
               style:
                   GoogleFonts.manrope(fontSize: 13, color: Colors.white),
             ),
+            if (_pendingAdjustments.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.orange, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${_pendingAdjustments.length} adjustment(s) pending — tap "Submit for Approval" below to apply changes.',
+                        style: GoogleFonts.manrope(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
 
             // Submit button

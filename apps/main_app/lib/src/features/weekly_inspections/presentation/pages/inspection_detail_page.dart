@@ -144,6 +144,77 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
     }
   }
 
+  Future<void> _approveReconciliation(String comparisonId) async {
+    try {
+      final service = InspectionService(Supabase.instance.client);
+      await service.approveReconciliation(comparisonId);
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Reconciliation approved. Values applied to daily reports.'),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
+  }
+
+  Future<void> _rejectReconciliation(String comparisonId) async {
+    final reasonController = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: Text('Reject Reconciliation', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
+        content: TextField(
+          controller: reasonController,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            labelText: 'Reason for rejection',
+            border: OutlineInputBorder(),
+          ),
+          style: GoogleFonts.manrope(fontSize: 13, color: Colors.white),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, reasonController.text.trim()),
+            child: const Text('Reject', style: TextStyle(color: AppTheme.errorRed)),
+          ),
+        ],
+      ),
+    );
+
+    if (reason == null || reason.isEmpty || !mounted) return;
+
+    try {
+      final service = InspectionService(Supabase.instance.client);
+      await service.rejectReconciliation(comparisonId, reason);
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Reconciliation rejected.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    }
+  }
+
   Future<void> _showFullImage(String url, String description) async {
     showDialog(
       context: context,
@@ -662,6 +733,33 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
           ],
 
           // Comparison results
+          if (_comparisons.any((c) => c['status'] == 'pending_approval')) ...[
+            Container(
+              padding: const EdgeInsets.all(14),
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.blue.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline, color: Colors.blue, size: 18),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '${_comparisons.where((c) => c['status'] == 'pending_approval').length} reconciliation(s) pending approval. Use the Approve/Reject buttons below.',
+                      style: GoogleFonts.manrope(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           _buildSectionTitle('Comparison Results', Icons.compare_arrows),
           const SizedBox(height: 8),
           if (_comparisons.isEmpty)
@@ -734,6 +832,7 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
               final status = comp['status'] as String? ?? 'pending';
               final canReconcile =
                   status == 'exceeds_threshold' && exceeds;
+              final isPendingApproval = status == 'pending_approval';
 
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
@@ -748,6 +847,12 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
                     await service.runComparison(widget.inspectionId);
                     _loadData();
                   },
+                  onApproveReconciliation: isPendingApproval
+                      ? () => _approveReconciliation(compId)
+                      : null,
+                  onRejectReconciliation: isPendingApproval
+                      ? () => _rejectReconciliation(compId)
+                      : null,
                 ),
               );
             })),

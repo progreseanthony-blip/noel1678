@@ -105,8 +105,10 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
                   TextInputType.numberWithOptions(decimal: true),
               autofocus: true,
               style:
-                  GoogleFonts.manrope(fontSize: 14, color: Colors.white),
+                  GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
               decoration: InputDecoration(
+                filled: true,
+                fillColor: Colors.white,
                 hintText: 'Enter new value',
                 border: const OutlineInputBorder(),
                 prefixIcon: Icon(
@@ -130,8 +132,10 @@ class _AdjustmentDialogState extends State<AdjustmentDialog> {
               controller: _reasonController,
               maxLines: 2,
               style:
-                  GoogleFonts.manrope(fontSize: 13, color: Colors.white),
+                  GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
               decoration: const InputDecoration(
+                filled: true,
+                fillColor: Colors.white,
                 hintText: 'e.g. Drone measurement shows less actual volume...',
                 border: OutlineInputBorder(),
                 alignLabelWithHint: true,

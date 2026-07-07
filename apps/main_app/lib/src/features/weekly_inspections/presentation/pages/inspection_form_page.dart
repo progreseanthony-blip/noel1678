@@ -227,7 +227,13 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
       final dateStr =
           '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
 
-      final uploadedFiles = await _uploadPendingFiles();
+      List<Map<String, String>> uploadedFiles;
+      try {
+        uploadedFiles = await _uploadPendingFiles();
+      } catch (uploadErr) {
+        debugPrint('Evidence upload failed: $uploadErr');
+        uploadedFiles = [];
+      }
       final allEvidence = [..._evidenceFiles, ...uploadedFiles];
 
       final inspectionData = {

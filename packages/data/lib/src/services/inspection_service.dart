@@ -434,6 +434,50 @@ class InspectionService {
       }).eq('id', logId);
     }
 
+    // Recalculate accumulated quantity with adjusted values
+    final comp = await _supabase
+        .from('progress_comparisons')
+        .select('*, weekly_inspections!inner(inspection_date, project_id)')
+        .eq('id', comparisonId)
+        .maybeSingle();
+
+    if (comp != null) {
+      final projectId = (comp['weekly_inspections'] as Map)['project_id']?.toString();
+      final inspectionDate = (comp['weekly_inspections'] as Map)['inspection_date']?.toString();
+      final quoteServiceId = comp['quote_service_id']?.toString();
+
+      if (projectId != null && quoteServiceId != null && inspectionDate != null) {
+        final detail = await _supabase
+            .from('weekly_inspection_details')
+            .select('unit, total_planned_quantity')
+            .eq('inspection_id', comp['inspection_id'])
+            .eq('quote_service_id', quoteServiceId)
+            .maybeSingle();
+        final unit = detail?['unit']?.toString() ?? '';
+
+        final newAccumulated = await _accumulateDailyProgress(
+            projectId, quoteServiceId, inspectionDate, unit);
+
+        final inspectionMeasured =
+            (comp['inspection_measured_quantity'] as num?)?.toDouble() ?? 0;
+        final totalPlanned =
+            (detail?['total_planned_quantity'] as num?)?.toDouble() ?? 0;
+        final deviationAbs = (newAccumulated - inspectionMeasured).abs();
+        final deviationPct = totalPlanned > 0
+            ? (deviationAbs / totalPlanned) * 100
+            : 0;
+        final threshold = (comp['threshold_configured'] as num?)?.toDouble() ?? 5.0;
+        final exceeds = deviationPct > threshold;
+
+        await _supabase.from('progress_comparisons').update({
+          'accumulated_daily_quantity': newAccumulated,
+          'deviation_absolute': deviationAbs,
+          'deviation_percentage': deviationPct,
+          'exceeds_threshold': exceeds,
+        }).eq('id', comparisonId);
+      }
+    }
+
     // Mark comparison as reconciled
     await _supabase.from('progress_comparisons').update({
       'status': 'reconciled',
