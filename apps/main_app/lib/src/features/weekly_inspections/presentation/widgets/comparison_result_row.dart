@@ -8,6 +8,8 @@ class ComparisonResultRow extends StatelessWidget {
   final VoidCallback? onRetryComparison;
   final VoidCallback? onApproveReconciliation;
   final VoidCallback? onRejectReconciliation;
+  final double? accumulatedBefore;
+  final double? accumulatedAfter;
 
   const ComparisonResultRow({
     super.key,
@@ -16,6 +18,8 @@ class ComparisonResultRow extends StatelessWidget {
     this.onRetryComparison,
     this.onApproveReconciliation,
     this.onRejectReconciliation,
+    this.accumulatedBefore,
+    this.accumulatedAfter,
   });
 
   @override
@@ -171,6 +175,43 @@ class ComparisonResultRow extends StatelessWidget {
           ),
 
           if (status == 'pending_approval') ...[
+            if (accumulatedBefore != null && accumulatedAfter != null) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.info_outline, color: Colors.blue, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Proposed Change',
+                            style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.blue),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${accumulatedBefore!.toStringAsFixed(1)} $unit → ${accumulatedAfter!.toStringAsFixed(1)} $unit',
+                            style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+                          ),
+                          Text(
+                            'Net change: ${(accumulatedAfter! - accumulatedBefore!).toStringAsFixed(1)} $unit',
+                            style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Row(
               children: [

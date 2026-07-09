@@ -834,6 +834,21 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
                   status == 'exceeds_threshold' && exceeds;
               final isPendingApproval = status == 'pending_approval';
 
+              double? accumulatedBefore;
+              double? accumulatedAfter;
+              if (isPendingApproval) {
+                final compAdjustments = _adjustments.where((a) => a['comparison_id'] == compId).toList();
+                if (compAdjustments.isNotEmpty) {
+                  accumulatedBefore = (comp['accumulated_daily_quantity'] as num?)?.toDouble() ?? 0;
+                  double delta = 0;
+                  for (final adj in compAdjustments) {
+                    delta += ((adj['adjusted_value'] as num?)?.toDouble() ?? 0) -
+                        ((adj['original_value'] as num?)?.toDouble() ?? 0);
+                  }
+                  accumulatedAfter = accumulatedBefore! + delta;
+                }
+              }
+
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: ComparisonResultRow(
@@ -853,6 +868,8 @@ class _InspectionDetailPageState extends State<InspectionDetailPage> {
                   onRejectReconciliation: isPendingApproval
                       ? () => _rejectReconciliation(compId)
                       : null,
+                  accumulatedBefore: accumulatedBefore,
+                  accumulatedAfter: accumulatedAfter,
                 ),
               );
             })),
