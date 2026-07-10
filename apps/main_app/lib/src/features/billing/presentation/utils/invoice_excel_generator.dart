@@ -6,6 +6,7 @@ class InvoiceExcelGenerator {
   static Uint8List generate({
     required Map<String, dynamic> invoice,
     required List<Map<String, dynamic>> lines,
+    List<Map<String, dynamic>> machineryDeductions = const [],
   }) {
     final excel = Excel.createExcel();
     final sheet = excel['Pay Application'];
@@ -69,6 +70,7 @@ class InvoiceExcelGenerator {
       final bal = sv - tc;
       final ret = l['line_type'] == 'equipment' ? 0.0 : (tp + prev) * 0.05;
       final ttp = l['line_type'] == 'equipment' ? 0.0 : (tp + prev) - ret;
+      final qsId = l['quote_service_id']?.toString();
 
       totalSv += sv;
       totalTp += tp;
@@ -90,6 +92,24 @@ class InvoiceExcelGenerator {
       _cell(sheet, r, 8, '\$${fmt.format(ret)}');
       _cell(sheet, r, 9, '\$${fmt.format(ttp)}');
       r++;
+
+      if (qsId != null) {
+        for (final d in machineryDeductions) {
+          if (d['quote_service_id']?.toString() != qsId || d['selected'] == false) continue;
+          final mName = d['machine_name']?.toString() ?? 'Machine';
+          final internalCode = d['internal_code']?.toString();
+          final brandModel = d['brand_model']?.toString();
+          final dedAmount = (d['deduction_amount'] as num?)?.toDouble() ?? 0;
+          final idLabel = internalCode?.isNotEmpty == true
+              ? internalCode!
+              : (brandModel?.isNotEmpty == true ? brandModel! : mName);
+          _cell(sheet, r, 0, '');
+          _cell(sheet, r, 1, '  — $idLabel Rent Deduction', fontSize: 9);
+          _cell(sheet, r, 5, '-\$${fmt.format(dedAmount)}', fontSize: 9);
+          _cell(sheet, r, 9, '-\$${fmt.format(dedAmount)}', fontSize: 9);
+          r++;
+        }
+      }
     }
 
     _cell(sheet, r, 0, 'TOTALS', bold: true);

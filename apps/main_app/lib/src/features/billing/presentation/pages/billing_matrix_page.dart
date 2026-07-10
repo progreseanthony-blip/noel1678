@@ -45,6 +45,11 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
   final Set<String> _linkedCoIds = {};
   final _fmt = NumberFormat('#,##0.00', 'en_US');
 
+  Map<String, List<Map<String, dynamic>>> _machineryByService = {};
+  Map<String, List<Map<String, dynamic>>> _machinerySelections = {};
+  Set<String> _expandedServices = {};
+  int _daysInPeriod = 0;
+
   @override
   void initState() {
     super.initState();
@@ -66,7 +71,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
             .select('change_order_id')
             .eq('invoice_id', widget.invoiceId);
         _linkedCoIds.clear();
-        _linkedCoIds.addAll(links.map((l) => l['change_order_id'].toString()));
+        _linkedCoIds.addAll(links.map<String>((l) => l['change_order_id'].toString()));
 
         if (mounted) {
           // Ensure correct order: services → CO headers → CO details
@@ -138,6 +143,119 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _isLoading = false; });
     }
+
+    if (_invoice != null && mounted) {
+      _loadMachineryData();
+    }
+  }
+
+  Future<void> _loadMachineryData() async {
+    try {
+      final svc = ref.read(billingServiceProvider);
+      final allMachinery = await svc.getServiceMachineryForBilling(widget.projectId);
+
+      final periodStartStr = _invoice?['period_start'] ?? '';
+      final periodEndStr = _invoice?['period_end'] ?? '';
+      int daysInPeriod = 30;
+      if (periodStartStr.isNotEmpty && periodEndStr.isNotEmpty) {
+        final ps = DateTime.parse(periodStartStr);
+        final pe = DateTime.parse(periodEndStr);
+        daysInPeriod = pe.difference(ps).inDays + 1;
+      }
+
+      final byService = <String, List<Map<String, dynamic>>>{};
+      for (final m in allMachinery) {
+        final qsId = m['quote_service_id']?.toString();
+        if (qsId == null) continue;
+        m['days_in_period'] = daysInPeriod;
+        m['deduction_amount'] = ((m['daily_rental_rate'] as num?)?.toDouble() ?? 0) * daysInPeriod;
+        byService.putIfAbsent(qsId, () => []).add(m);
+      }
+
+      if (mounted) {
+        setState(() {
+          _machineryByService = byService;
+          _daysInPeriod = daysInPeriod;
+        });
+      }
+
+      if (widget.invoiceId != null) {
+        try {
+          final existingDeductions = await svc.getMachineryDeductions(widget.invoiceId!);
+          final selections = <String, List<Map<String, dynamic>>>{};
+          for (final d in existingDeductions) {
+            final qsId = d['quote_service_id']?.toString();
+            if (qsId == null) continue;
+            selections.putIfAbsent(qsId, () => []).add(d);
+          }
+          if (mounted) {
+            setState(() {
+              _machinerySelections = selections;
+              _updateEquipmentPresentFromDeductions();
+            });
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+  }
+
+  void _updateEquipmentPresentFromDeductions() {
+    for (int i = 0; i < _lines.length; i++) {
+      final l = _lines[i];
+      if (l['line_type'] != 'service') continue;
+      final qsId = l['quote_service_id']?.toString();
+      if (qsId == null) continue;
+      final selections = _machinerySelections[qsId] ?? [];
+      double total = 0;
+      for (final s in selections) {
+        if (s['selected'] != false) {
+          total += (s['deduction_amount'] as num?)?.toDouble() ?? 0;
+        }
+      }
+      _lines[i]['equipment_present'] = total > 0 ? -total : 0;
+    }
+  }
+
+  void _toggleServiceExpansion(String qsId) {
+    setState(() {
+      if (_expandedServices.contains(qsId)) {
+        _expandedServices.remove(qsId);
+      } else {
+        _expandedServices.add(qsId);
+      }
+    });
+  }
+
+  void _toggleMachinerySelection(String qsId, Map<String, dynamic> machine, bool isSelected) {
+    setState(() {
+      _machinerySelections.putIfAbsent(qsId, () => []);
+      final inspectionId = machine['machinery_inspection_id']?.toString();
+      final existingIdx = _machinerySelections[qsId]!.indexWhere(
+        (s) => s['machinery_inspection_id']?.toString() == inspectionId,
+      );
+      if (isSelected) {
+        if (existingIdx < 0) {
+          _machinerySelections[qsId]!.add({
+            'quote_service_id': qsId,
+            'machinery_inspection_id': inspectionId,
+            'machine_name': machine['machine_name'],
+            'internal_code': machine['internal_code'],
+            'brand_model': machine['brand_model'],
+            'monthly_rent_cost': machine['monthly_rent_cost'],
+            'daily_rental_rate': machine['daily_rental_rate'],
+            'days_in_period': _daysInPeriod,
+            'deduction_amount': machine['deduction_amount'],
+            'selected': true,
+          });
+        }
+      } else {
+        if (existingIdx >= 0) {
+          _machinerySelections[qsId]!.removeAt(existingIdx);
+        }
+      }
+      _isDirty = true;
+      _updateEquipmentPresentFromDeductions();
+    });
   }
 
   double get _totalScheduled =>
@@ -219,6 +337,15 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
       for (final coId in _linkedCoIds) {
         await ctrl.linkCOToInvoice(_invoice!['id'], coId);
       }
+
+      final dedSvcs = ref.read(billingServiceProvider);
+      final allDeductions = <Map<String, dynamic>>[];
+      for (final entry in _machinerySelections.entries) {
+        for (final d in entry.value) {
+          allDeductions.add(Map<String, dynamic>.from(d));
+        }
+      }
+      await dedSvcs.saveMachineryDeductions(_invoice!['id'], allDeductions);
 
       setState(() => _isDirty = false);
 
@@ -460,11 +587,17 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         .eq('id', widget.projectId)
         .single();
 
+    final allDeductions = <Map<String, dynamic>>[];
+    for (final entry in _machinerySelections.entries) {
+      allDeductions.addAll(entry.value);
+    }
+
     final pdfBytes = await InvoicePdfGenerator.generate(
       invoice: _invoice!,
       lines: _lines,
       projectTitle: project['title'] ?? '',
       clientName: project['client_name'] ?? '',
+      machineryDeductions: allDeductions,
     );
 
     await Printing.layoutPdf(
@@ -475,7 +608,12 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
 
   Future<void> _downloadExcel() async {
     if (_invoice == null) return;
-    final bytes = InvoiceExcelGenerator.generate(invoice: _invoice!, lines: _lines);
+    final allDeductions = <Map<String, dynamic>>[];
+    for (final entry in _machinerySelections.entries) {
+      allDeductions.addAll(entry.value);
+    }
+    final bytes = InvoiceExcelGenerator.generate(
+        invoice: _invoice!, lines: _lines, machineryDeductions: allDeductions);
 
     final path = await FilePicker.platform.saveFile(
       dialogTitle: 'Save Pay Application Excel',
@@ -847,6 +985,10 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
       final ret = l['line_type'] == 'equipment' ? 0.0 : (tpAmt + prev) * _retainageRate / 100;
       final ttp = l['line_type'] == 'equipment' ? 0.0 : (tpAmt + prev) - ret;
 
+      final qsId = l['quote_service_id']?.toString();
+      final hasMachinery = lt == 'service' && qsId != null && (_machineryByService[qsId]?.isNotEmpty ?? false);
+      final isExpanded = hasMachinery && _expandedServices.contains(qsId);
+
       tSv += sv; tTp += tpAmt; tPrev += prev; tEq += eq;
       tTc += tc; tBal += bal; tRet += ret; tThis += ttp;
 
@@ -855,7 +997,19 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
             ? MaterialStateProperty.all(AppTheme.primaryGreen.withOpacity(0.06))
             : null,
         cells: [
-        DataCell(Text(rowNumber, style: GoogleFonts.manrope(fontSize: 11))),
+        DataCell(
+          hasMachinery
+              ? InkWell(
+                  onTap: () => _toggleServiceExpansion(qsId!),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                        size: 16, color: AppTheme.primaryGreen),
+                    const SizedBox(width: 2),
+                    Text(rowNumber, style: GoogleFonts.manrope(fontSize: 11)),
+                  ]),
+                )
+              : Text(rowNumber, style: GoogleFonts.manrope(fontSize: 11)),
+        ),
         DataCell(Text(l['service_name'] ?? '', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w600))),
         DataCell(Text('\$${_fmt.format(sv)}', style: GoogleFonts.manrope(fontSize: 11))),
         DataCell(
@@ -880,8 +1034,11 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         ),
         DataCell(Text('\$${_fmt.format(prev)}', style: GoogleFonts.manrope(fontSize: 11))),
         DataCell(
-          isSubmitted || l['line_type'] == 'change_order_header' || l['line_type'] == 'change_order_detail'
-              ? Text('\$${_fmt.format(eq)}', style: GoogleFonts.manrope(fontSize: 11))
+          isSubmitted || l['line_type'] == 'change_order_header' || l['line_type'] == 'change_order_detail' || hasMachinery
+              ? Text(eq < 0 ? '-\$${_fmt.format(-eq)}' : '\$${_fmt.format(eq)}',
+                  style: GoogleFonts.manrope(fontSize: 11,
+                      fontWeight: eq < 0 ? FontWeight.w700 : FontWeight.w400,
+                      color: eq < 0 ? AppTheme.errorRed : null))
               : SizedBox(
                   width: 80,
                   child: TextField(
@@ -904,6 +1061,67 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         DataCell(Text('\$${_fmt.format(ret)}', style: GoogleFonts.manrope(fontSize: 11))),
         DataCell(Text('\$${_fmt.format(ttp)}', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen))),
       ]));
+
+      if (isExpanded && qsId != null) {
+        final machines = _machineryByService[qsId] ?? [];
+        for (final m in machines) {
+          final inspectionId = m['machinery_inspection_id']?.toString() ?? '';
+          final mName = m['machine_name']?.toString() ?? 'Machine';
+          final internalCode = m['internal_code']?.toString() ?? '';
+          final brandModel = m['brand_model']?.toString() ?? '';
+          final subLabel = internalCode.isNotEmpty
+              ? internalCode
+              : (brandModel.isNotEmpty ? brandModel : mName);
+          final dailyRate = (m['daily_rental_rate'] as num?)?.toDouble() ?? 0;
+          final dedAmount = (m['deduction_amount'] as num?)?.toDouble() ?? 0;
+          final isSelected = _machinerySelections[qsId]?.any((s) =>
+            s['machinery_inspection_id']?.toString() == inspectionId) ?? false;
+          final monthlyRent = (m['monthly_rent_cost'] as num?)?.toDouble() ?? 0;
+
+          rows.add(DataRow(
+            color: MaterialStateProperty.all(AppTheme.primaryGreen.withOpacity(0.04)),
+            cells: [
+              DataCell(const SizedBox.shrink()),
+              DataCell(Padding(
+                padding: const EdgeInsets.only(left: 24),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (!isSubmitted)
+                    SizedBox(
+                      width: 24, height: 24,
+                      child: Checkbox(
+                        value: isSelected,
+                        onChanged: (v) => _toggleMachinerySelection(qsId!, m, v ?? false),
+                        activeColor: AppTheme.primaryGreen,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+                      Text(subLabel, style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate700)),
+                      if (brandModel.isNotEmpty && internalCode.isNotEmpty)
+                        Text(brandModel, style: GoogleFonts.manrope(fontSize: 9, color: AppTheme.slate500)),
+                      Text('\$${_fmt.format(monthlyRent)}/mo \u2192 \$${dailyRate.toStringAsFixed(2)}/day × $_daysInPeriod days',
+                          style: GoogleFonts.manrope(fontSize: 9, color: AppTheme.slate400)),
+                    ]),
+                  ),
+                ]),
+              )),
+              const DataCell(Text('')),
+              const DataCell(Text('')),
+              const DataCell(Text('')),
+              DataCell(Text('-\$${_fmt.format(dedAmount)}',
+                  style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.errorRed))),
+              const DataCell(Text('')),
+              const DataCell(Text('')),
+              const DataCell(Text('')),
+              DataCell(Text('-\$${_fmt.format(dedAmount)}',
+                  style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.errorRed))),
+            ],
+          ));
+        }
+      }
     }
 
     // Totals row

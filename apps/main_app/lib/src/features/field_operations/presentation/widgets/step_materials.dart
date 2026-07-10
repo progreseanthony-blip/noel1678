@@ -141,15 +141,15 @@ class _StepMaterialsState extends State<StepMaterials> {
     final services = _allServices();
     if (services.isEmpty) return const SizedBox.shrink();
     return Row(children: [
-      Text('Service:', style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
+      Text('Service:', style: _t(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
       const SizedBox(width: 12),
       SizedBox(width: 260, child: DropdownButtonFormField<String>(
         value: _serviceFilter,
-        decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-        hint: Text('All Services', style: _t(fontSize: 13)),
+        decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+        hint: Text('All Services', style: _t(fontSize: 15)),
         items: [
-          DropdownMenuItem<String>(value: null, child: Text('All Services', style: _t(fontSize: 13))),
-          ...services.map((s) => DropdownMenuItem(value: s, child: Text(s, style: _t(fontSize: 13)))),
+          DropdownMenuItem<String>(value: null, child: Text('All Services', style: _t(fontSize: 15))),
+          ...services.map((s) => DropdownMenuItem(value: s, child: Text(s, style: _t(fontSize: 15)))),
         ],
         onChanged: (v) => setState(() => _serviceFilter = v),
       )),
@@ -162,7 +162,7 @@ class _StepMaterialsState extends State<StepMaterials> {
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(color: AppTheme.slate200.withAlpha(120), borderRadius: BorderRadius.circular(6)),
-        child: Text(svcName, style: _t(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.slate700)),
+        child: Text(svcName, style: _t(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.slate700)),
       ),
       const SizedBox(height: 6),
       ...items.map((pm) => _buildMaterialCard(pm)),
@@ -195,16 +195,16 @@ class _StepMaterialsState extends State<StepMaterials> {
           child: Icon(isAdded ? Icons.check_circle : Icons.inventory, size: 16, color: isAdded ? AppTheme.primaryGreen : AppTheme.slate500),
         ),
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(matName, style: _t(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+          Text(matName, style: _t(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
           Row(children: [
-            Text('Exp: $expected $unit', style: _t(fontSize: 11, fontWeight: FontWeight.w500, color: AppTheme.slate500)),
+            Text('Exp: $expected $unit', style: _t(fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.slate500)),
             if (_materialUsageTotal.containsKey(pmId)) ...[
               const Text(' · ', style: TextStyle(fontSize: 11, color: AppTheme.slate400)),
               Text('Used: ${_materialUsageTotal[pmId]!.toStringAsFixed(1)} $unit',
-                style: _t(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.slate600)),
+                style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate600)),
               const Text(' · ', style: TextStyle(fontSize: 11, color: AppTheme.slate400)),
               Text('Rem: ${(expected - _materialUsageTotal[pmId]!).toStringAsFixed(1)} $unit',
-                style: _t(fontSize: 11, fontWeight: FontWeight.w700,
+                style: _t(fontSize: 13, fontWeight: FontWeight.w700,
                   color: (expected - _materialUsageTotal[pmId]!) <= 0
                     ? AppTheme.errorRed : AppTheme.primaryGreen)),
             ],
@@ -215,12 +215,12 @@ class _StepMaterialsState extends State<StepMaterials> {
             Padding(
               padding: const EdgeInsets.only(left: 44),
               child: Row(children: [
-                Expanded(child: Text('Not registered today', style: _t(fontSize: 11, color: AppTheme.slate400))),
+                Expanded(child: Text('Not registered today', style: _t(fontSize: 13, color: AppTheme.slate400))),
                 if (!widget.isReadOnly)
                   TextButton.icon(
                     onPressed: () => _addEntry(pm),
                     icon: const Icon(Icons.add, size: 14),
-                    label: Text('Add', style: _t(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
+                    label: Text('Add', style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
                     style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                   ),
               ]),
@@ -236,7 +236,7 @@ class _StepMaterialsState extends State<StepMaterials> {
     return Padding(
       padding: const EdgeInsets.only(left: 44),
       child: Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(color: AppTheme.primaryGreen.withAlpha(10), borderRadius: BorderRadius.circular(8)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (!widget.isReadOnly) ...[
@@ -274,7 +274,7 @@ class _StepMaterialsState extends State<StepMaterials> {
       decoration: InputDecoration(
         labelText: label,
         isDense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppTheme.slate200)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppTheme.slate200)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide(color: AppTheme.primaryGreen.withAlpha(150), width: 2)),
@@ -290,8 +290,8 @@ class _StepMaterialsState extends State<StepMaterials> {
 
   Widget _roField(String label, String value) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: _t(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate400)),
-      Text(value, style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900)),
+      Text(label, style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate400)),
+      Text(value, style: _t(fontSize: 15, fontWeight: FontWeight.w600, color: AppTheme.slate900)),
     ]);
   }
 
@@ -302,7 +302,7 @@ class _StepMaterialsState extends State<StepMaterials> {
       child: Column(children: [
         Icon(Icons.inventory_outlined, size: 40, color: AppTheme.slate400),
         const SizedBox(height: 8),
-        Text(text, style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
+        Text(text, style: _t(fontSize: 15, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
       ]),
     );
   }

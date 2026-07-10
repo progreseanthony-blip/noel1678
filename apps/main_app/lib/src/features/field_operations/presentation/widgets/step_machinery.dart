@@ -247,20 +247,20 @@ class _StepMachineryState extends State<StepMachinery> {
             width: double.maxFinite,
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               if (currentSvc != null) ...[
-                Text('Current service:', style: TextStyle(fontSize: 11, color: AppTheme.slate400)),
-                Text(currentSvc!, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                Text('Current service:', style: TextStyle(fontSize: 13, color: AppTheme.slate400)),
+                Text(currentSvc!, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 12),
               ],
-              Text('Target service', style: TextStyle(fontSize: 11, color: AppTheme.slate400)),
+              Text('Target service', style: TextStyle(fontSize: 13, color: AppTheme.slate400)),
               const SizedBox(height: 4),
               DropdownButtonFormField<String>(
                 value: targetSvc,
                 isExpanded: true,
-                decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
-                hint: Text('Select service...', style: TextStyle(fontSize: 13)),
+                decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10)),
+                hint: Text('Select service...', style: TextStyle(fontSize: 15)),
                 items: _allServices()
                   .where((s) => s != currentSvc)
-                  .map((s) => DropdownMenuItem(value: s, child: Text(s, style: TextStyle(fontSize: 13))))
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s, style: TextStyle(fontSize: 15))))
                   .toList(),
                 onChanged: (v) {
                   setDialogState(() {
@@ -401,11 +401,11 @@ class _StepMachineryState extends State<StepMachinery> {
       items.add(const DropdownMenuItem<String>(
         enabled: false,
         value: '',
-        child: Text('── Qualified operators ──', style: TextStyle(color: AppTheme.slate400, fontSize: 11)),
+        child: Text('── Qualified operators ──', style: TextStyle(color: AppTheme.slate400, fontSize: 13)),
       ));
       items.addAll(matching.map((w) => DropdownMenuItem<String>(
         value: w['id'] as String?,
-        child: Text(_workerName(w['id'] as String?), style: TextStyle(fontSize: 11)),
+        child: Text(_workerName(w['id'] as String?), style: TextStyle(fontSize: 13)),
       )));
     }
 
@@ -414,12 +414,12 @@ class _StepMachineryState extends State<StepMachinery> {
         items.add(const DropdownMenuItem<String>(
           enabled: false,
           value: '',
-          child: Text('── Other workers ──', style: TextStyle(color: AppTheme.slate400, fontSize: 11)),
+          child: Text('── Other workers ──', style: TextStyle(color: AppTheme.slate400, fontSize: 13)),
         ));
       }
       items.addAll(others.map((w) => DropdownMenuItem<String>(
         value: w['id'] as String?,
-        child: Text(_workerName(w['id'] as String?), style: TextStyle(fontSize: 11)),
+        child: Text(_workerName(w['id'] as String?), style: TextStyle(fontSize: 13)),
       )));
     }
 
@@ -469,7 +469,7 @@ class _StepMachineryState extends State<StepMachinery> {
         Expanded(
           child: Text(
             'Pay as $opRoleName (\$${opRoleRate.toStringAsFixed(2)}/h instead of \$${workerRate.toStringAsFixed(2)}/h)',
-            style: TextStyle(fontSize: 11, color: isEnabled ? AppTheme.primaryGreen : AppTheme.slate500),
+            style: TextStyle(fontSize: 13, color: isEnabled ? AppTheme.primaryGreen : AppTheme.slate500),
           ),
         ),
       ]),
@@ -519,7 +519,7 @@ class _StepMachineryState extends State<StepMachinery> {
           TextButton.icon(
             onPressed: widget.onNavigateToBaseline,
             icon: const Icon(Icons.add_circle_outline, size: 16),
-            label: Text('+ Add to Baseline', style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
+            label: Text('+ Add to Baseline', style: _t(fontSize: 15, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
           ),
       ],
     ]);
@@ -529,15 +529,15 @@ class _StepMachineryState extends State<StepMachinery> {
     final services = _allServices();
     if (services.isEmpty) return const SizedBox.shrink();
     return Row(children: [
-      Text('Service:', style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
+      Text('Service:', style: _t(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
       const SizedBox(width: 12),
       SizedBox(width: 260, child: DropdownButtonFormField<String>(
         value: _serviceFilter,
-        decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)),
-        hint: Text('All Services', style: _t(fontSize: 13)),
+        decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+        hint: Text('All Services', style: _t(fontSize: 15)),
         items: [
-          DropdownMenuItem<String>(value: null, child: Text('All Services', style: _t(fontSize: 13))),
-          ...services.map((s) => DropdownMenuItem(value: s, child: Text(s, style: _t(fontSize: 13)))),
+          DropdownMenuItem<String>(value: null, child: Text('All Services', style: _t(fontSize: 15))),
+          ...services.map((s) => DropdownMenuItem(value: s, child: Text(s, style: _t(fontSize: 15)))),
         ],
         onChanged: (v) => setState(() => _serviceFilter = v),
       )),
@@ -550,7 +550,7 @@ class _StepMachineryState extends State<StepMachinery> {
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(color: AppTheme.slate200.withAlpha(120), borderRadius: BorderRadius.circular(6)),
-        child: Text(svcName, style: _t(fontSize: 12, fontWeight: FontWeight.w800, color: AppTheme.slate700)),
+        child: Text(svcName, style: _t(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.slate700)),
       ),
       const SizedBox(height: 6),
       ...items.map((pm) => _buildMachineryCard(pm)),
@@ -584,7 +584,7 @@ class _StepMachineryState extends State<StepMachinery> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Expanded(child: Text('$machName ($currentCount/$expectedQty)', style: _t(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900))),
+              Expanded(child: Text('$machName ($currentCount/$expectedQty)', style: _t(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.slate900))),
             ]),
             if (pm['is_principal'] == true) _buildDailyProgress(pm, pmId, expectedQty, entryIndices),
           ],
@@ -594,19 +594,19 @@ class _StepMachineryState extends State<StepMachinery> {
             Padding(
               padding: const EdgeInsets.only(left: 44),
               child: Row(children: [
-                Expanded(child: Text('Not registered today', style: _t(fontSize: 11, color: AppTheme.slate400))),
+                Expanded(child: Text('Not registered today', style: _t(fontSize: 13, color: AppTheme.slate400))),
                 if (!widget.isReadOnly) ...[
                   TextButton.icon(
                     onPressed: () => _addEntry(pm),
                     icon: const Icon(Icons.add, size: 14),
-                    label: Text('Add', style: _t(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
+                    label: Text('Add', style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
                     style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                   ),
                   const SizedBox(width: 4),
                   TextButton.icon(
                     onPressed: () => _showMachineryReassignDialog(pm),
                     icon: const Icon(Icons.swap_horiz, size: 14),
-                    label: Text('Reassign', style: _t(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange)),
+                    label: Text('Reassign', style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.orange)),
                     style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                   ),
                 ],
@@ -621,7 +621,7 @@ class _StepMachineryState extends State<StepMachinery> {
                 child: TextButton.icon(
                   onPressed: () => _addEntry(pm),
                   icon: const Icon(Icons.add, size: 14),
-                  label: Text('Add another $machName', style: _t(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
+                  label: Text('Add another $machName', style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
                   style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                 ),
               ),
@@ -834,7 +834,7 @@ class _StepMachineryState extends State<StepMachinery> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
             'Trips: ${cumTrips.toStringAsFixed(0)} / ${cumTargetTrips.toStringAsFixed(0)} ($pctTrips%)    CY: ${cumCY.toStringAsFixed(0)} / ${cumTargetCY.toStringAsFixed(0)} ($pctCY%)',
-            style: _t(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate700),
+            style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate700),
           ),
           const SizedBox(height: 2),
           ClipRRect(
@@ -884,7 +884,7 @@ class _StepMachineryState extends State<StepMachinery> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
             'To date: ${cumulativeProd.toStringAsFixed(0)} / ${cumulativeTarget.toStringAsFixed(0)} $unit  ($pct%)',
-            style: _t(fontSize: 11, fontWeight: FontWeight.w600, color: barColor),
+            style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: barColor),
           ),
           const SizedBox(height: 4),
           ClipRRect(
@@ -943,7 +943,7 @@ class _StepMachineryState extends State<StepMachinery> {
   Widget _buildPhotoSection(int index, Map<String, dynamic> entry, String shiftKey, String label) {
     final photos = List<String>.from(entry[shiftKey] as List? ?? []);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: _t(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
+      Text(label, style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
       const SizedBox(height: 6),
       if (photos.isNotEmpty)
         Wrap(spacing: 6, runSpacing: 6, children: [
@@ -1037,7 +1037,7 @@ class _StepMachineryState extends State<StepMachinery> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
             'Trips: ${cumTrips.toStringAsFixed(0)} / ${cumTargetTrips.toStringAsFixed(0)}    CY: ${cumCY.toStringAsFixed(0)} / ${cumTargetCY.toStringAsFixed(0)}',
-            style: _t(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate700),
+            style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate700),
           ),
           const SizedBox(height: 2),
           ClipRRect(
@@ -1088,7 +1088,7 @@ class _StepMachineryState extends State<StepMachinery> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
             'Machine ${myPos + 1}/$totalCount: ${cumulativeProd.toStringAsFixed(0)} / ${cumulativeTarget.toStringAsFixed(0)} $unit  ($pct%)',
-            style: _t(fontSize: 10, fontWeight: FontWeight.w600, color: barColor),
+            style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: barColor),
           ),
           const SizedBox(height: 2),
           ClipRRect(
@@ -1132,7 +1132,7 @@ class _StepMachineryState extends State<StepMachinery> {
     return Padding(
       padding: const EdgeInsets.only(left: 44),
       child: Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(color: AppTheme.primaryGreen.withAlpha(10), borderRadius: BorderRadius.circular(8)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (entry['_unit_number'] != null || entry['_internal_id'] != null)
@@ -1142,11 +1142,11 @@ class _StepMachineryState extends State<StepMachinery> {
               decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(4)),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 if (entry['_internal_id'] != null) ...[
-                  Text(entry['_internal_id'] as String, style: _t(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+                  Text(entry['_internal_id'] as String, style: _t(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
                   const SizedBox(width: 8),
                 ],
                 if (entry['_unit_number'] != null && entry['_unit_number'] != 1)
-                  Text('#${entry['_unit_number']}', style: _t(fontSize: 10, fontWeight: FontWeight.w500, color: AppTheme.slate500)),
+                  Text('#${entry['_unit_number']}', style: _t(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.slate500)),
               ]),
             ),
           if (pm != null)
@@ -1165,7 +1165,7 @@ class _StepMachineryState extends State<StepMachinery> {
                     child: DropdownButtonFormField<String>(
                       value: entry['operator_id'],
                       decoration: const InputDecoration(labelText: 'Operator', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6)),
-                      style: _t(fontSize: 12),
+                      style: _t(fontSize: 14),
                       items: _buildOperatorItems(operators, pm),
                       onChanged: (v) {
                         _updateEntry(index, 'operator_id', v);
@@ -1222,9 +1222,9 @@ class _StepMachineryState extends State<StepMachinery> {
                       Expanded(
                         child: DropdownButtonFormField<String>(
                           value: entry['deviation_reason_id'],
-                          decoration: const InputDecoration(labelText: 'Reason', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)),
+                          decoration: const InputDecoration(labelText: 'Reason', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8)),
                           items: _machReasons.map<DropdownMenuItem<String>>((r) =>
-                            DropdownMenuItem(value: r['id'] as String?, child: Text(r['description'] ?? '', style: _t(fontSize: 10)))).toList(),
+                            DropdownMenuItem(value: r['id'] as String?, child: Text(r['description'] ?? '', style: _t(fontSize: 12)))).toList(),
                           onChanged: (v) => _updateEntry(index, 'deviation_reason_id', v),
                         ),
                       ),
@@ -1301,12 +1301,12 @@ class _StepMachineryState extends State<StepMachinery> {
     return TextField(
       controller: _ctrls[key],
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
-      style: _t(fontSize: 12),
+      style: _t(fontSize: 14),
       decoration: InputDecoration(
         labelText: label,
         isDense: true,
-        labelStyle: _t(fontSize: 11),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        labelStyle: _t(fontSize: 13),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: AppTheme.slate200)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: AppTheme.slate200)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: AppTheme.primaryGreen.withAlpha(150), width: 2)),
@@ -1324,25 +1324,25 @@ class _StepMachineryState extends State<StepMachinery> {
     return Column(
       crossAxisAlignment: expand ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
       children: [
-      Text(label, style: _t(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate400)),
+      Text(label, style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate400)),
       const SizedBox(height: 2),
       Container(
-        padding: EdgeInsets.symmetric(horizontal: expand ? 4 : 12, vertical: 6),
+        padding: EdgeInsets.symmetric(horizontal: expand ? 4 : 12, vertical: 8),
         alignment: expand ? Alignment.center : null,
         decoration: BoxDecoration(
           color: color.withAlpha(15),
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: color.withAlpha(50)),
         ),
-        child: Text(value, style: _t(fontSize: 12, fontWeight: FontWeight.w700, color: color)),
+        child: Text(value, style: _t(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
       ),
     ]);
   }
 
   Widget _roField(String label, String value) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: _t(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate400)),
-      Text(value, style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900)),
+      Text(label, style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate400)),
+      Text(value, style: _t(fontSize: 15, fontWeight: FontWeight.w600, color: AppTheme.slate900)),
     ]);
   }
 
@@ -1353,7 +1353,7 @@ class _StepMachineryState extends State<StepMachinery> {
       child: Column(children: [
         Icon(Icons.precision_manufacturing_outlined, size: 40, color: AppTheme.slate400),
         const SizedBox(height: 8),
-        Text(text, style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
+        Text(text, style: _t(fontSize: 15, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
       ]),
     );
   }

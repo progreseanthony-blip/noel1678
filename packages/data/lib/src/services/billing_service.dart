@@ -249,4 +249,42 @@ class BillingService {
         .order('description');
     return List<Map<String, dynamic>>.from(response ?? []);
   }
+
+  // ── Machinery Deductions ──
+
+  Future<List<Map<String, dynamic>>> getServiceMachineryForBilling(String projectId) async {
+    final rpc = await _supabase.rpc('get_service_machinery_for_billing', params: {
+      'p_project_id': projectId,
+    });
+    return List<Map<String, dynamic>>.from(rpc ?? []);
+  }
+
+  Future<List<Map<String, dynamic>>> getMachineryDeductions(String invoiceId) async {
+    final response = await _supabase
+        .from('invoice_machinery_deductions')
+        .select()
+        .eq('invoice_id', invoiceId)
+        .order('machine_name');
+    return List<Map<String, dynamic>>.from(response ?? []);
+  }
+
+  Future<void> saveMachineryDeductions(
+    String invoiceId,
+    List<Map<String, dynamic>> deductions,
+  ) async {
+    await _supabase
+        .from('invoice_machinery_deductions')
+        .delete()
+        .eq('invoice_id', invoiceId);
+
+    if (deductions.isEmpty) return;
+
+    final batch = deductions.map((d) {
+      d['invoice_id'] = invoiceId;
+      d.remove('id');
+      return d;
+    }).toList();
+
+    await _supabase.from('invoice_machinery_deductions').insert(batch);
+  }
 }

@@ -65,7 +65,7 @@ class StepGeneralInfo extends StatelessWidget {
           },
           child: Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: BoxDecoration(
               color: AppTheme.slate50,
               borderRadius: BorderRadius.circular(8),
@@ -80,7 +80,7 @@ class StepGeneralInfo extends StatelessWidget {
                       ? DateFormat('EEEE, MMMM d, yyyy').format(reportDate!)
                       : 'Tap to select date',
                   style: GoogleFonts.manrope(
-                    fontSize: 14,
+                    fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: dateStr.isNotEmpty ? AppTheme.slate900 : AppTheme.slate400,
                   ),
@@ -125,7 +125,7 @@ class StepGeneralInfo extends StatelessWidget {
             },
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               decoration: BoxDecoration(
                 color: AppTheme.slate50,
                 borderRadius: BorderRadius.circular(8),
@@ -138,7 +138,7 @@ class StepGeneralInfo extends StatelessWidget {
                   reportData['stopped_at'] != null && (reportData['stopped_at'] as String).isNotEmpty
                       ? (reportData['stopped_at'] as String).substring(0, 5)
                       : 'Tap to set time',
-                  style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600,
+                  style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w600,
                       color: reportData['stopped_at'] != null && (reportData['stopped_at'] as String).isNotEmpty ? AppTheme.slate900 : AppTheme.slate400),
                 ),
               ]),
@@ -188,14 +188,14 @@ class StepGeneralInfo extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Text('Credit minimum 1 hour to workers who showed up',
-                style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate600)),
+                style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate600)),
           ]),
           const SizedBox(height: 8),
           if (reportData['credit_minimum'] == true)
             Padding(
               padding: const EdgeInsets.only(left: 28),
               child: Text('Workers without entries will get 1h auto-credited',
-                  style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400)),
+                  style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400)),
             ),
         ],
         const SizedBox(height: 20),
@@ -279,7 +279,7 @@ class StepGeneralInfo extends StatelessWidget {
           child: Column(children: [
             Icon(icon, size: 20, color: isSelected ? color : AppTheme.slate400),
             const SizedBox(height: 4),
-            Text(label, style: GoogleFonts.manrope(fontSize: 11, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+            Text(label, style: GoogleFonts.manrope(fontSize: 13, fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
                 color: isSelected ? color : AppTheme.slate500)),
           ]),
         ),
@@ -291,7 +291,7 @@ class StepGeneralInfo extends StatelessWidget {
     return Text(
       text,
       style: GoogleFonts.manrope(
-        fontSize: 14,
+        fontSize: 16,
         fontWeight: FontWeight.w700,
         color: AppTheme.slate700,
       ),

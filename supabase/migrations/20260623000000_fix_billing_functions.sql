@@ -78,11 +78,19 @@ BEGIN
     WHERE quote_service_id = v_line.quote_service_id;
 
     -- Get accumulated production from daily reports for this service
-    SELECT COALESCE(SUM(rml.production_value), 0)
+    -- NOTE: For volume-based units (cy, ft2, sqft, sf), multiply by machinery capacity_yards
+    -- to convert from trips to actual yards (matching the monitoring dashboard logic).
+    SELECT COALESCE(SUM(
+      CASE WHEN LOWER(v_line.unit_of_measure) IN ('cy', 'ft2', 'sqft', 'sf')
+           THEN rml.production_value * COALESCE(m.capacity_yards, 1)
+           ELSE rml.production_value
+      END
+    ), 0)
     INTO v_accumulated_qty
     FROM public.report_machinery_logs rml
     JOIN public.daily_reports dr ON dr.id = rml.daily_report_id
     JOIN public.project_machinery pm ON pm.id = rml.project_machinery_id
+    LEFT JOIN public.machinery m ON m.id = pm.machinery_id
     WHERE pm.quote_service_id = v_line.quote_service_id
       AND dr.project_id = p_project_id
       AND dr.report_date <= p_period_end

@@ -130,14 +130,14 @@ class _StepLaborState extends State<StepLabor> {
             width: double.maxFinite,
             child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               if (currentSvc != null) ...[
-                Text('Current service:', style: TextStyle(fontSize: 11, color: AppTheme.slate400)),
-                Text(currentSvc!, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                Text('Current service:', style: TextStyle(fontSize: 13, color: AppTheme.slate400)),
+                Text(currentSvc!, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 12),
               ],
               if (estimatedCheckIn != null && estimatedCheckIn.isNotEmpty) ...[
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(10),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: AppTheme.primaryGreen.withAlpha(15),
                     borderRadius: BorderRadius.circular(8),
@@ -149,40 +149,40 @@ class _StepLaborState extends State<StepLabor> {
                       const SizedBox(width: 8),
                       Text(
                         'Estimated start time: ${estimatedCheckIn.substring(0, 5)}',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen),
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 12),
               ],
-              Text('Target service', style: TextStyle(fontSize: 11, color: AppTheme.slate400)),
+              Text('Target service', style: TextStyle(fontSize: 13, color: AppTheme.slate400)),
               const SizedBox(height: 4),
               DropdownButtonFormField<String>(
                 value: targetSvc,
                 isExpanded: true,
-                decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
-                hint: Text('Select service...', style: TextStyle(fontSize: 13)),
+                decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10)),
+                hint: Text('Select service...', style: TextStyle(fontSize: 15)),
                 items: _allServices()
                   .where((s) => s != currentSvc)
-                  .map((s) => DropdownMenuItem(value: s, child: Text(s, style: TextStyle(fontSize: 13))))
+                  .map((s) => DropdownMenuItem(value: s, child: Text(s, style: TextStyle(fontSize: 15))))
                   .toList(),
                 onChanged: (v) => setDialogState(() => targetSvc = v),
               ),
               const SizedBox(height: 12),
-              Text('Deviation reason', style: TextStyle(fontSize: 11, color: AppTheme.slate400)),
+              Text('Deviation reason', style: TextStyle(fontSize: 13, color: AppTheme.slate400)),
               const SizedBox(height: 4),
               DropdownButtonFormField<String>(
                 value: targetReason,
                 isExpanded: true,
-                decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8)),
-                hint: Text('Select reason...', style: TextStyle(fontSize: 13)),
+                decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10)),
+                hint: Text('Select reason...', style: TextStyle(fontSize: 15)),
                 items: _laborReasons.map((r) {
                   final desc = r['description'] as String? ?? '';
                   final en = _reasonEn(desc);
                   return DropdownMenuItem<String>(
                     value: r['id'] as String?,
-                    child: Text(en, style: TextStyle(fontSize: 12)),
+                    child: Text(en, style: TextStyle(fontSize: 14)),
                   );
                 }).toList(),
                 onChanged: (v) => setDialogState(() => targetReason = v),
@@ -282,19 +282,19 @@ class _StepLaborState extends State<StepLabor> {
       child: Row(children: [
         const Icon(Icons.thunderstorm, size: 16, color: Colors.orange),
         const SizedBox(width: 8),
-        Text('Weather / Non-working day?', style: _t(fs: 11, w: FontWeight.w600, c: Colors.orange)),
+        Text('Weather / Non-working day?', style: _t(fs: 13, w: FontWeight.w600, c: Colors.orange)),
         const Spacer(),
         TextButton.icon(
           onPressed: _markAllWorkersAbsent,
           icon: const Icon(Icons.person_off, size: 14, color: Colors.orange),
-          label: Text('Mark All Absent', style: _t(fs: 11, w: FontWeight.w700, c: Colors.orange)),
+          label: Text('Mark All Absent', style: _t(fs: 13, w: FontWeight.w700, c: Colors.orange)),
           style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
         ),
         const SizedBox(width: 4),
         TextButton.icon(
           onPressed: _creditMinimumHours,
           icon: const Icon(Icons.more_time, size: 14, color: Colors.orange),
-          label: Text('Credit 1h', style: _t(fs: 11, w: FontWeight.w700, c: Colors.orange)),
+          label: Text('Credit 1h', style: _t(fs: 13, w: FontWeight.w700, c: Colors.orange)),
           style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
         ),
         if (widget.stoppedAt != null && widget.stoppedAt!.isNotEmpty) ...[
@@ -302,7 +302,7 @@ class _StepLaborState extends State<StepLabor> {
           TextButton.icon(
             onPressed: () => _stopAllAt(widget.stoppedAt!),
             icon: const Icon(Icons.stop, size: 14, color: AppTheme.errorRed),
-            label: Text('Stop All at ${widget.stoppedAt!.substring(0, 5)}', style: _t(fs: 11, w: FontWeight.w700, c: AppTheme.errorRed)),
+            label: Text('Stop All at ${widget.stoppedAt!.substring(0, 5)}', style: _t(fs: 13, w: FontWeight.w700, c: AppTheme.errorRed)),
             style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
           ),
         ],
@@ -394,10 +394,10 @@ class _StepLaborState extends State<StepLabor> {
 
   TextStyle _t({double? fs, FontWeight? w, Color? c}) => GoogleFonts.manrope(fontSize: fs, fontWeight: w, color: c);
 
-  Widget _timeBox(String lb, String d, IconData ic, Color c) => Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8), decoration: BoxDecoration(color: c.withAlpha(20), borderRadius: BorderRadius.circular(8), border: Border.all(color: c.withAlpha(50))), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(ic, size: 14, color: c), const SizedBox(width: 6), Text(d, style: _t(fs: 13, w: FontWeight.w700, c: AppTheme.slate900))]));
-  Widget _hoursBadge(double h, Color c) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: c.withAlpha(25), borderRadius: BorderRadius.circular(12)), child: Text('${h.toStringAsFixed(1)}h', style: _t(fs: 11, w: FontWeight.w700, c: c)));
-  Widget _roField(String l, String v) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(l, style: _t(fs: 10, w: FontWeight.w600, c: AppTheme.slate400)), Text(v, style: _t(fs: 13, w: FontWeight.w600, c: AppTheme.slate900))]);
-  Widget _empty(String t) => Container(width: double.infinity, padding: const EdgeInsets.all(32), decoration: BoxDecoration(color: AppTheme.slate50, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200)), child: Column(children: [Icon(Icons.people_outline, size: 40, color: AppTheme.slate400), const SizedBox(height: 8), Text(t, style: _t(fs: 13, w: FontWeight.w600, c: AppTheme.slate500))]));
+  Widget _timeBox(String lb, String d, IconData ic, Color c) => Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10), decoration: BoxDecoration(color: c.withAlpha(20), borderRadius: BorderRadius.circular(8), border: Border.all(color: c.withAlpha(50))), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(ic, size: 14, color: c), const SizedBox(width: 6), Text(d, style: _t(fs: 15, w: FontWeight.w700, c: AppTheme.slate900))]));
+  Widget _hoursBadge(double h, Color c) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: c.withAlpha(25), borderRadius: BorderRadius.circular(12)), child: Text('${h.toStringAsFixed(1)}h', style: _t(fs: 13, w: FontWeight.w700, c: c)));
+  Widget _roField(String l, String v) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(l, style: _t(fs: 12, w: FontWeight.w600, c: AppTheme.slate400)), Text(v, style: _t(fs: 15, w: FontWeight.w600, c: AppTheme.slate900))]);
+  Widget _empty(String t) => Container(width: double.infinity, padding: const EdgeInsets.all(32), decoration: BoxDecoration(color: AppTheme.slate50, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200)), child: Column(children: [Icon(Icons.people_outline, size: 40, color: AppTheme.slate400), const SizedBox(height: 8), Text(t, style: _t(fs: 15, w: FontWeight.w600, c: AppTheme.slate500))]));
 
   // ── Layout ──
 
@@ -413,13 +413,13 @@ class _StepLaborState extends State<StepLabor> {
       if (fl.isEmpty) _empty('No workers scheduled for this date')
       else ...[ ...g.entries.map((svc) => _buildServiceGroup(svc.key, svc.value)),
         const SizedBox(height: 12),
-        if (!widget.isReadOnly) TextButton.icon(onPressed: widget.onNavigateToBaseline, icon: const Icon(Icons.add_circle_outline, size: 16), label: Text('+ Add to Baseline', style: _t(fs: 13, w: FontWeight.w600, c: AppTheme.primaryGreen))),
+        if (!widget.isReadOnly) TextButton.icon(onPressed: widget.onNavigateToBaseline, icon: const Icon(Icons.add_circle_outline, size: 16), label: Text('+ Add to Baseline', style: _t(fs: 15, w: FontWeight.w600, c: AppTheme.primaryGreen))),
       ]]);
   }
 
-  Widget _buildServiceFilter() { final svcs = _allServices(); if (svcs.isEmpty) return const SizedBox.shrink(); return Row(children: [Text('Service:', style: _t(fs: 12, w: FontWeight.w600, c: AppTheme.slate500)), const SizedBox(width: 12), SizedBox(width: 260, child: DropdownButtonFormField<String>(value: _serviceFilter, decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8)), hint: Text('All Services', style: _t(fs: 13)), items: [DropdownMenuItem<String>(value: null, child: Text('All Services', style: _t(fs: 13))), ...svcs.map((s) => DropdownMenuItem(value: s, child: Text(s, style: _t(fs: 13))))], onChanged: (v) => setState(() => _serviceFilter = v)))]); }
+  Widget _buildServiceFilter() { final svcs = _allServices(); if (svcs.isEmpty) return const SizedBox.shrink(); return Row(children: [Text('Service:', style: _t(fs: 14, w: FontWeight.w600, c: AppTheme.slate500)), const SizedBox(width: 12), SizedBox(width: 260, child: DropdownButtonFormField<String>(value: _serviceFilter, decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)), hint: Text('All Services', style: _t(fs: 15)), items: [DropdownMenuItem<String>(value: null, child: Text('All Services', style: _t(fs: 15))), ...svcs.map((s) => DropdownMenuItem(value: s, child: Text(s, style: _t(fs: 15))))], onChanged: (v) => setState(() => _serviceFilter = v)))]); }
 
-  Widget _buildServiceGroup(String svc, List<Map<String, dynamic>> roles) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const SizedBox(height: 8), Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: AppTheme.slate200.withAlpha(120), borderRadius: BorderRadius.circular(6)), child: Text(svc, style: _t(fs: 12, w: FontWeight.w800, c: AppTheme.slate700))), const SizedBox(height: 6), ...roles.map((pl) => _buildRoleCard(pl))]);
+  Widget _buildServiceGroup(String svc, List<Map<String, dynamic>> roles) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const SizedBox(height: 8), Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: AppTheme.slate200.withAlpha(120), borderRadius: BorderRadius.circular(6)), child: Text(svc, style: _t(fs: 14, w: FontWeight.w800, c: AppTheme.slate700))), const SizedBox(height: 6), ...roles.map((pl) => _buildRoleCard(pl))]);
 
   Widget _buildRoleCard(Map<String, dynamic> pl) {
     final rn = pl['role_name'] ?? pl['labor_roles']?['description'] ?? 'Worker';
@@ -428,7 +428,7 @@ class _StepLaborState extends State<StepLabor> {
     final pc = asgn.where((a) { final w = a['workers'] as Map<String, dynamic>?; return w != null && _isInEntries(w['id'] as String); }).length;
     final ac = asgn.length; final ap = pc == ac && ac > 0; final pend = ac - pc;
     return Card(margin: const EdgeInsets.only(bottom: 8), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: AppTheme.slate200)), clipBehavior: Clip.antiAlias, child: ExpansionTile(tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), childrenPadding: const EdgeInsets.fromLTRB(12, 0, 12, 10), initiallyExpanded: pend > 0, leading: Container(padding: const EdgeInsets.all(6), decoration: BoxDecoration(color: ap ? AppTheme.primaryGreen.withAlpha(25) : AppTheme.slate200, borderRadius: BorderRadius.circular(6)), child: Icon(ap ? Icons.check_circle : Icons.engineering, size: 16, color: ap ? AppTheme.primaryGreen : AppTheme.slate500)),
-      title: Row(children: [Expanded(child: Text('$rn ($pc/$ac)', style: _t(fs: 13, w: FontWeight.w700, c: AppTheme.slate900))), if (!widget.isReadOnly && pend > 0) TextButton.icon(onPressed: () { for (final a in asgn) { final w = a['workers'] as Map<String, dynamic>?; if (w != null) { final wid = w['id'] as String; if (!_isInEntries(wid) && !_absentWorkers.containsKey(wid)) _addEntry(wid, plannedLaborId: pl['id'] as String); } } }, icon: const Icon(Icons.group_add, size: 14), label: Text('Add all', style: _t(fs: 11, w: FontWeight.w600, c: AppTheme.primaryGreen)), style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap))]),
+      title: Row(children: [Expanded(child: Text('$rn ($pc/$ac)', style: _t(fs: 15, w: FontWeight.w700, c: AppTheme.slate900))), if (!widget.isReadOnly && pend > 0) TextButton.icon(onPressed: () { for (final a in asgn) { final w = a['workers'] as Map<String, dynamic>?; if (w != null) { final wid = w['id'] as String; if (!_isInEntries(wid) && !_absentWorkers.containsKey(wid)) _addEntry(wid, plannedLaborId: pl['id'] as String); } } }, icon: const Icon(Icons.group_add, size: 14), label: Text('Add all', style: _t(fs: 13, w: FontWeight.w600, c: AppTheme.primaryGreen)), style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap))]),
       children: [
         if (asgn.isEmpty) _compactRow(null, 'No workers assigned', Icons.info_outline, AppTheme.slate400, () {})
         else ...asgn.map((a) => _buildWorkerRow(a, pl['id'] as String)),
@@ -457,7 +457,7 @@ class _StepLaborState extends State<StepLabor> {
     return [
       const Padding(
         padding: EdgeInsets.only(left: 44, top: 6, bottom: 2),
-        child: Text('Reassigned workers', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.orange)),
+        child: Text('Reassigned workers', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.orange)),
       ),
       ...unplanned.map((e) {
         final idx = _entries.indexOf(e);
@@ -481,14 +481,14 @@ class _StepLaborState extends State<StepLabor> {
         Icon(Icons.person_off, size: 18, color: Colors.orange),
         const SizedBox(width: 8),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('${_workerName(w)} \u2014 Absent', style: _t(fs: 12, w: FontWeight.w600, c: AppTheme.slate900)),
-          Text('Reason: $rt', style: _t(fs: 10, w: FontWeight.w500, c: AppTheme.slate400)),
+          Text('${_workerName(w)} \u2014 Absent', style: _t(fs: 14, w: FontWeight.w600, c: AppTheme.slate900)),
+          Text('Reason: $rt', style: _t(fs: 12, w: FontWeight.w500, c: AppTheme.slate400)),
         ])),
         if (!r) ...[
           TextButton.icon(
             onPressed: () => _showReassignDialog(wid, plId),
             icon: const Icon(Icons.swap_horiz, size: 14),
-            label: Text('Reassign', style: _t(fs: 11, w: FontWeight.w600, c: AppTheme.primaryGreen)),
+            label: Text('Reassign', style: _t(fs: 13, w: FontWeight.w600, c: AppTheme.primaryGreen)),
             style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
           ),
           InkWell(onTap: () => _toggleAbsent(wid), child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.undo, size: 16, color: AppTheme.slate400))),
@@ -500,14 +500,14 @@ class _StepLaborState extends State<StepLabor> {
       Icon(Icons.add_circle_outline, size: 18, color: AppTheme.slate400),
       const SizedBox(width: 8),
       Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(_workerName(w), style: _t(fs: 12, w: FontWeight.w600, c: AppTheme.slate700)),
-        if (dr != null) Text(dr, style: _t(fs: 10, w: FontWeight.w500, c: AppTheme.slate400)),
+        Text(_workerName(w), style: _t(fs: 14, w: FontWeight.w600, c: AppTheme.slate700)),
+        if (dr != null) Text(dr, style: _t(fs: 12, w: FontWeight.w500, c: AppTheme.slate400)),
       ])),
       if (!r) ...[
         TextButton.icon(
           onPressed: () => _showReassignDialog(wid, plId),
           icon: const Icon(Icons.swap_horiz, size: 14),
-          label: Text('Reassign', style: _t(fs: 11, w: FontWeight.w600, c: AppTheme.primaryGreen)),
+          label: Text('Reassign', style: _t(fs: 13, w: FontWeight.w600, c: AppTheme.primaryGreen)),
           style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
         ),
         InkWell(onTap: () => _toggleAbsent(wid), child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.person_off, size: 16, color: Colors.orange))),
@@ -515,7 +515,7 @@ class _StepLaborState extends State<StepLabor> {
     ])));
   }
 
-  Widget _compactRow(String? wId, String text, IconData ic, Color col, VoidCallback? onTap, {String? sub, VoidCallback? trailing}) => Padding(padding: const EdgeInsets.only(left: 44), child: InkWell(onTap: onTap, child: Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [Icon(ic, size: 18, color: col), const SizedBox(width: 8), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(text, style: _t(fs: 12, w: FontWeight.w600, c: col == AppTheme.slate400 ? AppTheme.slate700 : AppTheme.slate900)), if (sub != null) Text(sub, style: _t(fs: 10, w: FontWeight.w500, c: AppTheme.slate400))])), if (trailing != null) InkWell(onTap: trailing, child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.person_off, size: 16, color: Colors.orange)))]))));
+  Widget _compactRow(String? wId, String text, IconData ic, Color col, VoidCallback? onTap, {String? sub, VoidCallback? trailing}) => Padding(padding: const EdgeInsets.only(left: 44), child: InkWell(onTap: onTap, child: Padding(padding: const EdgeInsets.symmetric(vertical: 5), child: Row(children: [Icon(ic, size: 18, color: col), const SizedBox(width: 8), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(text, style: _t(fs: 14, w: FontWeight.w600, c: col == AppTheme.slate400 ? AppTheme.slate700 : AppTheme.slate900)), if (sub != null) Text(sub, style: _t(fs: 12, w: FontWeight.w500, c: AppTheme.slate400))])), if (trailing != null) InkWell(onTap: trailing, child: Padding(padding: const EdgeInsets.all(4), child: Icon(Icons.person_off, size: 16, color: Colors.orange)))]))));
 
   Widget _buildWorkerSwapper(int idx, Map<String, dynamic> entry, String? dr) {
     final cwid = entry['worker_id'] as String?;
@@ -533,17 +533,17 @@ class _StepLaborState extends State<StepLabor> {
     }).toList();
     if (cwid != null && !avail.any((w) => w['id'] == cwid)) { final cw = _activeWorkers.firstWhere((w) => w['id'] == cwid, orElse: () => <String, dynamic>{}); if (cw.isNotEmpty) avail.insert(0, cw); }
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      DropdownButtonHideUnderline(child: DropdownButton<String>(value: cwid, isExpanded: true, isDense: true, style: _t(fs: 12, w: FontWeight.w700, c: AppTheme.slate900), hint: Text('Select...', style: _t(fs: 12, c: AppTheme.slate400)), items: avail.map((w) => DropdownMenuItem<String>(value: w['id'] as String?, child: Text(_workerName(w), style: _t(fs: 12, w: FontWeight.w600), overflow: TextOverflow.ellipsis))).toList(), onChanged: (v) => _swapWorker(idx, v))),
-      if (dr != null) Padding(padding: const EdgeInsets.only(top: 1), child: Text(dr, style: _t(fs: 10, w: FontWeight.w500, c: AppTheme.slate400)))]);
+      DropdownButtonHideUnderline(child: DropdownButton<String>(value: cwid, isExpanded: true, isDense: true, style: _t(fs: 14, w: FontWeight.w700, c: AppTheme.slate900), hint: Text('Select...', style: _t(fs: 14, c: AppTheme.slate400)), items: avail.map((w) => DropdownMenuItem<String>(value: w['id'] as String?, child: Text(_workerName(w), style: _t(fs: 14, w: FontWeight.w600), overflow: TextOverflow.ellipsis))).toList(), onChanged: (v) => _swapWorker(idx, v))),
+      if (dr != null) Padding(padding: const EdgeInsets.only(top: 1), child: Text(dr, style: _t(fs: 12, w: FontWeight.w500, c: AppTheme.slate400)))]);
   }
 
   Widget _buildExpandedRow(int idx, Map<String, dynamic> e, String wName, String? dr, {required String plId, bool isUnplanned = false, Map<String, dynamic>? w}) {
     final ci = e['check_in_time'] as String?; final co = e['check_out_time'] as String?;
     final ciD = ci != null && ci.isNotEmpty ? ci.substring(0, 5) : '--:--'; final coD = co != null && co.isNotEmpty ? co.substring(0, 5) : '--:--';
     final bm = e['break_minutes'] as int? ?? 0; final tn = e['total_net_hours'] as double? ?? 0;
-    return Padding(padding: const EdgeInsets.only(left: 44, top: 4, bottom: 6), child: Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: AppTheme.primaryGreen.withAlpha(10), borderRadius: BorderRadius.circular(8), border: Border.all(color: AppTheme.primaryGreen.withAlpha(40))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return Padding(padding: const EdgeInsets.only(left: 44, top: 4, bottom: 6), child: Container(padding: const EdgeInsets.all(12), decoration: BoxDecoration(color: AppTheme.primaryGreen.withAlpha(10), borderRadius: BorderRadius.circular(8), border: Border.all(color: AppTheme.primaryGreen.withAlpha(40))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [const Icon(Icons.check_circle, size: 16, color: AppTheme.primaryGreen), const SizedBox(width: 8),
-        Expanded(child: widget.isReadOnly ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(wName, style: _t(fs: 12, w: FontWeight.w700, c: AppTheme.slate900)), if (dr != null) Text(dr, style: _t(fs: 10, w: FontWeight.w500, c: AppTheme.slate400))]) : _buildWorkerSwapper(idx, e, dr)),
+        Expanded(child: widget.isReadOnly ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(wName, style: _t(fs: 14, w: FontWeight.w700, c: AppTheme.slate900)), if (dr != null) Text(dr, style: _t(fs: 12, w: FontWeight.w500, c: AppTheme.slate400))]) : _buildWorkerSwapper(idx, e, dr)),
         if (!widget.isReadOnly) IconButton(icon: const Icon(Icons.close, size: 16, color: AppTheme.errorRed), padding: EdgeInsets.zero, constraints: const BoxConstraints(), onPressed: () => _removeEntry(idx), tooltip: 'Remove')]),
       const SizedBox(height: 8),
       if (!widget.isReadOnly) ...[
@@ -555,7 +555,7 @@ class _StepLaborState extends State<StepLabor> {
           _hoursBadge(e['overtime_hours'] as double? ?? 0, Colors.orange),
           if (bm > 0) ...[const SizedBox(width: 6), _hoursBadge(-(bm / 60.0), AppTheme.slate400)],
           const SizedBox(width: 6),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(12)), child: Text('Net ${tn.toStringAsFixed(1)}h', style: _t(fs: 10, w: FontWeight.w700, c: AppTheme.slate600))),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(12)), child: Text('Net ${tn.toStringAsFixed(1)}h', style: _t(fs: 12, w: FontWeight.w700, c: AppTheme.slate600))),
           TextButton.icon(
             onPressed: () {
               String? estCheckIn;
@@ -573,11 +573,11 @@ class _StepLaborState extends State<StepLabor> {
               _showReassignDialog(e['worker_id'] as String, plId, estimatedCheckIn: estCheckIn);
             },
             icon: const Icon(Icons.swap_horiz, size: 14),
-            label: Text('Reassign', style: _t(fs: 11, w: FontWeight.w600, c: AppTheme.primaryGreen)),
+            label: Text('Reassign', style: _t(fs: 13, w: FontWeight.w600, c: AppTheme.primaryGreen)),
             style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
           ),
           const Spacer(),
-          if (isUnplanned || e['deviation_reason_id'] != null) Flexible(child: DropdownButtonFormField<String>(value: e['deviation_reason_id'], isExpanded: true, decoration: const InputDecoration(labelText: 'Reason', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 6)), items: _laborReasons.map((r) => DropdownMenuItem<String>(value: r['id'] as String?, child: Text(r['description'] ?? '', style: _t(fs: 10)))).toList(), onChanged: (v) => _updateEntryField(idx, 'deviation_reason_id', v)))]),
+          if (isUnplanned || e['deviation_reason_id'] != null) Flexible(child: DropdownButtonFormField<String>(value: e['deviation_reason_id'], isExpanded: true, decoration: const InputDecoration(labelText: 'Reason', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8)), items: _laborReasons.map((r) => DropdownMenuItem<String>(value: r['id'] as String?, child: Text(r['description'] ?? '', style: _t(fs: 12)))).toList(), onChanged: (v) => _updateEntryField(idx, 'deviation_reason_id', v)))]),
       ] else ...[
         Row(children: [
           _roField('In', ciD), const SizedBox(width: 8),
@@ -586,12 +586,12 @@ class _StepLaborState extends State<StepLabor> {
           if ((e['overtime_hours'] as double? ?? 0) > 0) ...[const SizedBox(width: 4), _hoursBadge(e['overtime_hours'] as double? ?? 0, Colors.orange)],
           if (bm > 0) ...[const SizedBox(width: 4), _hoursBadge(-(bm / 60.0), AppTheme.slate400)],
           const SizedBox(width: 4),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(12)), child: Text('Net ${tn.toStringAsFixed(1)}h', style: _t(fs: 10, w: FontWeight.w700, c: AppTheme.slate600))),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(12)), child: Text('Net ${tn.toStringAsFixed(1)}h', style: _t(fs: 12, w: FontWeight.w700, c: AppTheme.slate600))),
         ]),
         if (e['notes'] != null && (e['notes'] as String).isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 4),
-            child: Text(e['notes'] as String, style: _t(fs: 10, w: FontWeight.w500, c: AppTheme.slate400)),
+            child: Text(e['notes'] as String, style: _t(fs: 12, w: FontWeight.w500, c: AppTheme.slate400)),
           ),
         if (isUnplanned || e['deviation_reason_id'] != null)
           Padding(
