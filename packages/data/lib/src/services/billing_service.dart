@@ -660,16 +660,38 @@ class BillingService {
               break;
           }
         }
-      } else if (lineType == 'new_service' && plans.isNotEmpty && quoteServiceId != null) {
+      } else if (lineType == 'new_service' && plans.isNotEmpty) {
+        // Create quote_service for the new service if not yet exists
+        String? newQuoteServiceId = quoteServiceId;
+        if (newQuoteServiceId == null) {
+          final created = await _supabase
+              .from('quote_services')
+              .insert({
+                'quote_id': quoteId,
+                'name': detail['service_name'] ?? 'New Service',
+                'unit_of_measure': detail['unit_of_measure'] ?? 'und',
+                'quantity': (detail['quantity_change'] as num?)?.toDouble() ?? 1,
+                'direct_cost': 0,
+                'target_price': (detail['unit_price'] as num?)?.toDouble() ?? 0,
+                'source_co_id': changeOrderId,
+              })
+              .select()
+              .single();
+          newQuoteServiceId = created['id'] as String;
+        }
+
         for (final plan in plans) {
           final resourceType = plan['resource_type'] as String? ?? '';
           switch (resourceType) {
             case 'labor':
               await _supabase.from('project_labor').insert({
                 'project_id': projectId,
-                'quote_service_id': quoteServiceId,
+                'quote_service_id': newQuoteServiceId,
                 'role_name': plan['resource_name'] ?? 'Additional Labor',
-                'expected_employees': (plan['quantity'] as num?)?.toInt() ?? 1,
+                'expected_employees':
+                    (plan['employees_quantity'] as num?)?.toInt() ??
+                        (plan['quantity'] as num?)?.toInt() ??
+                        1,
                 'active_employees': 0,
                 'is_unplanned': true,
                 'change_type': 'change_order',
@@ -679,9 +701,11 @@ class BillingService {
             case 'machinery':
               await _supabase.from('project_machinery').insert({
                 'project_id': projectId,
-                'quote_service_id': quoteServiceId,
-                'machinery_name': plan['resource_name'] ?? 'Additional Machinery',
-                'expected_quantity': (plan['quantity'] as num?)?.toDouble() ?? 1,
+                'quote_service_id': newQuoteServiceId,
+                'machinery_name':
+                    plan['resource_name'] ?? 'Additional Machinery',
+                'expected_quantity':
+                    (plan['quantity'] as num?)?.toDouble() ?? 1,
                 'is_unplanned': true,
                 'change_type': 'change_order',
                 'source_co_id': changeOrderId,
@@ -690,9 +714,11 @@ class BillingService {
             case 'material':
               await _supabase.from('project_materials').insert({
                 'project_id': projectId,
-                'quote_service_id': quoteServiceId,
-                'material_name': plan['resource_name'] ?? 'Additional Material',
-                'expected_quantity': (plan['quantity'] as num?)?.toDouble() ?? 1,
+                'quote_service_id': newQuoteServiceId,
+                'material_name':
+                    plan['resource_name'] ?? 'Additional Material',
+                'expected_quantity':
+                    (plan['quantity'] as num?)?.toDouble() ?? 1,
                 'is_unplanned': true,
                 'change_type': 'change_order',
                 'source_co_id': changeOrderId,
@@ -701,9 +727,11 @@ class BillingService {
             case 'instrument':
               await _supabase.from('project_instruments').insert({
                 'project_id': projectId,
-                'quote_service_id': quoteServiceId,
-                'instrument_name': plan['resource_name'] ?? 'Additional Equipment',
-                'expected_quantity': (plan['quantity'] as num?)?.toDouble() ?? 1,
+                'quote_service_id': newQuoteServiceId,
+                'instrument_name':
+                    plan['resource_name'] ?? 'Additional Equipment',
+                'expected_quantity':
+                    (plan['quantity'] as num?)?.toDouble() ?? 1,
                 'is_unplanned': true,
                 'change_type': 'change_order',
                 'source_co_id': changeOrderId,

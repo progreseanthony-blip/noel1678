@@ -10,6 +10,7 @@ import '../providers/change_order_providers.dart';
 import '../providers/change_order_controller.dart';
 import '../widgets/standby_form_section.dart';
 import '../widgets/baseline_impact_section.dart';
+import '../widgets/new_service_estimation_dialog.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 
@@ -168,11 +169,14 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     );
 
     if (selected != null && mounted) {
+      final targetPrice =
+          (selected['target_price'] as num?)?.toDouble() ?? 0;
       _showLineEditor(
         serviceName: selected['name'] ?? '',
         unitOfMeasure: selected['unit_of_measure'] ?? 'und',
         quoteServiceId: selected['id'] as String?,
         lineType: 'existing_service',
+        initialUnitPrice: targetPrice,
       );
     }
   }
@@ -214,13 +218,65 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     );
 
     if (selected != null && mounted) {
-      _showLineEditor(
+      final line = await NewServiceEstimationDialog.open(
+        context: context,
+        ref: ref,
+        projectId: widget.projectId,
         serviceName: selected['description'] ?? '',
         unitOfMeasure: selected['unit'] ?? 'und',
         catalogServiceId: selected['id'] as String?,
-        lineType: 'new_service',
       );
+      if (line != null) {
+        final plans = (line['resource_plans'] as List<dynamic>?)
+                ?.cast<Map<String, dynamic>>() ??
+            [];
+        final key = line['service_name'] as String? ?? '';
+        setState(() {
+          _lines.add(line);
+          if (plans.isNotEmpty) {
+            _resourcePlans[key] = plans;
+          }
+        });
+      }
     }
+  }
+
+  Future<void> _editLine(Map<String, dynamic> line) async {
+    final lineType = line['line_type'] as String? ?? '';
+    if (lineType == 'new_service') {
+      final result = await NewServiceEstimationDialog.open(
+        context: context,
+        ref: ref,
+        projectId: widget.projectId,
+        serviceName: line['service_name'] as String? ?? '',
+        unitOfMeasure: line['unit_of_measure'] as String? ?? 'und',
+        catalogServiceId: line['catalog_service_id'] as String?,
+      );
+      if (result != null && mounted) {
+        final key = result['service_name'] as String? ?? '';
+        final plans = (result['resource_plans'] as List<dynamic>?)
+                ?.cast<Map<String, dynamic>>() ??
+            [];
+        setState(() {
+          final idx = _lines.indexOf(line);
+          if (idx >= 0) _lines[idx] = result;
+          if (plans.isNotEmpty) {
+            _resourcePlans[key] = plans;
+          } else {
+            _resourcePlans.remove(key);
+          }
+        });
+      }
+      return;
+    }
+    _showLineEditor(
+      serviceName: line['service_name'] as String? ?? '',
+      unitOfMeasure: line['unit_of_measure'] as String? ?? 'und',
+      quoteServiceId: line['quote_service_id'] as String?,
+      catalogServiceId: line['catalog_service_id'] as String?,
+      lineType: lineType,
+      existing: line,
+    );
   }
 
   Future<void> _showLineEditor({
@@ -230,12 +286,14 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     String? catalogServiceId,
     String lineType = 'existing_service',
     Map<String, dynamic>? existing,
+    double initialUnitPrice = 0,
   }) async {
     final qtyCtrl = TextEditingController(
       text: existing?['quantity_change']?.toString() ?? '0',
     );
     final priceCtrl = TextEditingController(
-      text: existing?['unit_price']?.toString() ?? '0',
+      text: existing?['unit_price']?.toString() ??
+          (initialUnitPrice > 0 ? initialUnitPrice.toString() : '0'),
     );
     String type = existing?['line_type'] ?? lineType;
 
@@ -1156,7 +1214,20 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
   ) async {
     for (final detail in savedDetails) {
       final key = detail['service_name'] as String? ?? '';
-      final plans = _resourcePlans[key];
+      // Check _resourcePlans map first (from Baseline Impact section)
+      var plans = _resourcePlans[key];
+      // Also check for embedded plans in the original line data
+      if (plans == null || plans.isEmpty) {
+        final originalLine = _lines.firstWhere(
+          (l) => l['service_name'] == key,
+          orElse: () => <String, dynamic>{},
+        );
+        final embedded = (originalLine['resource_plans'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>();
+        if (embedded != null && embedded.isNotEmpty) {
+          plans = embedded;
+        }
+      }
       if (plans != null && plans.isNotEmpty) {
         await controller.saveResourcePlans(detail['id'], plans);
       }
@@ -1277,13 +1348,30 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
                 ),
               ),
               DataCell(
-                IconButton(
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    size: 18,
-                    color: AppTheme.errorRed,
-                  ),
-                  onPressed: () => setState(() => _lines.removeAt(i)),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.edit,
+                        size: 16,
+                        color: AppTheme.slate400,
+                      ),
+                      onPressed: () => _editLine(l),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        size: 18,
+                        color: AppTheme.errorRed,
+                      ),
+                      onPressed: () => setState(() => _lines.removeAt(i)),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -1310,10 +1398,23 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  l['service_name'] ?? '',
-                  style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
+                child: GestureDetector(
+                  onTap: () => _editLine(l),
+                  child: Text(
+                    l['service_name'] ?? '',
+                    style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
+                  ),
                 ),
+              ),
+              IconButton(
+                icon: const Icon(
+                  Icons.edit,
+                  size: 14,
+                  color: AppTheme.slate400,
+                ),
+                onPressed: () => _editLine(l),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
               ),
               IconButton(
                 icon: const Icon(
