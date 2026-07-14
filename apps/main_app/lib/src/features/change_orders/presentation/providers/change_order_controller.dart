@@ -22,10 +22,14 @@ class ChangeOrderController extends _$ChangeOrderController {
     ref.invalidate(changeOrderDetailProvider(id));
   }
 
-  Future<void> saveDetails(String coId, List<Map<String, dynamic>> details) async {
+  Future<List<Map<String, dynamic>>> saveDetails(
+    String coId,
+    List<Map<String, dynamic>> details,
+  ) async {
     final svc = ref.read(billingServiceProvider);
-    await svc.saveChangeOrderDetails(coId, details);
+    final saved = await svc.saveChangeOrderDetails(coId, details);
     ref.invalidate(changeOrderDetailProvider(coId));
+    return saved;
   }
 
   Future<void> submitChangeOrder(String id) async {
@@ -39,8 +43,17 @@ class ChangeOrderController extends _$ChangeOrderController {
     final svc = ref.read(billingServiceProvider);
     final user = Supabase.instance.client.auth.currentUser;
     await svc.approveChangeOrder(id, user?.id ?? '');
+    await svc.applyBaselineImpact(id);
     ref.invalidate(changeOrderListProvider);
     ref.invalidate(changeOrderDetailProvider(id));
+  }
+
+  Future<void> saveResourcePlans(
+    String coDetailId,
+    List<Map<String, dynamic>> plans,
+  ) async {
+    final svc = ref.read(billingServiceProvider);
+    await svc.saveResourcePlans(coDetailId, plans);
   }
 
   Future<void> rejectChangeOrder(String id, String reason) async {

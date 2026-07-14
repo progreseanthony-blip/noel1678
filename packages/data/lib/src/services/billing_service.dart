@@ -145,7 +145,18 @@ class BillingService {
         .eq('change_order_id', id);
 
     final data = Map<String, dynamic>.from(co);
-    data['details'] = List<Map<String, dynamic>>.from(details ?? []);
+
+    // Load resource plans for each detail
+    final detailList = List<Map<String, dynamic>>.from(details ?? []);
+    for (final d in detailList) {
+      final plans = await _supabase
+          .from('change_order_resource_plans')
+          .select()
+          .eq('change_order_detail_id', d['id']);
+      d['resource_plans'] = plans ?? [];
+    }
+
+    data['details'] = detailList;
     return data;
   }
 
@@ -201,7 +212,7 @@ class BillingService {
 
   // ── Change Order Details ──
 
-  Future<void> saveChangeOrderDetails(
+  Future<List<Map<String, dynamic>>> saveChangeOrderDetails(
     String changeOrderId,
     List<Map<String, dynamic>> details,
   ) async {
@@ -210,7 +221,7 @@ class BillingService {
         .delete()
         .eq('change_order_id', changeOrderId);
 
-    if (details.isEmpty) return;
+    if (details.isEmpty) return [];
 
     final knownColumns = {
       'change_order_id',
@@ -234,7 +245,11 @@ class BillingService {
       );
     }).toList();
 
-    await _supabase.from('change_order_details').insert(batch);
+    final response = await _supabase
+        .from('change_order_details')
+        .insert(batch)
+        .select();
+    return List<Map<String, dynamic>>.from(response ?? []);
   }
 
   // ── Invoice ↔ Change Order Links ──
@@ -476,5 +491,255 @@ class BillingService {
         .eq('change_order_id', changeOrderId)
         .order('start_date');
     return List<Map<String, dynamic>>.from(response ?? []);
+  }
+
+  // ── Baseline Impact (Resource Plans) ──
+
+  Future<List<Map<String, dynamic>>> getResourcePlans(String coDetailId) async {
+    final response = await _supabase
+        .from('change_order_resource_plans')
+        .select()
+        .eq('change_order_detail_id', coDetailId)
+        .order('created_at');
+    return List<Map<String, dynamic>>.from(response ?? []);
+  }
+
+  Future<void> saveResourcePlans(
+    String coDetailId,
+    List<Map<String, dynamic>> plans,
+  ) async {
+    await _supabase
+        .from('change_order_resource_plans')
+        .delete()
+        .eq('change_order_detail_id', coDetailId);
+
+    if (plans.isEmpty) return;
+
+    final batch = plans.map((p) {
+      p['change_order_detail_id'] = coDetailId;
+      p.remove('id');
+      return p;
+    }).toList();
+
+    await _supabase.from('change_order_resource_plans').insert(batch);
+  }
+
+  Future<Map<String, dynamic>> createQuoteServiceFromCO(
+    String changeOrderId,
+    Map<String, dynamic> serviceData,
+  ) async {
+    final response = await _supabase
+        .from('quote_services')
+        .insert({
+          'quote_id': serviceData['quote_id'],
+          'name': serviceData['name'],
+          'unit_of_measure': serviceData['unit_of_measure'] ?? 'und',
+          'quantity': serviceData['quantity'] ?? 1,
+          'overhead_percentage': serviceData['overhead_percentage'] ?? 0,
+          'profit_percentage': serviceData['profit_percentage'] ?? 0,
+          'direct_cost': serviceData['direct_cost'] ?? 0,
+          'target_price': serviceData['target_price'] ?? 0,
+          'source_co_id': changeOrderId,
+        })
+        .select()
+        .single();
+    return response;
+  }
+
+  Future<void> applyBaselineImpact(String changeOrderId) async {
+    final co = await _supabase
+        .from('change_orders')
+        .select('project_id, quote_id')
+        .eq('id', changeOrderId)
+        .single();
+
+    final details = await _supabase
+        .from('change_order_details')
+        .select('*, change_order_resource_plans(*)')
+        .eq('change_order_id', changeOrderId);
+
+    final projectId = co['project_id'] as String;
+    final quoteId = co['quote_id'] as String?;
+
+    for (final detail in (details as List<dynamic>).cast<Map<String, dynamic>>()) {
+      final lineType = detail['line_type'] as String? ?? '';
+      final plans = (detail['change_order_resource_plans'] as List<dynamic>?)
+              ?.cast<Map<String, dynamic>>() ??
+          [];
+      final quoteServiceId = detail['quote_service_id'] as String?;
+
+      if (lineType == 'existing_service' && plans.isNotEmpty) {
+        for (final plan in plans) {
+          final factor = (plan['proportional_factor'] as num?)?.toDouble() ?? 1;
+          if (factor <= 0) continue;
+          final resourceType = plan['resource_type'] as String? ?? '';
+
+          // Clone existing resources with proportional factor
+          switch (resourceType) {
+            case 'labor':
+              final existing = await _supabase
+                  .from('project_labor')
+                  .select()
+                  .eq('quote_service_id', quoteServiceId)
+                  .eq('project_id', projectId);
+              for (final e in (existing as List<dynamic>).cast<Map<String, dynamic>>()) {
+                final expected = ((e['expected_employees'] as num?)?.toDouble() ?? 0) * factor;
+                if (expected <= 0) continue;
+                await _supabase.from('project_labor').insert({
+                  'project_id': projectId,
+                  'quote_service_id': quoteServiceId,
+                  'quote_service_labor_id': e['quote_service_labor_id'],
+                  'role_name': e['role_name'] ?? 'Additional Labor',
+                  'expected_employees': expected.ceil(),
+                  'active_employees': 0,
+                  'is_unplanned': true,
+                  'change_type': 'change_order',
+                  'source_co_id': changeOrderId,
+                });
+              }
+              break;
+            case 'machinery':
+              final existing = await _supabase
+                  .from('project_machinery')
+                  .select()
+                  .eq('quote_service_id', quoteServiceId)
+                  .eq('project_id', projectId);
+              for (final e in (existing as List<dynamic>).cast<Map<String, dynamic>>()) {
+                final qty = ((e['expected_quantity'] as num?)?.toDouble() ?? 0) * factor;
+                if (qty <= 0) continue;
+                await _supabase.from('project_machinery').insert({
+                  'project_id': projectId,
+                  'quote_service_id': quoteServiceId,
+                  'machinery_name': e['machinery_name'] ?? 'Additional Machinery',
+                  'expected_quantity': qty,
+                  'is_unplanned': true,
+                  'change_type': 'change_order',
+                  'source_co_id': changeOrderId,
+                });
+              }
+              break;
+            case 'material':
+              final existing = await _supabase
+                  .from('project_materials')
+                  .select()
+                  .eq('quote_service_id', quoteServiceId)
+                  .eq('project_id', projectId);
+              for (final e in (existing as List<dynamic>).cast<Map<String, dynamic>>()) {
+                final qty = ((e['expected_quantity'] as num?)?.toDouble() ?? 0) * factor;
+                if (qty <= 0) continue;
+                await _supabase.from('project_materials').insert({
+                  'project_id': projectId,
+                  'quote_service_id': quoteServiceId,
+                  'material_name': e['material_name'] ?? 'Additional Material',
+                  'expected_quantity': qty,
+                  'is_unplanned': true,
+                  'change_type': 'change_order',
+                  'source_co_id': changeOrderId,
+                });
+              }
+              break;
+            case 'instrument':
+              final existing = await _supabase
+                  .from('project_instruments')
+                  .select()
+                  .eq('quote_service_id', quoteServiceId)
+                  .eq('project_id', projectId);
+              for (final e in (existing as List<dynamic>).cast<Map<String, dynamic>>()) {
+                final qty = ((e['expected_quantity'] as num?)?.toDouble() ?? 0) * factor;
+                if (qty <= 0) continue;
+                await _supabase.from('project_instruments').insert({
+                  'project_id': projectId,
+                  'quote_service_id': quoteServiceId,
+                  'instrument_name': e['instrument_name'] ?? 'Additional Equipment',
+                  'expected_quantity': qty,
+                  'is_unplanned': true,
+                  'change_type': 'change_order',
+                  'source_co_id': changeOrderId,
+                });
+              }
+              break;
+          }
+        }
+      } else if (lineType == 'new_service' && plans.isNotEmpty && quoteServiceId != null) {
+        for (final plan in plans) {
+          final resourceType = plan['resource_type'] as String? ?? '';
+          switch (resourceType) {
+            case 'labor':
+              await _supabase.from('project_labor').insert({
+                'project_id': projectId,
+                'quote_service_id': quoteServiceId,
+                'role_name': plan['resource_name'] ?? 'Additional Labor',
+                'expected_employees': (plan['quantity'] as num?)?.toInt() ?? 1,
+                'active_employees': 0,
+                'is_unplanned': true,
+                'change_type': 'change_order',
+                'source_co_id': changeOrderId,
+              });
+              break;
+            case 'machinery':
+              await _supabase.from('project_machinery').insert({
+                'project_id': projectId,
+                'quote_service_id': quoteServiceId,
+                'machinery_name': plan['resource_name'] ?? 'Additional Machinery',
+                'expected_quantity': (plan['quantity'] as num?)?.toDouble() ?? 1,
+                'is_unplanned': true,
+                'change_type': 'change_order',
+                'source_co_id': changeOrderId,
+              });
+              break;
+            case 'material':
+              await _supabase.from('project_materials').insert({
+                'project_id': projectId,
+                'quote_service_id': quoteServiceId,
+                'material_name': plan['resource_name'] ?? 'Additional Material',
+                'expected_quantity': (plan['quantity'] as num?)?.toDouble() ?? 1,
+                'is_unplanned': true,
+                'change_type': 'change_order',
+                'source_co_id': changeOrderId,
+              });
+              break;
+            case 'instrument':
+              await _supabase.from('project_instruments').insert({
+                'project_id': projectId,
+                'quote_service_id': quoteServiceId,
+                'instrument_name': plan['resource_name'] ?? 'Additional Equipment',
+                'expected_quantity': (plan['quantity'] as num?)?.toDouble() ?? 1,
+                'is_unplanned': true,
+                'change_type': 'change_order',
+                'source_co_id': changeOrderId,
+              });
+              break;
+          }
+        }
+      } else if (lineType == 'deduction') {
+        // Deduction: mark existing resources with reduced quantity
+        if (quoteServiceId != null) {
+          await _supabase
+              .from('project_labor')
+              .update({'change_type': 'change_order', 'source_co_id': changeOrderId})
+              .eq('quote_service_id', quoteServiceId)
+              .eq('project_id', projectId)
+              .is_('source_co_id', null);
+          await _supabase
+              .from('project_machinery')
+              .update({'change_type': 'change_order', 'source_co_id': changeOrderId})
+              .eq('quote_service_id', quoteServiceId)
+              .eq('project_id', projectId)
+              .is_('source_co_id', null);
+          await _supabase
+              .from('project_materials')
+              .update({'change_type': 'change_order', 'source_co_id': changeOrderId})
+              .eq('quote_service_id', quoteServiceId)
+              .eq('project_id', projectId)
+              .is_('source_co_id', null);
+          await _supabase
+              .from('project_instruments')
+              .update({'change_type': 'change_order', 'source_co_id': changeOrderId})
+              .eq('quote_service_id', quoteServiceId)
+              .eq('project_id', projectId)
+              .is_('source_co_id', null);
+        }
+      }
+    }
   }
 }

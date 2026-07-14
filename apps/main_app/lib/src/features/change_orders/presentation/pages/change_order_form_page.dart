@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../providers/change_order_providers.dart';
 import '../providers/change_order_controller.dart';
 import '../widgets/standby_form_section.dart';
+import '../widgets/baseline_impact_section.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 
@@ -41,6 +42,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
   List<Map<String, dynamic>> _availableTasks = [];
 
   final _lines = <Map<String, dynamic>>[];
+  final _resourcePlans = <String, List<Map<String, dynamic>>>{};
   final _fmt = NumberFormat('#,##0.00', 'en_US');
 
   @override
@@ -395,7 +397,9 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
         });
 
         if (_coType == 'scope_change' && _lines.isNotEmpty) {
-          await controller.saveDetails(widget.coId!, _lines);
+          final savedDetails =
+              await controller.saveDetails(widget.coId!, _lines);
+          await _saveResourcePlans(controller, savedDetails);
         }
 
         if (_coType == 'disruption') {
@@ -444,7 +448,9 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
         });
 
         if (_coType == 'scope_change' && _lines.isNotEmpty) {
-          await controller.saveDetails(co['id'], _lines);
+          final savedDetails =
+              await controller.saveDetails(co['id'], _lines);
+          await _saveResourcePlans(controller, savedDetails);
         }
 
         if (_coType == 'disruption') {
@@ -806,6 +812,15 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
             ),
           ),
           const SizedBox(height: 24),
+          BaselineImpactSection(
+            lines: _lines,
+            onPlansChanged: (plans) {
+              setState(() => _resourcePlans
+                ..clear()
+                ..addAll(plans));
+            },
+          ),
+          const SizedBox(height: 24),
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
@@ -1135,6 +1150,19 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     }
   }
 
+  Future<void> _saveResourcePlans(
+    ChangeOrderController controller,
+    List<Map<String, dynamic>> savedDetails,
+  ) async {
+    for (final detail in savedDetails) {
+      final key = detail['service_name'] as String? ?? '';
+      final plans = _resourcePlans[key];
+      if (plans != null && plans.isNotEmpty) {
+        await controller.saveResourcePlans(detail['id'], plans);
+      }
+    }
+  }
+
   Widget _coTypeButton(String label, String value) {
     final selected = _coType == value;
     return Expanded(
@@ -1143,6 +1171,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
           setState(() {
             _coType = value;
             _lines.clear();
+            _resourcePlans.clear();
             _disruptionServices.clear();
           });
           if (value == 'disruption') _loadTasks();

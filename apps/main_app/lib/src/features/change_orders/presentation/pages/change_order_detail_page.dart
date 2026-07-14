@@ -540,6 +540,8 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
                     )
                   else
                     _detailsTable(details),
+                  const SizedBox(height: 24),
+                  _buildResourcePlans(details, isMobile),
                 ],
               ),
             ),
@@ -1164,6 +1166,138 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
           fontWeight: FontWeight.w800,
           color: color,
         ),
+      ),
+    );
+  }
+
+  Widget _buildResourcePlans(
+      List<Map<String, dynamic>> details, bool isMobile) {
+    final hasPlans = details.any((d) {
+      final plans = d['resource_plans'] as List<dynamic>? ?? [];
+      return plans.isNotEmpty;
+    });
+    if (!hasPlans) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.indigo.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.indigo.withOpacity(0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.trending_up, size: 18, color: Colors.indigo.shade600),
+              const SizedBox(width: 8),
+              Text(
+                'Baseline Impact (Resource Plans)',
+                style: GoogleFonts.manrope(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.indigo.shade800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ...details
+              .where((d) =>
+                  (d['resource_plans'] as List<dynamic>?)?.isNotEmpty ?? false)
+              .map((d) {
+            final plans = d['resource_plans'] as List<dynamic>;
+            return Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.indigo.withOpacity(0.08)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    d['service_name'] as String? ?? '',
+                    style: GoogleFonts.manrope(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ...plans.map((p) {
+                    final plan = p as Map<String, dynamic>;
+                    final factor =
+                        (plan['proportional_factor'] as num?)?.toDouble();
+                    if (factor != null) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: Colors.indigo.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                plan['resource_type'] as String? ?? '',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.indigo,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${factor}x proportional',
+                              style: GoogleFonts.manrope(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: Colors.indigo.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              plan['resource_type'] as String? ?? '',
+                              style: GoogleFonts.manrope(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.indigo,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${plan['resource_name'] ?? 'Resource'} x${plan['quantity'] ?? 1}',
+                            style: GoogleFonts.manrope(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            );
+          }),
+        ],
       ),
     );
   }
