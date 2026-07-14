@@ -10,9 +10,9 @@ import '../providers/change_order_providers.dart';
 import '../providers/change_order_controller.dart';
 import '../widgets/standby_form_section.dart';
 import '../widgets/baseline_impact_section.dart';
-import '../widgets/new_service_estimation_dialog.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
+import '../../../../features/quotes/presentation/widgets/service_estimation_dialog.dart';
 
 class ChangeOrderFormPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -218,18 +218,23 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     );
 
     if (selected != null && mounted) {
-      final line = await NewServiceEstimationDialog.open(
+      final result = await showSafeDialog<Map<String, dynamic>>(
         context: context,
-        ref: ref,
-        projectId: widget.projectId,
-        serviceName: selected['description'] ?? '',
-        unitOfMeasure: selected['unit'] ?? 'und',
-        catalogServiceId: selected['id'] as String?,
+        builder: (ctx) => ServiceEstimationDialog(
+          service: {
+            'id': null,
+            'catalog_service_id': selected['id'] as String?,
+            'name': selected['description'] ?? '',
+            'quantity': 1,
+            'unit': selected['unit'] ?? 'und',
+            'estimationData': null,
+          },
+        ),
       );
-      if (line != null) {
-        final plans = (line['resource_plans'] as List<dynamic>?)
-                ?.cast<Map<String, dynamic>>() ??
-            [];
+
+      if (result != null && result is Map && result['applied'] == true && mounted) {
+        final line = _estimationResultToLine(result, selected);
+        final plans = _estimationResultToResourcePlans(result);
         final key = line['service_name'] as String? ?? '';
         setState(() {
           _lines.add(line);
@@ -241,25 +246,150 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     }
   }
 
+  Map<String, dynamic> _estimationResultToLine(
+    Map<String, dynamic> result,
+    Map<String, dynamic> catalogItem,
+  ) {
+    final qty = (result['total_cy_loose'] as num?)?.toDouble() ??
+        (result['calculated_loose'] as num?)?.toDouble() ?? 1;
+    final workingDays =
+        (result['working_days'] as num?)?.toInt() ?? 0;
+    // Estimate unit price from materials + machinery costs
+    double totalCost = 0;
+    final materials = (result['materials'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
+    for (final m in materials) {
+      totalCost +=
+          ((m['quantity'] as num?)?.toDouble() ?? 0) *
+          ((m['unit_price'] as num?)?.toDouble() ?? 0);
+    }
+    final unitPrice = qty > 0 ? totalCost / qty : 0;
+
+    return {
+      'service_name': catalogItem['description'] ?? '',
+      'unit_of_measure': catalogItem['unit'] ?? 'und',
+      'catalog_service_id': catalogItem['id'] as String?,
+      'line_type': 'new_service',
+      'quantity_change': qty,
+      'unit_price': unitPrice,
+      'estimation_metadata': {
+        'working_days': workingDays,
+        'end_date': result['end_date']?.toString(),
+        'start_date': result['start_date']?.toString(),
+        'total_cy_loose': (result['total_cy_loose'] as num?)?.toDouble(),
+        'calculated_loose': (result['calculated_loose'] as num?)?.toDouble(),
+        'swell_factor': (result['swell_factor'] as num?)?.toDouble(),
+      },
+    };
+  }
+
+  List<Map<String, dynamic>> _estimationResultToResourcePlans(
+    Map<String, dynamic> result,
+  ) {
+    final plans = <Map<String, dynamic>>[];
+    final resources = (result['resources'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
+    final materials = (result['materials'] as List<dynamic>?)
+            ?.cast<Map<String, dynamic>>() ??
+        [];
+
+    // Build primary→name map for parent references
+    final primaryNames = <String, String>{};
+    for (final r in resources) {
+      if (r['is_primary_mover'] == true) {
+        primaryNames[r['id'] as String] = r['machine_name'] as String? ?? '';
+      }
+    }
+
+    for (final r in resources) {
+      final isPrimary = r['is_primary_mover'] == true;
+      final localId = r['id'] as String;
+      final parentId = r['parent_resource_id'] as String?;
+
+      plans.add({
+        'resource_type': 'machinery',
+        'resource_name': r['machine_name'] as String? ?? 'Machinery',
+        'quantity': (r['quantity'] as num?)?.toDouble() ?? 1,
+        'is_principal': isPrimary,
+        'parent_resource_name':
+            parentId != null ? (primaryNames[parentId] ?? '') : null,
+        'catalog_id': r['machine_id'] as String?,
+        'trips_per_day': (r['trips_per_day'] as num?)?.toDouble(),
+        'capacity_per_trip': (r['capacity_per_trip'] as num?)?.toDouble(),
+        'performance_per_day':
+            (r['performance_per_day'] as num?)?.toDouble(),
+        'calculation_metadata': {
+          'machinery_type': r['machinery_type'],
+        },
+      });
+
+      // Operator labor for this machine
+      final operatorRoleId = r['operator_role_id'];
+      if (operatorRoleId != null) {
+        plans.add({
+          'resource_type': 'labor',
+          'resource_name':
+              'Operator - ${r['machine_name'] ?? 'Machinery'}',
+          'quantity': (r['quantity'] as num?)?.toDouble() ?? 1,
+          'hours_per_day': 8,
+          'catalog_id': operatorRoleId as String?,
+          'calculation_metadata': {
+            'source_resource_id': localId,
+            'is_operator': true,
+          },
+        });
+      }
+    }
+
+    for (final m in materials) {
+      plans.add({
+        'resource_type': 'material',
+        'resource_name':
+            m['material_name'] as String? ?? 'Material',
+        'quantity': (m['quantity'] as num?)?.toDouble() ?? 0,
+        'unit': m['unit'] as String? ?? 'und',
+        'unit_cost': (m['unit_price'] as num?)?.toDouble() ?? 0,
+        'catalog_id': m['material_id'] as String?,
+        'calculation_metadata': {
+          'layer_type': m['layer_type'],
+          'notes': m['notes'],
+        },
+      });
+    }
+
+    return plans;
+  }
+
   Future<void> _editLine(Map<String, dynamic> line) async {
     final lineType = line['line_type'] as String? ?? '';
     if (lineType == 'new_service') {
-      final result = await NewServiceEstimationDialog.open(
+      final result = await showSafeDialog<Map<String, dynamic>>(
         context: context,
-        ref: ref,
-        projectId: widget.projectId,
-        serviceName: line['service_name'] as String? ?? '',
-        unitOfMeasure: line['unit_of_measure'] as String? ?? 'und',
-        catalogServiceId: line['catalog_service_id'] as String?,
+        builder: (ctx) => ServiceEstimationDialog(
+          service: {
+            'id': null,
+            'catalog_service_id': line['catalog_service_id'] as String?,
+            'name': line['service_name'] as String? ?? '',
+            'quantity': (line['quantity_change'] as num?)?.toDouble() ?? 1,
+            'unit': line['unit_of_measure'] as String? ?? 'und',
+            'estimationData': line['estimation_metadata'],
+          },
+        ),
       );
-      if (result != null && mounted) {
-        final key = result['service_name'] as String? ?? '';
-        final plans = (result['resource_plans'] as List<dynamic>?)
-                ?.cast<Map<String, dynamic>>() ??
-            [];
+
+      if (result != null && result is Map && result['applied'] == true && mounted) {
+        final updatedLine = _estimationResultToLine(result, {
+          'description': line['service_name'],
+          'unit': line['unit_of_measure'],
+          'id': line['catalog_service_id'],
+        });
+        final plans = _estimationResultToResourcePlans(result);
+        final key = updatedLine['service_name'] as String? ?? '';
         setState(() {
           final idx = _lines.indexOf(line);
-          if (idx >= 0) _lines[idx] = result;
+          if (idx >= 0) _lines[idx] = updatedLine;
           if (plans.isNotEmpty) {
             _resourcePlans[key] = plans;
           } else {
