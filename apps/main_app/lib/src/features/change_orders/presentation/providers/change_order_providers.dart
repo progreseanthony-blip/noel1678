@@ -22,3 +22,29 @@ Future<List<Map<String, dynamic>>> quoteServiceList(QuoteServiceListRef ref, Str
 Future<List<Map<String, dynamic>>> servicesCatalog(ServicesCatalogRef ref) {
   return ref.watch(billingServiceProvider).getServicesCatalog();
 }
+
+@riverpod
+Future<List<Map<String, dynamic>>> disruptionReasonList(DisruptionReasonListRef ref) {
+  return ref.watch(billingServiceProvider).getDisruptionReasons();
+}
+
+@riverpod
+Future<List<Map<String, dynamic>>> projectMachineryForStandby(
+    ProjectMachineryForStandbyRef ref, String projectId, [List<String>? quoteServiceIds]) {
+  return ref.watch(billingServiceProvider)
+      .getProjectMachineryForStandby(projectId, quoteServiceIds: quoteServiceIds);
+}
+
+@riverpod
+Future<List<Map<String, dynamic>>> projectLaborForStandby(
+    ProjectLaborForStandbyRef ref, String projectId, [List<String>? quoteServiceIds]) {
+  return ref.watch(billingServiceProvider)
+      .getProjectLaborForStandby(projectId, quoteServiceIds: quoteServiceIds);
+}
+
+@riverpod
+Future<List<Map<String, dynamic>>> projectMaterialsForStandby(
+    ProjectMaterialsForStandbyRef ref, String projectId, [List<String>? quoteServiceIds]) {
+  return ref.watch(billingServiceProvider)
+      .getProjectMaterialsForStandby(projectId, quoteServiceIds: quoteServiceIds);
+}

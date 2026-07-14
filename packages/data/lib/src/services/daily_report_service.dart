@@ -165,6 +165,7 @@ class DailyReportService {
     'check_in_time', 'check_out_time', 'regular_hours', 'overtime_hours',
     'break_minutes', 'total_net_hours',
     'is_unplanned', 'deviation_reason_id', 'notes', 'created_at',
+    'is_standby', 'standby_hours', 'change_order_detail_id',
   ];
 
   Future<void> saveLaborLogs(String reportId, List<Map<String, dynamic>> logs) async {
@@ -196,14 +197,16 @@ class DailyReportService {
     'is_unplanned', 'deviation_reason_id', 'notes', 'created_at',
     'production_value', 'production_unit', 'start_shift_photos', 'end_shift_photos',
     'rate_override',
+    'is_standby', 'standby_hours', 'change_order_detail_id',
   ];
 
   Future<void> saveMachineryLogs(String reportId, List<Map<String, dynamic>> logs) async {
-    if (logs.any((l) => l['operator_id'] == null || l['machinery_id'] == null)) {
-      throw Exception('All machinery logs must have operator_id and machinery_id');
+    final nonStandby = logs.where((l) => l['is_standby'] != true);
+    if (nonStandby.any((l) => l['operator_id'] == null || l['machinery_id'] == null)) {
+      throw Exception('All non-standby machinery logs must have operator_id and machinery_id');
     }
-    if (logs.isEmpty) return;
     await _supabase.from('report_machinery_logs').delete().eq('daily_report_id', reportId);
+    if (logs.isEmpty) return;
     await _supabase.from('report_machinery_logs').insert(
       logs.map((log) {
         final clean = {for (final k in _machineryColumns) if (log.containsKey(k)) k: log[k]};
@@ -228,6 +231,7 @@ class DailyReportService {
   static const _materialColumns = [
     'id', 'daily_report_id', 'material_id', 'project_material_id',
     'quantity_used', 'area_installed', 'unit', 'notes', 'created_at',
+    'is_waste', 'waste_reason', 'change_order_detail_id', 'replacement_cost',
   ];
 
   Future<void> saveMaterialUsage(String reportId, List<Map<String, dynamic>> usage) async {
@@ -321,6 +325,41 @@ class DailyReportService {
     var query = _supabase.from('deviation_reasons').select();
     query = category != null ? query.eq('category', category) : query;
     final response = await query.order('category');
+      return List<Map<String, dynamic>>.from(response ?? []);
+  }
+
+  Future<List<Map<String, dynamic>>> getDisruptionResourceConflicts(List<String> laborIds) async {
+    if (laborIds.isEmpty) return [];
+    final labor = await _supabase
+        .from('project_labor')
+        .select('quote_service_id')
+        .in_('id', laborIds);
+    final qsIds = (labor as List)
+        .map((l) => l['quote_service_id'] as String?)
+        .where((id) => id != null)
+        .cast<String>()
+        .toList();
+    if (qsIds.isEmpty) return [];
+    final tasks = await _supabase
+        .from('project_tasks')
+        .select('id')
+        .in_('quote_service_id', qsIds);
+    final taskIds = (tasks as List)
+        .map((t) => t['id'] as String?)
+        .where((id) => id != null)
+        .cast<String>()
+        .toList();
+    if (taskIds.isEmpty) return [];
+    final response = await _supabase
+        .from('change_order_disruption_services')
+        .select('''
+          affectation_type,
+          project_tasks!inner(id, name),
+          change_orders!inner(id, co_number, title, status)
+        ''')
+        .in_('project_task_id', taskIds)
+        .eq('affectation_type', 'total_stop')
+        .eq('change_orders.status', 'approved');
     return List<Map<String, dynamic>>.from(response ?? []);
   }
 }

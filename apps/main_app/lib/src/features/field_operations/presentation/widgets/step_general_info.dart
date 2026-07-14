@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class StepGeneralInfo extends StatelessWidget {
   final Map<String, dynamic> reportData;
@@ -198,6 +199,24 @@ class StepGeneralInfo extends StatelessWidget {
                   style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400)),
             ),
         ],
+        const SizedBox(height: 20),
+
+        Row(children: [
+          SizedBox(
+            width: 20, height: 20,
+            child: Checkbox(
+              value: reportData['disruption_active'] == true,
+              onChanged: (v) => _update('disruption_active', v),
+              activeColor: Colors.orange,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Icon(Icons.warning_amber_rounded, size: 18, color: Colors.orange.shade700),
+          const SizedBox(width: 6),
+          Text('Disruption / Standby today',
+              style: GoogleFonts.manrope(fontSize: 14,
+                  fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+        ]),
         const SizedBox(height: 20),
 
         _sectionLabel('Weather Condition'),

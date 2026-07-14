@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_data/noel_data.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
@@ -17,10 +18,15 @@ class ChangeOrderDetailPage extends ConsumerStatefulWidget {
   final String projectId;
   final String coId;
 
-  const ChangeOrderDetailPage({super.key, required this.projectId, required this.coId});
+  const ChangeOrderDetailPage({
+    super.key,
+    required this.projectId,
+    required this.coId,
+  });
 
   @override
-  ConsumerState<ChangeOrderDetailPage> createState() => _ChangeOrderDetailPageState();
+  ConsumerState<ChangeOrderDetailPage> createState() =>
+      _ChangeOrderDetailPageState();
 }
 
 class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
@@ -28,8 +34,14 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
   String? _rejectionReason;
   Map<String, dynamic>? _cachedCo;
   List<Map<String, dynamic>> _cachedDetails = [];
+  List<Map<String, dynamic>> _cachedDisruptions = [];
+  List<Map<String, dynamic>> _cachedDisruptionServices = [];
+  final Map<String, String?> _reasonMap = {};
 
-  Future<void> _printPdf(Map<String, dynamic> co, List<Map<String, dynamic>> details) async {
+  Future<void> _printPdf(
+    Map<String, dynamic> co,
+    List<Map<String, dynamic>> details,
+  ) async {
     final project = await Supabase.instance.client
         .from('projects')
         .select('title, client_name')
@@ -42,6 +54,7 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
       projectTitle: project['title'] ?? '',
       clientName: project['client_name'] ?? '',
       projectAddress: '',
+      disruptionRecords: _cachedDisruptions,
     );
 
     await Printing.layoutPdf(
@@ -50,18 +63,45 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
     );
   }
 
+  Future<void> _loadDisruptions() async {
+    final svc = ref.read(billingServiceProvider);
+    final records = await svc.getDisruptionRecords(widget.coId);
+    final services = await svc.getDisruptionServices(widget.coId);
+    if (mounted) {
+      final reasons = await ref.read(disruptionReasonListProvider.future);
+      _reasonMap
+        ..clear()
+        ..addAll({for (final r in reasons) r['code'] as String: r['description'] as String?});
+      setState(() {
+        _cachedDisruptions = records;
+        _cachedDisruptionServices = services;
+      });
+    }
+  }
+
   Future<void> _approve() async {
     try {
-      await ref.read(changeOrderControllerProvider.notifier).approveChangeOrder(widget.coId);
+      await ref
+          .read(changeOrderControllerProvider.notifier)
+          .approveChangeOrder(widget.coId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Change Order approved', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.primaryGreen),
+          SnackBar(
+            content: Text(
+              'Change Order approved',
+              style: GoogleFonts.manrope(color: Colors.white),
+            ),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed),
+          SnackBar(
+            content: Text('Error: $e', style: GoogleFonts.manrope()),
+            backgroundColor: AppTheme.errorRed,
+          ),
         );
       }
     }
@@ -73,18 +113,28 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
       barrierColor: Colors.black.withOpacity(0.2),
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Reject Change Order', style: GoogleFonts.manrope(fontWeight: FontWeight.w800)),
+        title: Text(
+          'Reject Change Order',
+          style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
+        ),
         content: TextField(
           decoration: const InputDecoration(labelText: 'Rejection Reason'),
           onChanged: (v) => _rejectionReason = v,
           style: GoogleFonts.manrope(),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
           ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(_rejectionReason ?? 'No reason provided'),
+            onPressed: () =>
+                Navigator.of(ctx).pop(_rejectionReason ?? 'No reason provided'),
             style: ElevatedButton.styleFrom(backgroundColor: AppTheme.errorRed),
-            child: Text('Reject', style: GoogleFonts.manrope(color: Colors.white)),
+            child: Text(
+              'Reject',
+              style: GoogleFonts.manrope(color: Colors.white),
+            ),
           ),
         ],
       ),
@@ -92,16 +142,27 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
 
     if (reason != null && mounted) {
       try {
-        await ref.read(changeOrderControllerProvider.notifier).rejectChangeOrder(widget.coId, reason);
+        await ref
+            .read(changeOrderControllerProvider.notifier)
+            .rejectChangeOrder(widget.coId, reason);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Change Order rejected', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.errorRed),
+            SnackBar(
+              content: Text(
+                'Change Order rejected',
+                style: GoogleFonts.manrope(color: Colors.white),
+              ),
+              backgroundColor: AppTheme.errorRed,
+            ),
           );
         }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed),
+            SnackBar(
+              content: Text('Error: $e', style: GoogleFonts.manrope()),
+              backgroundColor: AppTheme.errorRed,
+            ),
           );
         }
       }
@@ -120,30 +181,58 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
-      drawer: isMobile ? Sidebar(userName: userName, userEmail: userEmail, currentPath: '/projects/${widget.projectId}/change-orders', onLogout: () async {
-        await Supabase.instance.client.auth.signOut();
-        if (context.mounted) context.go('/signin');
-      }) : null,
+      drawer: isMobile
+          ? Sidebar(
+              userName: userName,
+              userEmail: userEmail,
+              currentPath: '/projects/${widget.projectId}/change-orders',
+              onLogout: () async {
+                await Supabase.instance.client.auth.signOut();
+                if (context.mounted) context.go('/signin');
+              },
+            )
+          : null,
       body: Row(
         children: [
           if (!isMobile)
-            Sidebar(userName: userName, userEmail: userEmail, currentPath: '/projects/${widget.projectId}/change-orders', onLogout: () async {
-              await Supabase.instance.client.auth.signOut();
-              if (context.mounted) context.go('/signin');
-            }),
+            Sidebar(
+              userName: userName,
+              userEmail: userEmail,
+              currentPath: '/projects/${widget.projectId}/change-orders',
+              onLogout: () async {
+                await Supabase.instance.client.auth.signOut();
+                if (context.mounted) context.go('/signin');
+              },
+            ),
           Expanded(
             child: Column(
               children: [
                 _buildTopHeader(userName, isMobile),
                 Expanded(
                   child: coAsync.when(
-                    loading: () => const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen)),
-                    error: (e, _) => Center(child: Text('Error: $e', style: const TextStyle(color: Colors.red))),
+                    loading: () => const Center(
+                      child: CircularProgressIndicator(
+                        color: AppTheme.primaryGreen,
+                      ),
+                    ),
+                    error: (e, _) => Center(
+                      child: Text(
+                        'Error: $e',
+                        style: const TextStyle(color: Colors.red),
+                      ),
+                    ),
                     data: (co) {
-          _cachedCo = co;
-          _cachedDetails = (co['details'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
-          return _buildContent(co, isMobile);
-        },
+                      _cachedCo = co;
+                      _cachedDetails =
+                          (co['details'] as List<dynamic>?)
+                              ?.cast<Map<String, dynamic>>() ??
+                          [];
+                      if (co['co_type'] == 'disruption' &&
+                          _cachedDisruptions.isEmpty) {
+                        _loadDisruptions();
+                      }
+                      return _buildContent(co, isMobile);
+                    },
                   ),
                 ),
               ],
@@ -158,29 +247,56 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
     return Container(
       height: 72,
       padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 32),
-      decoration: BoxDecoration(color: Colors.white, border: Border(bottom: BorderSide(color: AppTheme.slate200))),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(bottom: BorderSide(color: AppTheme.slate200)),
+      ),
       child: Row(
         children: [
           if (isMobile)
-            Builder(builder: (ctx) => IconButton(
-              icon: const Icon(Icons.menu, color: AppTheme.slate700),
-              onPressed: () => Scaffold.of(ctx).openDrawer(),
-            )),
+            Builder(
+              builder: (ctx) => IconButton(
+                icon: const Icon(Icons.menu, color: AppTheme.slate700),
+                onPressed: () => Scaffold.of(ctx).openDrawer(),
+              ),
+            ),
           MouseRegion(
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
-              onTap: () => context.go('/projects/${widget.projectId}/change-orders'),
-              child: const Icon(Icons.arrow_back, size: 18, color: AppTheme.slate500),
+              onTap: () =>
+                  context.go('/projects/${widget.projectId}/change-orders'),
+              child: const Icon(
+                Icons.arrow_back,
+                size: 18,
+                color: AppTheme.slate500,
+              ),
             ),
           ),
           if (!isMobile) ...[
             const SizedBox(width: 8),
-            Text('Change Orders', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500)),
+            Text(
+              'Change Orders',
+              style: GoogleFonts.manrope(
+                fontSize: 13,
+                color: AppTheme.slate500,
+              ),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Icon(Icons.chevron_right, size: 16, color: AppTheme.slate400),
+              child: Icon(
+                Icons.chevron_right,
+                size: 16,
+                color: AppTheme.slate400,
+              ),
             ),
-            Text('Detail', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+            Text(
+              'Detail',
+              style: GoogleFonts.manrope(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.slate900,
+              ),
+            ),
           ],
           const Spacer(),
           OutlinedButton.icon(
@@ -188,12 +304,17 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
               if (_cachedCo != null) _printPdf(_cachedCo!, _cachedDetails);
             },
             icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
-            label: Text('PDF', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+            label: Text(
+              'PDF',
+              style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
+            ),
             style: OutlinedButton.styleFrom(
               foregroundColor: AppTheme.primaryGreen,
               side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           ),
         ],
@@ -202,8 +323,10 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
   }
 
   Widget _buildContent(Map<String, dynamic> co, bool isMobile) {
-    final details = (co['details'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
+    final details =
+        (co['details'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
     final status = co['status']?.toString() ?? 'draft';
+    final coType = co['co_type']?.toString() ?? 'scope_change';
     final adj = (co['adjustment_amount'] as num?)?.toDouble() ?? 0;
     final orig = (co['original_contract_amount'] as num?)?.toDouble() ?? 0;
     final newCt = (co['new_contract_amount'] as num?)?.toDouble() ?? 0;
@@ -224,16 +347,41 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(children: [
-                  Text(co['co_number'] ?? '', style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
-                  const SizedBox(width: 12),
-                  _statusBadge(status),
-                ]),
+                Row(
+                  children: [
+                    Text(
+                      co['co_number'] ?? '',
+                      style: GoogleFonts.manrope(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.slate900,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    _coTypeBadge(coType),
+                    const SizedBox(width: 8),
+                    _statusBadge(status),
+                  ],
+                ),
                 const SizedBox(height: 12),
-                Text(co['title'] ?? '', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+                Text(
+                  co['title'] ?? '',
+                  style: GoogleFonts.manrope(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.slate700,
+                  ),
+                ),
                 const SizedBox(height: 8),
-                if (co['description'] != null && (co['description'] as String).isNotEmpty)
-                  Text(co['description'], style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500)),
+                if (co['description'] != null &&
+                    (co['description'] as String).isNotEmpty)
+                  Text(
+                    co['description'],
+                    style: GoogleFonts.manrope(
+                      fontSize: 12,
+                      color: AppTheme.slate500,
+                    ),
+                  ),
                 const SizedBox(height: 20),
                 Container(
                   padding: const EdgeInsets.all(16),
@@ -243,22 +391,120 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
                     border: Border.all(color: Color(0xFFE2E8F0)),
                   ),
                   child: isMobile
-                      ? Column(children: [
-                          _infoRow('Original Contract', '\$${_fmt.format(orig)}'),
-                          _infoRow('Adjustment', '\$${_fmt.format(adj)}', valueColor: adj >= 0 ? AppTheme.primaryGreen : AppTheme.errorRed),
-                          const Divider(height: 16),
-                          _infoRow('New Contract', '\$${_fmt.format(newCt)}', bold: true),
-                          _infoRow('Schedule Change', sched >= 0 ? '+$sched days' : '$sched days'),
-                        ])
-                      : Row(children: [
-                          Expanded(child: _infoRow('Original Contract', '\$${_fmt.format(orig)}')),
-                                          const SizedBox(width: 24),
-                          Expanded(child: _infoRow('Adjustment', '\$${_fmt.format(adj)}', valueColor: adj >= 0 ? AppTheme.primaryGreen : AppTheme.errorRed)),
-                          const SizedBox(width: 24),
-                          Expanded(child: _infoRow('New Contract', '\$${_fmt.format(newCt)}', bold: true)),
-                          const SizedBox(width: 24),
-                          Expanded(child: _infoRow('Schedule', sched >= 0 ? '+$sched days' : '$sched days')),
-                        ]),
+                      ? Column(
+                          children: [
+                            if (coType == 'disruption') ...[
+                              _infoRow('Type', 'Disruption / Standby'),
+                              if (_cachedDisruptions.isNotEmpty) ...[
+                                _infoRow(
+                                  'Reason',
+                                  _reasonMap[
+                                        _cachedDisruptions.first['disruption_type']
+                                            as String?] ??
+                                      '',
+                                ),
+                                _infoRow(
+                                  'Start',
+                                  _cachedDisruptions.first['start_date']
+                                          ?.toString() ??
+                                      '',
+                                ),
+                                _infoRow(
+                                  'End',
+                                  _cachedDisruptions.first['end_date']
+                                          ?.toString() ??
+                                      '',
+                                ),
+                              ],
+                              const Divider(height: 16),
+                            ],
+                            _infoRow(
+                              'Original Contract',
+                              '\$${_fmt.format(orig)}',
+                            ),
+                            _infoRow(
+                              'Adjustment',
+                              '\$${_fmt.format(adj)}',
+                              valueColor: adj >= 0
+                                  ? AppTheme.primaryGreen
+                                  : AppTheme.errorRed,
+                            ),
+                            const Divider(height: 16),
+                            _infoRow(
+                              'New Contract',
+                              '\$${_fmt.format(newCt)}',
+                              bold: true,
+                            ),
+                            if (coType == 'scope_change')
+                              _infoRow(
+                                'Schedule Change',
+                                sched >= 0 ? '+$sched days' : '$sched days',
+                              ),
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            if (coType == 'disruption') ...[
+                              Expanded(
+                                child: _infoRow('Type', 'Disruption / Standby'),
+                              ),
+                              const SizedBox(width: 24),
+                              if (_cachedDisruptions.isNotEmpty) ...[
+                                Expanded(
+                                  child: _infoRow(
+                                    'Reason',
+                                    _reasonMap[
+                                          _cachedDisruptions
+                                              .first['disruption_type']
+                                              as String?] ??
+                                        '',
+                                  ),
+                                ),
+                                const SizedBox(width: 24),
+                                Expanded(
+                                  child: _infoRow(
+                                    'Period',
+                                    '${_cachedDisruptions.first['start_date'] ?? ''} to ${_cachedDisruptions.first['end_date'] ?? ''}',
+                                  ),
+                                ),
+                                const SizedBox(width: 24),
+                              ],
+                            ],
+                            Expanded(
+                              child: _infoRow(
+                                'Original Contract',
+                                '\$${_fmt.format(orig)}',
+                              ),
+                            ),
+                            const SizedBox(width: 24),
+                            Expanded(
+                              child: _infoRow(
+                                'Adjustment',
+                                '\$${_fmt.format(adj)}',
+                                valueColor: adj >= 0
+                                    ? AppTheme.primaryGreen
+                                    : AppTheme.errorRed,
+                              ),
+                            ),
+                            const SizedBox(width: 24),
+                            Expanded(
+                              child: _infoRow(
+                                'New Contract',
+                                '\$${_fmt.format(newCt)}',
+                                bold: true,
+                              ),
+                            ),
+                            if (coType == 'scope_change') ...[
+                              const SizedBox(width: 24),
+                              Expanded(
+                                child: _infoRow(
+                                  'Schedule',
+                                  sched >= 0 ? '+$sched days' : '$sched days',
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                 ),
               ],
             ),
@@ -275,44 +521,275 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Details', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+                  Text(
+                    'Details',
+                    style: GoogleFonts.manrope(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.slate900,
+                    ),
+                  ),
                   const SizedBox(height: 16),
                   if (isMobile)
-                    Column(children: details.asMap().entries.map((e) => _detailCard(e.key, e.value)).toList())
+                    Column(
+                      children: details
+                          .asMap()
+                          .entries
+                          .map((e) => _detailCard(e.key, e.value))
+                          .toList(),
+                    )
                   else
                     _detailsTable(details),
                 ],
               ),
             ),
+          if (coType == 'disruption' && _cachedDisruptionServices.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Container(
+              padding: EdgeInsets.all(isMobile ? 16 : 24),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.orange.withOpacity(0.2)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.build_circle, size: 20, color: Colors.orange.shade700),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Affected Services / Tasks',
+                        style: GoogleFonts.manrope(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.orange.shade900,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  ..._cachedDisruptionServices.map((s) {
+                    final task = s['project_tasks'] as Map<String, dynamic>?;
+                    return Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.withOpacity(0.15)),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  task?['name'] as String? ?? 'Unknown',
+                                  style: GoogleFonts.manrope(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    (s['affectation_type'] as String? ?? '')
+                                        .replaceAll('_', ' '),
+                                    style: GoogleFonts.manrope(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.orange.shade700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          if (s['notes'] != null && (s['notes'] as String).isNotEmpty)
+                            Flexible(
+                              child: Text(
+                                s['notes'],
+                                style: GoogleFonts.manrope(
+                                  fontSize: 11,
+                                  color: AppTheme.slate500,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
           if (status == 'draft') ...[
             const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  try {
-                    await ref.read(changeOrderControllerProvider.notifier).submitChangeOrder(widget.coId);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Change Order submitted', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.primaryGreen),
-                      );
-                    }
-                  } catch (e) {
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed),
-                      );
-                    }
-                  }
-                },
-                icon: const Icon(Icons.send, color: Colors.white),
-                label: Text('Submit for Approval', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primaryGreen,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => context.go(
+                      '/projects/${widget.projectId}/change-orders/${widget.coId}/edit',
+                    ),
+                    icon: const Icon(Icons.edit_outlined, size: 16),
+                    label: Text(
+                      'Edit',
+                      style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primaryGreen,
+                      side: BorderSide(
+                        color: AppTheme.primaryGreen.withOpacity(0.3),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final confirm = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: Text(
+                            'Delete Change Order',
+                            style: GoogleFonts.manrope(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          content: Text(
+                            'Are you sure? This action cannot be undone.',
+                            style: GoogleFonts.manrope(),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: Text(
+                                'Cancel',
+                                style: GoogleFonts.manrope(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            ElevatedButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.errorRed,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: Text(
+                                'Delete',
+                                style: GoogleFonts.manrope(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirm == true && mounted) {
+                        await ref
+                            .read(changeOrderControllerProvider.notifier)
+                            .deleteChangeOrder(widget.coId);
+                        if (mounted) {
+                          context.go(
+                            '/projects/${widget.projectId}/change-orders',
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      size: 16,
+                      color: AppTheme.errorRed,
+                    ),
+                    label: Text(
+                      'Delete',
+                      style: GoogleFonts.manrope(
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.errorRed,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.errorRed,
+                      side: BorderSide(
+                        color: AppTheme.errorRed.withOpacity(0.3),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      try {
+                        await ref
+                            .read(changeOrderControllerProvider.notifier)
+                            .submitChangeOrder(widget.coId);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Change Order submitted',
+                                style: GoogleFonts.manrope(
+                                  color: Colors.white,
+                                ),
+                              ),
+                              backgroundColor: AppTheme.primaryGreen,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Error: $e',
+                                style: GoogleFonts.manrope(),
+                              ),
+                              backgroundColor: AppTheme.errorRed,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.send, color: Colors.white),
+                    label: Text(
+                      'Submit for Approval',
+                      style: GoogleFonts.manrope(
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryGreen,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
           if (status == 'submitted') ...[
@@ -322,12 +799,23 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: _approve,
-                    icon: const Icon(Icons.check_circle_outline, color: Colors.white),
-                    label: Text('Approve', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
+                    icon: const Icon(
+                      Icons.check_circle_outline,
+                      color: Colors.white,
+                    ),
+                    label: Text(
+                      'Approve',
+                      style: GoogleFonts.manrope(
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.primaryGreen,
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ),
@@ -335,12 +823,23 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: _reject,
-                    icon: const Icon(Icons.cancel_outlined, color: Colors.white),
-                    label: Text('Reject', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
+                    icon: const Icon(
+                      Icons.cancel_outlined,
+                      color: Colors.white,
+                    ),
+                    label: Text(
+                      'Reject',
+                      style: GoogleFonts.manrope(
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppTheme.errorRed,
                       padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                     ),
                   ),
                 ),
@@ -360,9 +859,22 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Rejection Reason', style: GoogleFonts.manrope(fontWeight: FontWeight.w800, fontSize: 12, color: AppTheme.errorRed)),
+                  Text(
+                    'Rejection Reason',
+                    style: GoogleFonts.manrope(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                      color: AppTheme.errorRed,
+                    ),
+                  ),
                   const SizedBox(height: 4),
-                  Text(co['rejection_reason'], style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate700)),
+                  Text(
+                    co['rejection_reason'],
+                    style: GoogleFonts.manrope(
+                      fontSize: 12,
+                      color: AppTheme.slate700,
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -372,52 +884,192 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
     );
   }
 
-  Widget _infoRow(String label, String value, {bool bold = false, Color? valueColor}) {
+  Widget _infoRow(
+    String label,
+    String value, {
+    bool bold = false,
+    Color? valueColor,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: GoogleFonts.manrope(fontSize: 12, fontWeight: bold ? FontWeight.w700 : FontWeight.w500, color: AppTheme.slate600)),
-          Text(value, style: GoogleFonts.manrope(fontSize: 12, fontWeight: bold ? FontWeight.w800 : FontWeight.w600, color: valueColor ?? AppTheme.slate900)),
+          Text(
+            label,
+            style: GoogleFonts.manrope(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: AppTheme.slate500,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: GoogleFonts.manrope(
+              fontSize: 13,
+              fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
+              color: valueColor ?? AppTheme.slate900,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _detailsTable(List<Map<String, dynamic>> details) {
+    final hasStandby = details.any((d) {
+      final lt = d['line_type'] as String?;
+      return lt == 'standby_machinery' ||
+          lt == 'standby_labor' ||
+          lt == 'standby_material';
+    });
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: DataTable(
-        columns: const [
-          DataColumn(label: Text('#', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
-          DataColumn(label: Text('Service', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
-          DataColumn(label: Text('Type', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12))),
-          DataColumn(label: Text('Qty', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)), numeric: true),
-          DataColumn(label: Text('Unit Price', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)), numeric: true),
-          DataColumn(label: Text('Total', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)), numeric: true),
+        columns: [
+          const DataColumn(
+            label: Text(
+              '#',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+            ),
+          ),
+          const DataColumn(
+            label: Text(
+              'Service',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+            ),
+          ),
+          const DataColumn(
+            label: Text(
+              'Type',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+            ),
+          ),
+          if (hasStandby)
+            const DataColumn(
+              label: Text(
+                'Hours/Units',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+              ),
+              numeric: true,
+            )
+          else
+            const DataColumn(
+              label: Text(
+                'Qty',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+              ),
+              numeric: true,
+            ),
+          const DataColumn(
+            label: Text(
+              'Rate/Price',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+            ),
+            numeric: true,
+          ),
+          const DataColumn(
+            label: Text(
+              'Total',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12),
+            ),
+            numeric: true,
+          ),
         ],
         rows: details.asMap().entries.map((e) {
           final i = e.key + 1;
           final d = e.value;
+          final lt = d['line_type'] as String?;
           final qty = (d['quantity_change'] as num?)?.toDouble() ?? 0;
           final up = (d['unit_price'] as num?)?.toDouble() ?? 0;
-          return DataRow(cells: [
-            DataCell(Text('$i', style: GoogleFonts.manrope(fontSize: 12))),
-            DataCell(Text(d['service_name'] ?? '', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600))),
-            DataCell(Text(d['line_type']?.toString().replaceAll('_', ' ') ?? '', style: GoogleFonts.manrope(fontSize: 11))),
-            DataCell(Text(qty.toString(), style: GoogleFonts.manrope(fontSize: 12))),
-            DataCell(Text('\$${_fmt.format(up)}', style: GoogleFonts.manrope(fontSize: 12))),
-            DataCell(Text('\$${_fmt.format(qty * up)}', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700))),
-          ]);
+
+          double qtyDisplay;
+          double rate;
+          double total;
+          if (lt == 'standby_machinery' || lt == 'standby_labor') {
+            qtyDisplay = (d['standby_hours'] as num?)?.toDouble() ?? 0;
+            rate = (d['standby_rate'] as num?)?.toDouble() ?? 0;
+            total = qtyDisplay * rate;
+          } else if (lt == 'standby_material') {
+            qtyDisplay = (d['quantity_lost'] as num?)?.toDouble() ?? 0;
+            rate = (d['replacement_unit_cost'] as num?)?.toDouble() ?? 0;
+            total = qtyDisplay * rate;
+          } else {
+            qtyDisplay = qty;
+            rate = up;
+            total = qty * up;
+          }
+
+          return DataRow(
+            cells: [
+              DataCell(Text('$i', style: GoogleFonts.manrope(fontSize: 12))),
+              DataCell(
+                Text(
+                  d['service_name'] ?? '',
+                  style: GoogleFonts.manrope(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              DataCell(
+                Text(
+                  lt?.replaceAll('_', ' ') ?? '',
+                  style: GoogleFonts.manrope(fontSize: 11),
+                ),
+              ),
+              DataCell(
+                Text(
+                  qtyDisplay.toString(),
+                  style: GoogleFonts.manrope(fontSize: 12),
+                ),
+              ),
+              DataCell(
+                Text(
+                  '\$${_fmt.format(rate)}',
+                  style: GoogleFonts.manrope(fontSize: 12),
+                ),
+              ),
+              DataCell(
+                Text(
+                  '\$${_fmt.format(total)}',
+                  style: GoogleFonts.manrope(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          );
         }).toList(),
       ),
     );
   }
 
   Widget _detailCard(int i, Map<String, dynamic> d) {
+    final lt = d['line_type'] as String?;
     final qty = (d['quantity_change'] as num?)?.toDouble() ?? 0;
     final up = (d['unit_price'] as num?)?.toDouble() ?? 0;
+
+    double qtyDisplay;
+    double rate;
+    double total;
+    if (lt == 'standby_machinery' || lt == 'standby_labor') {
+      qtyDisplay = (d['standby_hours'] as num?)?.toDouble() ?? 0;
+      rate = (d['standby_rate'] as num?)?.toDouble() ?? 0;
+      total = qtyDisplay * rate;
+    } else if (lt == 'standby_material') {
+      qtyDisplay = (d['quantity_lost'] as num?)?.toDouble() ?? 0;
+      rate = (d['replacement_unit_cost'] as num?)?.toDouble() ?? 0;
+      total = qtyDisplay * rate;
+    } else {
+      qtyDisplay = qty;
+      rate = up;
+      total = qty * up;
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
@@ -429,9 +1081,34 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('${i + 1}. ${d['service_name'] ?? ''}', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
-          Text('${d['line_type']?.toString().replaceAll('_', ' ') ?? ''} | Qty: $qty | \$${_fmt.format(up)} ea. | Total: \$${_fmt.format(qty * up)}',
-              style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500)),
+          Text(
+            '${i + 1}. ${d['service_name'] ?? ''}',
+            style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
+          ),
+          if (lt == 'standby_machinery' || lt == 'standby_labor')
+            Text(
+              '${lt?.replaceAll('_', ' ') ?? ''} | Hours: $qtyDisplay @ \$${_fmt.format(rate)}/hr | Total: \$${_fmt.format(total)}',
+              style: GoogleFonts.manrope(
+                fontSize: 11,
+                color: AppTheme.slate500,
+              ),
+            )
+          else if (lt == 'standby_material')
+            Text(
+              '${lt?.replaceAll('_', ' ') ?? ''} | Lost: $qtyDisplay @ \$${_fmt.format(rate)}/ea | Total: \$${_fmt.format(total)}',
+              style: GoogleFonts.manrope(
+                fontSize: 11,
+                color: AppTheme.slate500,
+              ),
+            )
+          else
+            Text(
+              '${lt?.replaceAll('_', ' ') ?? ''} | Qty: $qtyDisplay | \$${_fmt.format(rate)} ea. | Total: \$${_fmt.format(total)}',
+              style: GoogleFonts.manrope(
+                fontSize: 11,
+                color: AppTheme.slate500,
+              ),
+            ),
         ],
       ),
     );
@@ -454,8 +1131,40 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
     }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(5)),
-      child: Text(status.toUpperCase(), style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: color)),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Text(
+        status.toUpperCase(),
+        style: GoogleFonts.manrope(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  Widget _coTypeBadge(String coType) {
+    final isDisruption = coType == 'disruption';
+    final color = isDisruption
+        ? const Color(0xFF8B5CF6)
+        : AppTheme.primaryGreen;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(5),
+      ),
+      child: Text(
+        isDisruption ? 'STANDBY' : 'SCOPE',
+        style: GoogleFonts.manrope(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: color,
+        ),
+      ),
     );
   }
 }

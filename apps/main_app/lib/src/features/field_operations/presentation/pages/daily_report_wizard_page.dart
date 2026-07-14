@@ -134,6 +134,7 @@ class _DailyReportWizardPageState
         'day_type': _reportData['day_type'] ?? 'working',
         'non_working_reason': _reportData['non_working_reason'],
         'stopped_at': _reportData['stopped_at'],
+        'disruption_active': _reportData['disruption_active'] ?? false,
       });
       await _syncNonWorkingDays();
     } catch (e) {
@@ -610,6 +611,114 @@ class _DailyReportWizardPageState
     final machOk = await _saveMachineryLogs();
     final matOk = await _saveMaterialUsage();
     if (!machOk || !matOk) return;
+
+    if (_reportData['disruption_active'] == true) {
+      final laborIds = _laborLogs
+          .map((l) => l['project_labor_id'] as String?)
+          .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
+          .toList();
+      if (laborIds.isNotEmpty) {
+        final conflicts = await ref
+            .read(dailyReportServiceProvider)
+            .getDisruptionResourceConflicts(laborIds);
+        if (conflicts.isNotEmpty && mounted) {
+          final proceed = await showSafeDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              title: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      color: Colors.orange.shade700, size: 22),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Disruption Service Conflict',
+                    style: GoogleFonts.manrope(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'This report logs hours for services that are marked as '
+                    'TOTAL STOP in an active disruption Change Order:',
+                    style: GoogleFonts.manrope(fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  ...conflicts.map(
+                    (c) => Container(
+                      margin: const EdgeInsets.only(bottom: 6),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.red.withOpacity(0.15),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            c['project_tasks']?['name'] ?? 'Unknown task',
+                            style: GoogleFonts.manrope(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                          Text(
+                            'CO #${c['change_orders']?['co_number'] ?? ''} — '
+                            '${c['change_orders']?['title'] ?? ''}',
+                            style: GoogleFonts.manrope(
+                              fontSize: 11,
+                              color: AppTheme.slate500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Are you sure you want to submit this report?',
+                    style: GoogleFonts.manrope(fontSize: 13),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                  child: Text(
+                    'Review',
+                    style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(ctx).pop(true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange.shade700,
+                  ),
+                  child: Text(
+                    'Submit anyway',
+                    style: GoogleFonts.manrope(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          );
+          if (proceed != true) return;
+        }
+      }
+    }
+
     try {
       await ref.read(dailyReportServiceProvider).submitReport(_reportId!);
       if (!mounted) return;

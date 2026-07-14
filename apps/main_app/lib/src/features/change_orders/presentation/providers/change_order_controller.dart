@@ -55,4 +55,29 @@ class ChangeOrderController extends _$ChangeOrderController {
     await svc.deleteChangeOrder(id);
     ref.invalidate(changeOrderListProvider);
   }
+
+  // ── Disruption / Standby ──
+
+  Future<void> saveDisruptionRecords(
+      String coId, List<Map<String, dynamic>> records) async {
+    final svc = ref.read(billingServiceProvider);
+    await svc.deleteDisruptionRecords(coId);
+    if (records.isEmpty) return;
+    final batch = records.map((r) {
+      r['change_order_id'] = coId;
+      return r;
+    }).toList();
+    for (final r in batch) {
+      await svc.createDisruptionRecord(r);
+    }
+  }
+
+  Future<void> saveDisruptionServices(
+    String coId,
+    List<Map<String, dynamic>> services,
+  ) async {
+    final svc = ref.read(billingServiceProvider);
+    await svc.saveDisruptionServices(coId, services);
+    ref.invalidate(changeOrderDetailProvider(coId));
+  }
 }
