@@ -169,7 +169,7 @@ class PayrollService {
         .select('''
           total_net_hours, worker_id,
           daily_reports!inner(report_date),
-          workers(full_name, role_id, labor_roles(id, description, hourly_rate))
+          workers(full_name, id_number, role_id, labor_roles(id, description, hourly_rate))
         ''')
         .in_('daily_report_id', reportIds);
 
@@ -254,6 +254,170 @@ class PayrollService {
     }
 
     return _calcWeeklyOT(logs, machLogs);
+  }
+
+  // ── Worker sign-off report helpers ──
+
+  Future<Map<String, dynamic>> getWorkerDetailedLogs(String periodId) async {
+    final period = await _supabase
+        .from('payroll_periods')
+        .select('project_id, start_date, end_date')
+        .eq('id', periodId)
+        .single();
+    final projectId = period['project_id'] as String;
+    final startDate = period['start_date'] as String;
+    final endDate = period['end_date'] as String;
+
+    final logs = await _fetchLogs(projectId, startDate, endDate);
+
+    if (logs.isEmpty) {
+      return {
+        'workers': <Map<String, dynamic>>[],
+        'total_regular_hours': 0,
+        'total_overtime_hours': 0,
+        'total_hours': 0,
+        'total_workers': 0,
+      };
+    }
+
+    // Group by worker_id using the same OT logic but returning only hours
+    final result = _calcWeeklyOT(logs, []);
+    final entries = result['entries'] as List<Map<String, dynamic>>;
+
+    // Rebuild entries without pay info, add id_number
+    final workers = <Map<String, dynamic>>[];
+    for (final e in entries) {
+      // Fetch worker id_number from the original logs
+      final wid = e['worker_id'] as String?;
+      String? idNumber;
+      if (wid != null) {
+        for (final log in logs) {
+          if (log['worker_id'] == wid) {
+            final w = log['workers'] as Map<String, dynamic>?;
+            idNumber = w?['id_number'] as String?;
+            if (idNumber != null) break;
+          }
+        }
+      }
+      workers.add({
+        'worker_id': e['worker_id'],
+        'full_name': e['full_name'],
+        'id_number': idNumber ?? '',
+        'role_name': e['role_name'],
+        'regular_hours': e['regular_hours'],
+        'overtime_hours': e['overtime_hours'],
+        'total_hours': (e['regular_hours'] as num) + (e['overtime_hours'] as num),
+      });
+    }
+
+    return {
+      'workers': workers,
+      'total_regular_hours': result['total_regular_hours'],
+      'total_overtime_hours': result['total_overtime_hours'],
+      'total_hours': (result['total_regular_hours'] as num) + (result['total_overtime_hours'] as num),
+      'total_workers': workers.length,
+    };
+  }
+
+  Future<Map<String, dynamic>> getDailyLogsForWorker(String periodId, String workerId) async {
+    final period = await _supabase
+        .from('payroll_periods')
+        .select('project_id, start_date, end_date')
+        .eq('id', periodId)
+        .single();
+    final projectId = period['project_id'] as String;
+    final startDate = period['start_date'] as String;
+    final endDate = period['end_date'] as String;
+
+    // Fetch daily reports in the period
+    final reports = await _supabase
+        .from('daily_reports')
+        .select('id, report_date')
+        .eq('project_id', projectId)
+        .gte('report_date', startDate)
+        .lte('report_date', endDate);
+
+    if (reports.isEmpty) {
+      return {
+        'worker': null,
+        'daily_logs': <Map<String, dynamic>>[],
+        'total_regular_hours': 0,
+        'total_overtime_hours': 0,
+        'total_hours': 0,
+      };
+    }
+
+    final reportIds = (reports as List).map((r) => r['id'] as String).toList();
+    // Build a date lookup by report id
+    final Map<String, String> reportDates = {};
+    for (final r in reports) {
+      reportDates[r['id'] as String] = r['report_date'] as String;
+    }
+
+    final logs = await _supabase
+        .from('report_labor_logs')
+        .select('''
+          daily_report_id, check_in_time, check_out_time,
+          regular_hours, overtime_hours, break_minutes,
+          total_net_hours, notes,
+          daily_reports!inner(report_date),
+          workers!inner(full_name, id_number, labor_roles(id, description, hourly_rate))
+        ''')
+        .in_('daily_report_id', reportIds)
+        .eq('worker_id', workerId)
+        .order('daily_report_id', ascending: true);
+
+    final logList = List<Map<String, dynamic>>.from(logs ?? []);
+    if (logList.isEmpty) {
+      return {
+        'worker': null,
+        'daily_logs': <Map<String, dynamic>>[],
+        'total_regular_hours': 0,
+        'total_overtime_hours': 0,
+        'total_hours': 0,
+      };
+    }
+
+    // Extract worker info from first log
+    final firstLog = logList.first;
+    final w = firstLog['workers'] as Map<String, dynamic>? ?? {};
+    final role = w['labor_roles'] as Map<String, dynamic>? ?? {};
+    final workerInfo = {
+      'full_name': w['full_name'] ?? '',
+      'id_number': w['id_number'] ?? '',
+      'role_name': role['description'] ?? '',
+    };
+
+    // Build daily logs with date from the report
+    final dailyLogs = <Map<String, dynamic>>[];
+    double totalReg = 0, totalOT = 0;
+
+    for (final log in logList) {
+      final reportId = log['daily_report_id'] as String?;
+      final dateStr = reportDates[reportId] ?? log['daily_reports']?['report_date'] as String? ?? '';
+      final reg = (log['regular_hours'] as num?)?.toDouble() ?? 0;
+      final ot = (log['overtime_hours'] as num?)?.toDouble() ?? 0;
+      dailyLogs.add({
+        'date': dateStr,
+        'check_in': log['check_in_time'] as String? ?? '',
+        'check_out': log['check_out_time'] as String? ?? '',
+        'regular_hours': reg,
+        'overtime_hours': ot,
+        'break_minutes': log['break_minutes'] as int? ?? 0,
+        'net_hours': (log['total_net_hours'] as num?)?.toDouble() ?? 0,
+        'notes': log['notes'] as String? ?? '',
+      });
+      totalReg += reg;
+      totalOT += ot;
+    }
+
+    return {
+      'worker': workerInfo,
+      'daily_logs': dailyLogs,
+      'total_regular_hours': totalReg,
+      'total_overtime_hours': totalOT,
+      'total_hours': totalReg + totalOT,
+    };
   }
 
   Future<void> closePeriod(String id) async {

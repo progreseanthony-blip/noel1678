@@ -82,7 +82,7 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
       await ref.read(dailyReportServiceProvider).approveReport(widget.reportId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Report approved'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Report approved'), backgroundColor: AppTheme.primaryGreen),
         );
         context.pop();
       }
@@ -100,17 +100,16 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
     final confirm = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Reject Report', style: GoogleFonts.manrope(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text('Reject Report', style: GoogleFonts.manrope(color: AppTheme.slate900, fontWeight: FontWeight.bold)),
         content: Text(
           reason.isNotEmpty
               ? 'Send report back with this reason:\n\n"$reason"'
               : 'Send report back for revisions without a reason?',
-          style: GoogleFonts.manrope(color: const Color(0xFF94A3B8)),
+          style: GoogleFonts.manrope(color: AppTheme.slate600),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.manrope(color: AppTheme.slate400))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Cancel', style: GoogleFonts.manrope(color: AppTheme.slate500, fontWeight: FontWeight.w600))),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: FilledButton.styleFrom(backgroundColor: AppTheme.errorRed),
@@ -124,7 +123,7 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
       await ref.read(dailyReportServiceProvider).rejectReport(widget.reportId, reason: reason.isNotEmpty ? reason : null);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Report rejected'), backgroundColor: Colors.orange),
+          SnackBar(content: Text('Report rejected'), backgroundColor: AppTheme.errorRed),
         );
         context.pop();
       }
@@ -160,12 +159,12 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
     final isMobile = MediaQuery.of(context).size.width < 768;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: AppTheme.backgroundLight,
       appBar: isMobile
           ? AppBar(
-              backgroundColor: const Color(0xFF1E293B),
-              title: Text('Report Review', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
-              leading: IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => context.pop()),
+              backgroundColor: Colors.white,
+              title: Text('Report Review', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+              leading: IconButton(icon: const Icon(Icons.arrow_back, color: AppTheme.slate700), onPressed: () => context.pop()),
             )
           : null,
       body: Row(
@@ -221,7 +220,7 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
           ),
           const SizedBox(height: 16),
 
-          Text('DAILY REPORT REVIEW', style: GoogleFonts.manrope(fontSize: isMobile ? 22 : 28, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: -0.5)),
+          Text('DAILY REPORT REVIEW', style: GoogleFonts.manrope(fontSize: isMobile ? 22 : 28, fontWeight: FontWeight.w800, color: AppTheme.slate900, letterSpacing: -0.5)),
           const SizedBox(height: 4),
           Text(_projectName, style: GoogleFonts.manrope(fontSize: 16, color: AppTheme.slate400, fontWeight: FontWeight.w500)),
           const SizedBox(height: 20),
@@ -230,7 +229,7 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF334155))),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))]),
             child: Row(children: [
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 _metaRow('Date', _formatDate(r['report_date'])),
@@ -253,8 +252,8 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(10), border: Border.all(color: const Color(0xFF334155))),
-              child: Text(r['general_notes'] as String? ?? '', style: GoogleFonts.manrope(color: const Color(0xFFCBD5E1), fontSize: 13)),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppTheme.slate200), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))]),
+              child: Text(r['general_notes'] as String? ?? '', style: GoogleFonts.manrope(color: AppTheme.slate700, fontSize: 13)),
             ),
             const SizedBox(height: 20),
           ],
@@ -265,7 +264,7 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF334155))),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))]),
               child: Column(children: [
                 ..._laborLogs.map((l) {
                   final bm = l['break_minutes'] as int? ?? 0;
@@ -273,8 +272,8 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(children: [
-                      Expanded(flex: 3, child: Text(l['workers']?['full_name'] ?? 'Worker ${l['worker_id']?.toString().substring(0, 6)}', style: GoogleFonts.manrope(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600))),
-                      Text('${tn.toStringAsFixed(1)}h', style: GoogleFonts.manrope(color: AppTheme.slate200, fontSize: 13)),
+                      Expanded(flex: 3, child: Text(l['workers']?['full_name'] ?? 'Worker ${l['worker_id']?.toString().substring(0, 6)}', style: GoogleFonts.manrope(color: AppTheme.slate900, fontSize: 13, fontWeight: FontWeight.w600))),
+                      Text('${tn.toStringAsFixed(1)}h', style: GoogleFonts.manrope(color: AppTheme.slate700, fontSize: 13)),
                       if (bm > 0) Text(' (-${bm}m)', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 11)),
                       if ((l['regular_hours'] as num?)?.toDouble() != 0 || (l['overtime_hours'] as num?)?.toDouble() != 0) ...[
                         const SizedBox(width: 8),
@@ -296,7 +295,7 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF334155))),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))]),
               child: Column(children: [
                 ..._machineryLogs.map((m) {
                   final mach = m['machinery'] as Map<String, dynamic>?;
@@ -306,7 +305,7 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                       Row(children: [
-                        Expanded(flex: 2, child: Text(mach?['description'] ?? 'Machine', style: GoogleFonts.manrope(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600))),
+                        Expanded(flex: 2, child: Text(mach?['description'] ?? 'Machine', style: GoogleFonts.manrope(color: AppTheme.slate900, fontSize: 13, fontWeight: FontWeight.w600))),
                         Text('${(m['total_hours'] as num?)?.toDouble() ?? 0}h', style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 13)),
                         if (prod > 0) ...[
                           const SizedBox(width: 12),
@@ -332,14 +331,14 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF334155))),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))]),
               child: Column(children: [
                 ..._materialUsage.map((u) {
                   final mat = u['materials'] as Map<String, dynamic>?;
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(children: [
-                      Expanded(flex: 2, child: Text(mat?['description'] ?? 'Material', style: GoogleFonts.manrope(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600))),
+                      Expanded(flex: 2, child: Text(mat?['description'] ?? 'Material', style: GoogleFonts.manrope(color: AppTheme.slate900, fontSize: 13, fontWeight: FontWeight.w600))),
                       Text('${(u['quantity_used'] as num?)?.toDouble() ?? 0} ${mat?['unit'] ?? ''}', style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 13)),
                     ]),
                   );
@@ -376,12 +375,12 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
                 ),
               ),
             ),
-            child: Container(
-              width: 80, height: 80,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: const Color(0xFF334155)),
-                image: DecorationImage(image: NetworkImage(url), fit: BoxFit.cover),
+              child: Container(
+                width: 80, height: 80,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.slate200),
+                  image: DecorationImage(image: NetworkImage(url), fit: BoxFit.cover),
               ),
             ),
           );
@@ -397,9 +396,10 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: const Color(0xFF1E293B),
+          color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFF334155)),
+          border: Border.all(color: AppTheme.slate200),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('DECISION', style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1)),
@@ -409,18 +409,18 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
             decoration: InputDecoration(
               hintText: 'Rejection reason (optional)',
               hintStyle: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 13),
-              filled: true, fillColor: const Color(0xFF0F172A),
+              filled: true, fillColor: AppTheme.slate50,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
               contentPadding: const EdgeInsets.all(14),
             ),
-            style: GoogleFonts.manrope(color: Colors.white, fontSize: 13),
+            style: GoogleFonts.manrope(color: AppTheme.slate900, fontSize: 13),
           ),
           const SizedBox(height: 16),
           Row(children: [
             Expanded(child: OutlinedButton.icon(
               onPressed: _reject, icon: const Icon(Icons.close, size: 18),
               label: Text('REJECT', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 14)),
-              style: OutlinedButton.styleFrom(foregroundColor: Colors.redAccent, side: const BorderSide(color: Colors.redAccent), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+              style: OutlinedButton.styleFrom(foregroundColor: AppTheme.errorRed, side: const BorderSide(color: AppTheme.errorRed), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
             )),
             const SizedBox(width: 12),
             Expanded(child: FilledButton.icon(
@@ -435,13 +435,13 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
     return Container(
       width: double.infinity, padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E293B), borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: status == 'approved' ? Colors.green.withOpacity(0.3) : Colors.orange.withOpacity(0.3)),
+        color: Colors.white, borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: status == 'approved' ? AppTheme.primaryGreen.withOpacity(0.3) : AppTheme.errorRed.withOpacity(0.3)),
       ),
       child: Row(children: [
-        Icon(status == 'approved' ? Icons.check_circle : Icons.cancel, color: status == 'approved' ? Colors.green : Colors.orange, size: 24),
+        Icon(status == 'approved' ? Icons.check_circle : Icons.cancel, color: status == 'approved' ? AppTheme.primaryGreen : AppTheme.errorRed, size: 24),
         const SizedBox(width: 12),
-        Text('This report was ${status ?? 'processed'}', style: GoogleFonts.manrope(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600)),
+        Text('This report was ${status ?? 'processed'}', style: GoogleFonts.manrope(color: AppTheme.slate900, fontSize: 14, fontWeight: FontWeight.w600)),
       ]),
     );
   }
@@ -458,7 +458,7 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text('$label: ', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 13, fontWeight: FontWeight.w600)),
-        Text(value, style: GoogleFonts.manrope(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700)),
+        Text(value, style: GoogleFonts.manrope(color: AppTheme.slate900, fontSize: 13, fontWeight: FontWeight.w700)),
       ],
     );
   }

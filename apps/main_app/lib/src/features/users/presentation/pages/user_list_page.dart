@@ -22,6 +22,8 @@ class _UserListPageState extends ConsumerState<UserListPage> {
   bool _isLoading = true;
   String? _error;
   String _searchQuery = '';
+  String? _filterField;
+  String? _filterValue;
   int _currentPage = 1;
   static const int _pageSize = 5;
 
@@ -51,13 +53,27 @@ class _UserListPageState extends ConsumerState<UserListPage> {
 
   List<Map<String, dynamic>> get _filteredUsers {
     if (_users == null) return [];
-    if (_searchQuery.isEmpty) return _users!;
-    final q = _searchQuery.toLowerCase();
+    final hasFieldFilter = _filterField != null && _filterValue != null && _filterValue!.isNotEmpty;
+    if (_searchQuery.isEmpty && !hasFieldFilter) return _users!;
     return _users!.where((u) {
-      final name = (u['name'] ?? '').toString().toLowerCase();
-      final email = (u['email'] ?? '').toString().toLowerCase();
-      final role = (u['role'] ?? '').toString().toLowerCase();
-      return name.contains(q) || email.contains(q) || role.contains(q);
+      if (hasFieldFilter) {
+        String fieldValue;
+        if (_filterField == 'Status') {
+          fieldValue = (u['status'] ?? 'active').toString().toLowerCase();
+        } else {
+          final column = _fieldToColumn(_filterField!);
+          fieldValue = (u[column] ?? '').toString().toLowerCase();
+        }
+        if (!fieldValue.contains(_filterValue!.toLowerCase())) return false;
+      }
+      if (_searchQuery.isNotEmpty) {
+        final q = _searchQuery.toLowerCase();
+        final name = (u['name'] ?? '').toString().toLowerCase();
+        final email = (u['email'] ?? '').toString().toLowerCase();
+        final role = (u['role'] ?? '').toString().toLowerCase();
+        if (!name.contains(q) && !email.contains(q) && !role.contains(q)) return false;
+      }
+      return true;
     }).toList();
   }
 
@@ -93,7 +109,15 @@ class _UserListPageState extends ConsumerState<UserListPage> {
     return name[0].toUpperCase();
   }
 
-
+  String _fieldToColumn(String field) {
+    switch (field) {
+      case 'Name': return 'name';
+      case 'Email': return 'email';
+      case 'Role': return 'role';
+      case 'Status': return 'status';
+      default: return '';
+    }
+  }
 
   Future<void> _showUserForm({Map<String, dynamic>? user}) async {
     final result = await showSafeDialog<bool>(
@@ -220,16 +244,6 @@ class _UserListPageState extends ConsumerState<UserListPage> {
         ],
       ),
 
-      // ── FAB ──
-      floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 64),
-        child: FloatingActionButton(
-          onPressed: () => _showUserForm(),
-          backgroundColor: AppTheme.primaryGreen,
-          child: const Icon(Icons.person_add, color: Colors.white, size: 28),
-        ),
-      ),
-
       // ── Bottom Navigation Bar ──
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
@@ -337,54 +351,14 @@ class _UserListPageState extends ConsumerState<UserListPage> {
       children: [
         const SizedBox(height: 24),
 
-        // ── Title + Add User button ──
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'User Management',
-              style: GoogleFonts.manrope(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.slate900,
-              ),
-            ),
-            MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: () => _showUserForm(),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryGreen,
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme.primaryGreen.withValues(alpha: 0.2),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.add, color: Colors.white, size: 16),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Add User',
-                        style: GoogleFonts.manrope(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ],
+        // ── Title ──
+        Text(
+          'User Management',
+          style: GoogleFonts.manrope(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            color: AppTheme.slate900,
+          ),
         ),
         const SizedBox(height: 20),
 
@@ -749,43 +723,6 @@ class _UserListPageState extends ConsumerState<UserListPage> {
             ),
           ),
         ),
-        const SizedBox(width: 12),
-        // Add New User button
-        MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () => _showUserForm(),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryGreen,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryGreen.withOpacity(0.25),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.person_add, color: Color(0xFF0F172A), size: 20),
-                  const SizedBox(width: 10),
-                  Text(
-                    'Add New User',
-                    style: GoogleFonts.manrope(
-                      color: const Color(0xFF0F172A),
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }
@@ -801,42 +738,193 @@ class _UserListPageState extends ConsumerState<UserListPage> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.slate200),
       ),
-      child: Row(
+      child: Column(
         children: [
-          // Search field
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppTheme.slate50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: TextField(
-                onChanged: (v) => setState(() {
-                  _searchQuery = v;
-                  _currentPage = 1;
-                }),
-                style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
-                decoration: InputDecoration(
-                  hintText: 'Search by name, email or project...',
-                  hintStyle: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate400),
-                  prefixIcon: const Icon(Icons.search, color: AppTheme.slate400, size: 22),
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  focusedBorder: InputBorder.none,
-                  filled: false,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          Row(
+            children: [
+              // Search field
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: AppTheme.slate50,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: TextField(
+                    onChanged: (v) => setState(() {
+                      _searchQuery = v;
+                      _currentPage = 1;
+                    }),
+                    style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
+                    decoration: InputDecoration(
+                      hintText: 'Search by name, email or project...',
+                      hintStyle: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate400),
+                      prefixIcon: const Icon(Icons.search, color: AppTheme.slate400, size: 22),
+                      border: InputBorder.none,
+                      enabledBorder: InputBorder.none,
+                      focusedBorder: InputBorder.none,
+                      filled: false,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    ),
+                  ),
                 ),
+              ),
+              const SizedBox(width: 12),
+              // Filters dropdown
+              _buildFilterButton(),
+            ],
+          ),
+          // Active filter row
+          if (_filterField != null) ...[
+            const SizedBox(height: 12),
+            _buildActiveFilterRow(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterButton() {
+    final fields = ['Name', 'Email', 'Role', 'Status'];
+    return PopupMenuButton<String?>(
+      onSelected: (value) {
+        setState(() {
+          if (value == null) {
+            _filterField = null;
+            _filterValue = null;
+          } else {
+            _filterField = value;
+            _filterValue = null;
+          }
+          _currentPage = 1;
+        });
+      },
+      offset: const Offset(0, 50),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      color: Colors.white,
+      elevation: 4,
+      itemBuilder: (context) => [
+        PopupMenuItem(
+          value: null,
+          child: Row(
+            children: [
+              Icon(
+                _filterField == null ? Icons.radio_button_checked : Icons.radio_button_off,
+                size: 18, color: AppTheme.primaryGreen,
+              ),
+              const SizedBox(width: 8),
+              Text('All Fields',
+                style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.slate900)),
+            ],
+          ),
+        ),
+        ...fields.map((field) => PopupMenuItem(
+          value: field,
+          child: Row(
+            children: [
+              Icon(
+                _filterField == field ? Icons.radio_button_checked : Icons.radio_button_off,
+                size: 18, color: AppTheme.primaryGreen,
+              ),
+              const SizedBox(width: 8),
+              Text(field,
+                style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.slate900)),
+            ],
+          ),
+        )),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: _filterField != null ? AppTheme.primaryGreen.withOpacity(0.1) : AppTheme.slate50,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.filter_list, size: 18,
+              color: _filterField != null ? AppTheme.primaryGreen : const Color(0xFF475569)),
+            const SizedBox(width: 8),
+            Text(
+              'Filters',
+              style: GoogleFonts.manrope(
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                color: _filterField != null ? AppTheme.primaryGreen : const Color(0xFF475569),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActiveFilterRow() {
+    return Row(
+      children: [
+        Icon(Icons.filter_alt, size: 16, color: AppTheme.primaryGreen),
+        const SizedBox(width: 8),
+        Text(
+          '$_filterField:',
+          style: GoogleFonts.manrope(
+            fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate700,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Container(
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppTheme.slate50,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: TextField(
+              onChanged: (v) => setState(() {
+                _filterValue = v;
+                _currentPage = 1;
+              }),
+              style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+              decoration: InputDecoration(
+                hintText: 'Enter $_filterField...',
+                hintStyle: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
             ),
           ),
-          const SizedBox(width: 12),
-          // Filters button
-          _SmallButton(icon: Icons.filter_list, label: 'Filters', onTap: () {}),
-          const SizedBox(width: 8),
-          // Export button
-          _SmallButton(icon: Icons.download_rounded, label: 'Export', onTap: () {}),
-        ],
-      ),
+        ),
+        const SizedBox(width: 8),
+        MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => setState(() {
+              _filterField = null;
+              _filterValue = null;
+              _currentPage = 1;
+            }),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.slate50,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.close, size: 14, color: AppTheme.slate400),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Clear',
+                    style: GoogleFonts.manrope(
+                      fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

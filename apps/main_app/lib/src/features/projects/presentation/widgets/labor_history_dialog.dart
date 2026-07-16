@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -81,80 +82,113 @@ class _LaborHistoryDialogState extends State<LaborHistoryDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Container(
-        width: 600,
-        height: 600,
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryGreen.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(Icons.history, color: AppTheme.primaryGreen),
+    return BackdropFilter(
+      filter: ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Container(
+          width: 600,
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
                 ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Personnel Management',
-                        style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-                      ),
-                      Text(
-                        widget.roleName,
-                        style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500, fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  icon: const Icon(Icons.close, color: AppTheme.slate400),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            if (_isLoading)
-              const Expanded(child: Center(child: CircularProgressIndicator()))
-            else
-              Expanded(
-                child: DefaultTabController(
-                  length: 2,
-                  child: Column(
-                    children: [
-                      TabBar(
-                        labelColor: AppTheme.primaryGreen,
-                        unselectedLabelColor: AppTheme.slate500,
-                        indicatorColor: AppTheme.primaryGreen,
-                        labelStyle: GoogleFonts.manrope(fontWeight: FontWeight.w700),
-                        tabs: [
-                          Tab(text: 'Active (${_activeCheckins.length})'),
-                          Tab(text: 'Past Logs'),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Expanded(
-                        child: TabBarView(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryGreen.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Center(
+                            child: Icon(Icons.history, color: AppTheme.primaryGreen, size: 20),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            _buildActiveList(),
-                            _buildPastList(),
+                            Text(
+                              'Personnel Management',
+                              style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              widget.roleName,
+                              style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate500, height: 1.0),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => Navigator.of(context).pop(true),
+                        child: const Icon(Icons.close, color: AppTheme.slate400, size: 24),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Body
+              Expanded(
+                child: _isLoading
+                  ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen))
+                  : DefaultTabController(
+                      length: 2,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                        child: Column(
+                          children: [
+                            TabBar(
+                              labelColor: AppTheme.primaryGreen,
+                              unselectedLabelColor: AppTheme.slate500,
+                              indicatorColor: AppTheme.primaryGreen,
+                              labelStyle: GoogleFonts.manrope(fontWeight: FontWeight.w700),
+                              tabs: [
+                                Tab(text: 'Active (${_activeCheckins.length})'),
+                                const Tab(text: 'Past Logs'),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            Expanded(
+                              child: TabBarView(
+                                children: [
+                                  _buildActiveList(),
+                                  _buildPastList(),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                ),
+                    ),
               ),
-          ],
+            ],
+          ),
         ),
       ),
     );

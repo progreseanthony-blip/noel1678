@@ -316,6 +316,8 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
               const SizedBox(width: 8),
               _buildFilterTab('Draft', 'draft'),
               const SizedBox(width: 8),
+              _buildFilterTab('Partial', 'partial'),
+              const SizedBox(width: 8),
               _buildFilterTab('Sent', 'sent'),
               const SizedBox(width: 8),
               _buildFilterTab('Accepted', 'accepted'),
@@ -708,6 +710,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
       case 'accepted': bg = AppTheme.primaryGreen.withOpacity(0.1); text = AppTheme.primaryGreen; break;
       case 'sent': bg = Colors.blue.withOpacity(0.1); text = Colors.blue; break;
       case 'rejected': bg = AppTheme.errorRed.withOpacity(0.1); text = AppTheme.errorRed; break;
+      case 'partial': bg = Colors.amber.withOpacity(0.15); text = Colors.amber.shade700; break;
       default: bg = AppTheme.slate200; text = AppTheme.slate700; break;
     }
     
@@ -814,15 +817,15 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
     }
   }
 
-  void _showQuoteForm([Map<String, dynamic>? quote]) {
-    showSafeDialog(
+  Future<void> _showQuoteForm([Map<String, dynamic>? quote]) async {
+    final updated = await showSafeDialog<bool>(
       context: context,
       builder: (context) => QuoteFormDialog(quoteToEdit: quote),
-    ).then((updated) {
-      if (updated == true) {
-        _loadQuotes();
-      }
-    });
+    );
+    if (updated == true && mounted) {
+      _currentPage = 1;
+      await _loadQuotes();
+    }
   }
 
   Widget _buildErrorState() {

@@ -95,6 +95,36 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
         _lines.add(Map<String, dynamic>.from(d as Map));
       }
 
+      // Load resource plans for each detail
+      _resourcePlans.clear();
+      for (final d in details) {
+        final detailId = d['id'] as String?;
+        if (detailId != null) {
+          final plans = await svc.getResourcePlans(detailId);
+          if (plans.isNotEmpty) {
+            final key = BaselineImpactSection.planKey(d);
+            _resourcePlans[key] = plans;
+          }
+        }
+      }
+
+      // Recalculate unit_price from loaded plans
+      for (final line in _lines) {
+        final key = BaselineImpactSection.planKey(line);
+        final plans = _resourcePlans[key];
+        if (plans != null && plans.isNotEmpty) {
+          final qty = (line['quantity_change'] as num?)?.toDouble() ?? 1;
+          if (qty > 0) {
+            final meta = line['estimation_metadata'] as Map<String, dynamic>? ?? {};
+            line['unit_price'] = _computeSalePrice(
+              plans, qty,
+              overheadPercentage: (meta['overhead_percentage'] as num?)?.toDouble(),
+              profitPercentage: (meta['profit_percentage'] as num?)?.toDouble(),
+            );
+          }
+        }
+      }
+
       // Load disruption records if type is disruption
       if (_coType == 'disruption') {
         final disruptions = await svc.getDisruptionRecords(widget.coId!);
@@ -218,6 +248,15 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     );
 
     if (selected != null && mounted) {
+      // Pre-load catalogs for enrichment
+      final catSvc = ref.read(catalogsServiceProvider);
+      final catResults = await Future.wait([
+        catSvc.getMachinery(),
+        catSvc.getLaborRoles(),
+        catSvc.getMaterials(),
+        catSvc.getLogisticsEquipment(),
+      ]);
+
       final result = await showSafeDialog<Map<String, dynamic>>(
         context: context,
         builder: (ctx) => ServiceEstimationDialog(
@@ -234,37 +273,135 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
 
       if (result != null && result is Map && result['applied'] == true && mounted) {
         final line = _estimationResultToLine(result, selected);
-        final plans = _estimationResultToResourcePlans(result);
-        final key = line['service_name'] as String? ?? '';
+        final plans = _estimationResultToResourcePlans(
+          result,
+          catalogMachinery: catResults[0],
+          catalogLaborRoles: catResults[1],
+          catalogMaterials: catResults[2],
+        );
+        final key = BaselineImpactSection.planKey(line);
+        // Compute months using same formula as quote module (calendarDays / 30.44)
+        final startDate = result['start_date'] as DateTime?;
+        final endDate = result['end_date'] as DateTime?;
+        final months = (startDate != null && endDate != null)
+            ? double.parse(
+                ((endDate.difference(startDate).inDays + 1) / 30.44)
+                    .toStringAsFixed(1))
+            : 1.0;
+        final enrichedPlans = _enrichPlansWithMonths(plans, months);
+        final qty = (line['quantity_change'] as num?)?.toDouble() ?? 1;
+        if (enrichedPlans.isNotEmpty && qty > 0) {
+          final meta = line['estimation_metadata'] as Map<String, dynamic>? ?? {};
+          line['unit_price'] = _computeSalePrice(
+            enrichedPlans, qty,
+            overheadPercentage: (meta['overhead_percentage'] as num?)?.toDouble(),
+            profitPercentage: (meta['profit_percentage'] as num?)?.toDouble(),
+          );
+        }
         setState(() {
           _lines.add(line);
-          if (plans.isNotEmpty) {
-            _resourcePlans[key] = plans;
+          if (enrichedPlans.isNotEmpty) {
+            _resourcePlans[key] = enrichedPlans;
           }
         });
       }
     }
   }
 
+  double _computePlansTotal(List<Map<String, dynamic>> plans) {
+    var total = 0.0;
+    for (final p in plans) {
+      switch (p['resource_type'] as String? ?? '') {
+        case 'machinery':
+          final qty = (p['quantity'] as num?)?.toDouble() ?? 1;
+          final rent = (p['monthly_rent_cost'] as num?)?.toDouble() ?? 0;
+          final monthsUse = (p['months_to_use'] as num?)?.toDouble() ?? 1;
+          final gph = (p['fuel_gph'] as num?)?.toDouble() ?? 0;
+          final fuelP = (p['fuel_price'] as num?)?.toDouble() ?? 0;
+          final delivery = (p['delivery_cost'] as num?)?.toDouble() ?? 0;
+          total += rent * monthsUse * qty + gph * 220 * monthsUse * fuelP * qty + delivery;
+        case 'labor':
+          final emp = (p['employees_quantity'] as num?)?.toDouble() ?? 1;
+          final rate = (p['hourly_rate'] as num?)?.toDouble() ?? 0;
+          final perDiem = (p['per_diem'] as num?)?.toDouble() ?? 0;
+          final monthsWork = (p['months_to_work'] as num?)?.toDouble() ?? 1;
+          total += rate * 220 * monthsWork * emp + perDiem * 30 * monthsWork * emp;
+        case 'material':
+          final qty = (p['quantity'] as num?)?.toDouble() ?? 0;
+          final cost = (p['unit_cost'] as num?)?.toDouble() ?? 0;
+          total += qty * cost;
+        case 'instrument':
+          final qty = (p['quantity'] as num?)?.toDouble() ?? 1;
+          final days = (p['days'] as num?)?.toDouble() ?? 1;
+          final price = (p['unit_price'] as num?)?.toDouble() ?? 0;
+          total += qty * days * price;
+      }
+    }
+    return total;
+  }
+
+  double _computeSalePrice(
+    List<Map<String, dynamic>> plans,
+    double qty, {
+    double? overheadPercentage,
+    double? profitPercentage,
+  }) {
+    final subtotal = _computePlansTotal(plans);
+    final oh = overheadPercentage ?? 10;
+    final profit = profitPercentage ?? 5;
+    final ohAmount = subtotal * (oh / 100);
+    final profitAmount = (subtotal + ohAmount) * (profit / 100);
+    final totalSale = subtotal + ohAmount + profitAmount;
+    return qty > 0 ? totalSale / qty : 0.0;
+  }
+
+  List<Map<String, dynamic>> _enrichPlansWithMonths(
+    List<Map<String, dynamic>> plans,
+    double months,
+  ) {
+    return plans.map((p) {
+      final type = p['resource_type'] as String? ?? '';
+      if (type == 'machinery' && (p['months_to_use'] == null || (p['months_to_use'] as num?) == 0)) {
+        p['months_to_use'] = months;
+      }
+      if (type == 'labor' && (p['months_to_work'] == null || (p['months_to_work'] as num?) == 0)) {
+        p['months_to_work'] = months;
+      }
+      return p;
+    }).toList();
+  }
+
   Map<String, dynamic> _estimationResultToLine(
     Map<String, dynamic> result,
     Map<String, dynamic> catalogItem,
   ) {
-    final qty = (result['total_cy_loose'] as num?)?.toDouble() ??
-        (result['calculated_loose'] as num?)?.toDouble() ?? 1;
+    final qty = (result['calculated_loose'] as num?)?.toDouble() ??
+        (result['total_cy_loose'] as num?)?.toDouble() ?? 1;
     final workingDays =
         (result['working_days'] as num?)?.toInt() ?? 0;
-    // Estimate unit price from materials + machinery costs
-    double totalCost = 0;
-    final materials = (result['materials'] as List<dynamic>?)
-            ?.cast<Map<String, dynamic>>() ??
-        [];
-    for (final m in materials) {
-      totalCost +=
-          ((m['quantity'] as num?)?.toDouble() ?? 0) *
-          ((m['unit_price'] as num?)?.toDouble() ?? 0);
+
+    final meta = <String, dynamic>{
+      'working_days': workingDays,
+      'end_date': result['end_date']?.toString(),
+      'start_date': result['start_date']?.toString(),
+      'total_cy_loose': (result['total_cy_loose'] as num?)?.toDouble(),
+      'calculated_loose': (result['calculated_loose'] as num?)?.toDouble(),
+      'swell_factor': (result['swell_factor'] as num?)?.toDouble(),
+      'topsoil_volume': result['topsoil_volume'],
+      'compacted_volume': result['compacted_volume'],
+      'thickness_inches': result['thickness_inches'],
+      'gravel_thickness_inches': result['gravel_thickness_inches'],
+      'trench_width_inches': result['trench_width_inches'],
+      'trench_depth_inches': result['trench_depth_inches'],
+    };
+    final resList = result['resources'] as List?;
+    if (resList != null && resList.isNotEmpty) {
+      meta['resources'] = resList;
     }
-    final unitPrice = qty > 0 ? totalCost / qty : 0;
+    final matList = result['materials'] as List?;
+    if (matList != null && matList.isNotEmpty) {
+      meta['materials'] = matList;
+    }
 
     return {
       'service_name': catalogItem['description'] ?? '',
@@ -272,21 +409,17 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
       'catalog_service_id': catalogItem['id'] as String?,
       'line_type': 'new_service',
       'quantity_change': qty,
-      'unit_price': unitPrice,
-      'estimation_metadata': {
-        'working_days': workingDays,
-        'end_date': result['end_date']?.toString(),
-        'start_date': result['start_date']?.toString(),
-        'total_cy_loose': (result['total_cy_loose'] as num?)?.toDouble(),
-        'calculated_loose': (result['calculated_loose'] as num?)?.toDouble(),
-        'swell_factor': (result['swell_factor'] as num?)?.toDouble(),
-      },
+      'unit_price': 0,
+      'estimation_metadata': meta,
     };
   }
 
   List<Map<String, dynamic>> _estimationResultToResourcePlans(
-    Map<String, dynamic> result,
-  ) {
+    Map<String, dynamic> result, {
+    List<Map<String, dynamic>> catalogMachinery = const [],
+    List<Map<String, dynamic>> catalogLaborRoles = const [],
+    List<Map<String, dynamic>> catalogMaterials = const [],
+  }) {
     final plans = <Map<String, dynamic>>[];
     final resources = (result['resources'] as List<dynamic>?)
             ?.cast<Map<String, dynamic>>() ??
@@ -294,6 +427,20 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     final materials = (result['materials'] as List<dynamic>?)
             ?.cast<Map<String, dynamic>>() ??
         [];
+
+    // Build lookup maps
+    final machMap = {
+      for (final m in catalogMachinery)
+        if (m['id'] != null) m['id'] as String: m
+    };
+    final laborMap = {
+      for (final l in catalogLaborRoles)
+        if (l['id'] != null) l['id'] as String: l
+    };
+    final matMap = {
+      for (final m in catalogMaterials)
+        if (m['id'] != null) m['id'] as String: m
+    };
 
     // Build primary→name map for parent references
     final primaryNames = <String, String>{};
@@ -304,6 +451,8 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     }
 
     for (final r in resources) {
+      final machId = r['machine_id'] as String?;
+      final catalogMach = machId != null ? machMap[machId] : null;
       final isPrimary = r['is_primary_mover'] == true;
       final localId = r['id'] as String;
       final parentId = r['parent_resource_id'] as String?;
@@ -315,7 +464,19 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
         'is_principal': isPrimary,
         'parent_resource_name':
             parentId != null ? (primaryNames[parentId] ?? '') : null,
-        'catalog_id': r['machine_id'] as String?,
+        'catalog_id': machId,
+        'monthly_rent_cost':
+            catalogMach?['monthly_rent_cost']?.toDouble() ??
+                (r['monthly_rent_cost'] as num?)?.toDouble() ??
+                0,
+        'delivery_cost': null,
+        'fuel_gph': catalogMach?['fuel_gallons']?.toDouble() ??
+            (r['fuel_gallons'] as num?)?.toDouble() ??
+            0,
+        'fuel_price': catalogMach?['gallon_cost']?.toDouble() ??
+            (r['gallon_cost'] as num?)?.toDouble() ??
+            0,
+        'months_to_use': null,
         'trips_per_day': (r['trips_per_day'] as num?)?.toDouble(),
         'capacity_per_trip': (r['capacity_per_trip'] as num?)?.toDouble(),
         'performance_per_day':
@@ -326,15 +487,21 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
       });
 
       // Operator labor for this machine
-      final operatorRoleId = r['operator_role_id'];
+      final operatorRoleId = r['operator_role_id'] as String? ??
+          _findDefaultOperatorRole(catalogLaborRoles);
       if (operatorRoleId != null) {
+        final catalogRole = laborMap[operatorRoleId];
         plans.add({
           'resource_type': 'labor',
           'resource_name':
-              'Operator - ${r['machine_name'] ?? 'Machinery'}',
+              catalogRole?['description'] as String? ??
+                  'Operator - ${r['machine_name'] ?? 'Machinery'}',
           'quantity': (r['quantity'] as num?)?.toDouble() ?? 1,
-          'hours_per_day': 8,
-          'catalog_id': operatorRoleId as String?,
+          'catalog_id': operatorRoleId,
+          'hourly_rate': catalogRole?['hourly_rate']?.toDouble() ?? 0,
+          'per_diem': null,
+          'employees_quantity': (r['quantity'] as num?)?.toDouble() ?? 1,
+          'months_to_work': null,
           'calculation_metadata': {
             'source_resource_id': localId,
             'is_operator': true,
@@ -344,14 +511,17 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     }
 
     for (final m in materials) {
+      final matId = m['material_id'] as String?;
+      final catalogMat = matId != null ? matMap[matId] : null;
       plans.add({
         'resource_type': 'material',
-        'resource_name':
-            m['material_name'] as String? ?? 'Material',
+        'resource_name': m['material_name'] as String? ?? 'Material',
         'quantity': (m['quantity'] as num?)?.toDouble() ?? 0,
         'unit': m['unit'] as String? ?? 'und',
-        'unit_cost': (m['unit_price'] as num?)?.toDouble() ?? 0,
-        'catalog_id': m['material_id'] as String?,
+        'unit_cost': catalogMat?['unit_price']?.toDouble() ??
+            (m['unit_price'] as num?)?.toDouble() ??
+            0,
+        'catalog_id': matId,
         'calculation_metadata': {
           'layer_type': m['layer_type'],
           'notes': m['notes'],
@@ -362,9 +532,24 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     return plans;
   }
 
+  String? _findDefaultOperatorRole(List<Map<String, dynamic>> roles) {
+    for (final role in roles) {
+      final desc = (role['description'] as String?)?.toLowerCase() ?? '';
+      if (desc.contains('operator')) return role['id'] as String?;
+    }
+    return null;
+  }
+
   Future<void> _editLine(Map<String, dynamic> line) async {
     final lineType = line['line_type'] as String? ?? '';
     if (lineType == 'new_service') {
+      final catSvc = ref.read(catalogsServiceProvider);
+      final catResults = await Future.wait([
+        catSvc.getMachinery(),
+        catSvc.getLaborRoles(),
+        catSvc.getMaterials(),
+      ]);
+
       final result = await showSafeDialog<Map<String, dynamic>>(
         context: context,
         builder: (ctx) => ServiceEstimationDialog(
@@ -385,13 +570,35 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
           'unit': line['unit_of_measure'],
           'id': line['catalog_service_id'],
         });
-        final plans = _estimationResultToResourcePlans(result);
-        final key = updatedLine['service_name'] as String? ?? '';
+        final plans = _estimationResultToResourcePlans(
+          result,
+          catalogMachinery: catResults[0],
+          catalogLaborRoles: catResults[1],
+          catalogMaterials: catResults[2],
+        );
+        final startDate = result['start_date'] as DateTime?;
+        final endDate = result['end_date'] as DateTime?;
+        final months = (startDate != null && endDate != null)
+            ? double.parse(
+                ((endDate.difference(startDate).inDays + 1) / 30.44)
+                    .toStringAsFixed(1))
+            : 1.0;
+        final enrichedPlans = _enrichPlansWithMonths(plans, months);
+        final qty = (updatedLine['quantity_change'] as num?)?.toDouble() ?? 1;
+        if (enrichedPlans.isNotEmpty && qty > 0) {
+          final meta = updatedLine['estimation_metadata'] as Map<String, dynamic>? ?? {};
+          updatedLine['unit_price'] = _computeSalePrice(
+            enrichedPlans, qty,
+            overheadPercentage: (meta['overhead_percentage'] as num?)?.toDouble(),
+            profitPercentage: (meta['profit_percentage'] as num?)?.toDouble(),
+          );
+        }
+        final key = BaselineImpactSection.planKey(updatedLine);
         setState(() {
           final idx = _lines.indexOf(line);
           if (idx >= 0) _lines[idx] = updatedLine;
-          if (plans.isNotEmpty) {
-            _resourcePlans[key] = plans;
+          if (enrichedPlans.isNotEmpty) {
+            _resourcePlans[key] = enrichedPlans;
           } else {
             _resourcePlans.remove(key);
           }
@@ -419,11 +626,11 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     double initialUnitPrice = 0,
   }) async {
     final qtyCtrl = TextEditingController(
-      text: existing?['quantity_change']?.toString() ?? '0',
+      text: existing?['quantity_change']?.toString() ?? '',
     );
     final priceCtrl = TextEditingController(
       text: existing?['unit_price']?.toString() ??
-          (initialUnitPrice > 0 ? initialUnitPrice.toString() : '0'),
+          (initialUnitPrice > 0 ? initialUnitPrice.toString() : ''),
     );
     String type = existing?['line_type'] ?? lineType;
 
@@ -1002,10 +1209,33 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
           const SizedBox(height: 24),
           BaselineImpactSection(
             lines: _lines,
+            initialPlans: _resourcePlans,
             onPlansChanged: (plans) {
-              setState(() => _resourcePlans
-                ..clear()
-                ..addAll(plans));
+              setState(() {
+                _resourcePlans
+                  ..clear()
+                  ..addAll(plans);
+                for (final line in _lines) {
+                  final key = BaselineImpactSection.planKey(line);
+                  final linePlans = _resourcePlans[key];
+                  if (linePlans != null && linePlans.isNotEmpty) {
+                    final qty = (line['quantity_change'] as num?)?.toDouble() ?? 1;
+                    if (qty > 0) {
+                      final meta = line['estimation_metadata'] as Map<String, dynamic>? ?? {};
+                      line['unit_price'] = _computeSalePrice(
+                        linePlans, qty,
+                        overheadPercentage: (meta['overhead_percentage'] as num?)?.toDouble(),
+                        profitPercentage: (meta['profit_percentage'] as num?)?.toDouble(),
+                      );
+                    }
+                  }
+                }
+              });
+            },
+            onReestimate: (index) {
+              if (index >= 0 && index < _lines.length) {
+                _editLine(_lines[index]);
+              }
             },
           ),
           const SizedBox(height: 24),
@@ -1343,13 +1573,11 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     List<Map<String, dynamic>> savedDetails,
   ) async {
     for (final detail in savedDetails) {
-      final key = detail['service_name'] as String? ?? '';
-      // Check _resourcePlans map first (from Baseline Impact section)
+      final key = BaselineImpactSection.planKey(detail);
       var plans = _resourcePlans[key];
-      // Also check for embedded plans in the original line data
       if (plans == null || plans.isEmpty) {
         final originalLine = _lines.firstWhere(
-          (l) => l['service_name'] == key,
+          (l) => BaselineImpactSection.planKey(l) == key,
           orElse: () => <String, dynamic>{},
         );
         final embedded = (originalLine['resource_plans'] as List<dynamic>?)

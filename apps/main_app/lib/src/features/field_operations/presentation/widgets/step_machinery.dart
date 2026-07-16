@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -240,58 +241,137 @@ class _StepMachineryState extends State<StepMachinery> {
 
     await showSafeDialog<void>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text('Reassign $machName', style: _t(fontSize: 15, fontWeight: FontWeight.w700)),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (currentSvc != null) ...[
-                Text('Current service:', style: TextStyle(fontSize: 13, color: AppTheme.slate400)),
-                Text(currentSvc!, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 12),
+      builder: (ctx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: 500,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: const [
+                BoxShadow(color: Color(0x1A000000), blurRadius: 20, offset: Offset(0, 4)),
+                BoxShadow(color: Color(0x0F000000), blurRadius: 40, offset: Offset(0, 12)),
               ],
-              Text('Target service', style: TextStyle(fontSize: 13, color: AppTheme.slate400)),
-              const SizedBox(height: 4),
-              DropdownButtonFormField<String>(
-                value: targetSvc,
-                isExpanded: true,
-                decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10)),
-                hint: Text('Select service...', style: TextStyle(fontSize: 15)),
-                items: _allServices()
-                  .where((s) => s != currentSvc)
-                  .map((s) => DropdownMenuItem(value: s, child: Text(s, style: TextStyle(fontSize: 15))))
-                  .toList(),
-                onChanged: (v) {
-                  setDialogState(() {
-                    targetSvc = v;
-                    targetPm = widget.plannedMachinery.cast<Map<String, dynamic>?>().firstWhere(
-                      (p) => p?['quote_services']?['name'] == v && p?['machinery_name'] == pm['machinery_name'],
-                      orElse: () => widget.plannedMachinery.cast<Map<String, dynamic>?>().firstWhere(
-                        (p) => p?['quote_services']?['name'] == v && p?['machinery']?['description'] == pm['machinery']?['description'],
-                        orElse: () => widget.plannedMachinery.cast<Map<String, dynamic>?>().firstWhere(
-                          (p) => p?['quote_services']?['name'] == v,
-                          orElse: () => null,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: const EdgeInsets.fromLTRB(32, 24, 32, 24),
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40, height: 40,
+                        decoration: BoxDecoration(color: AppTheme.primaryGreen.withAlpha(25), borderRadius: BorderRadius.circular(12)),
+                        child: const Icon(Icons.precision_manufacturing, size: 20, color: AppTheme.primaryGreen),
+                      ),
+                      const SizedBox(width: 16),
+                      Text(
+                        'Reassign $machName',
+                        style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900),
+                      ),
+                      const Spacer(),
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(ctx),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(color: AppTheme.slate200.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+                            child: const Icon(Icons.close, size: 18, color: AppTheme.slate400),
+                          ),
                         ),
                       ),
-                    );
-                  });
-                },
-              ),
-            ]),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: targetSvc != null && targetPm != null ? () {
-                _addEntry(targetPm!);
-                Navigator.pop(ctx);
-              } : targetSvc != null && targetPm == null ? () {
-                ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('No matching machinery found for selected service')));
-              } : null,
-              child: Text(targetPm != null ? 'Reassign' : 'Select a service'),
+                    ],
+                  ),
+                ),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(32),
+                    child: StatefulBuilder(
+                      builder: (ctx, setDialogState) => Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (currentSvc != null) ...[
+                            Text('Current service:', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500)),
+                            const SizedBox(height: 4),
+                            Text(currentSvc!, style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w600, color: AppTheme.slate900)),
+                            const SizedBox(height: 16),
+                          ],
+                          Text('Target service', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500)),
+                          const SizedBox(height: 4),
+                          DropdownButtonFormField<String>(
+                            value: targetSvc,
+                            isExpanded: true,
+                            decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10)),
+                            hint: Text('Select service...', style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.slate400)),
+                            items: _allServices()
+                              .where((s) => s != currentSvc)
+                              .map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.slate900))))
+                              .toList(),
+                            onChanged: (v) {
+                              setDialogState(() {
+                                targetSvc = v;
+                                targetPm = widget.plannedMachinery.cast<Map<String, dynamic>?>().firstWhere(
+                                  (p) => p?['quote_services']?['name'] == v && p?['machinery_name'] == pm['machinery_name'],
+                                  orElse: () => widget.plannedMachinery.cast<Map<String, dynamic>?>().firstWhere(
+                                    (p) => p?['quote_services']?['name'] == v && p?['machinery']?['description'] == pm['machinery']?['description'],
+                                    orElse: () => widget.plannedMachinery.cast<Map<String, dynamic>?>().firstWhere(
+                                      (p) => p?['quote_services']?['name'] == v,
+                                      orElse: () => null,
+                                    ),
+                                  ),
+                                );
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(32, 16, 32, 16),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.only(bottomLeft: Radius.circular(16), bottomRight: Radius.circular(16)),
+                    border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: Text('Cancel', style: GoogleFonts.manrope(color: AppTheme.slate500, fontWeight: FontWeight.w600)),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton(
+                        onPressed: targetSvc != null && targetPm != null ? () {
+                          _addEntry(targetPm!);
+                          Navigator.pop(ctx);
+                        } : targetSvc != null && targetPm == null ? () {
+                          ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('No matching machinery found for selected service')));
+                        } : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryGreen,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: Text(targetPm != null ? 'Reassign' : 'Select a service'),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

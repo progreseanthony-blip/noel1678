@@ -413,7 +413,7 @@ class _ExpandableNavItemState extends State<_ExpandableNavItem> {
             decoration: const BoxDecoration(
               border: Border(left: BorderSide(color: AppTheme.slate700, width: 1.5)),
             ),
-            padding: const EdgeInsets.only(left: 10),
+          padding: const EdgeInsets.only(left: 32),
             child: Column(children: widget.children),
           ),
         ),

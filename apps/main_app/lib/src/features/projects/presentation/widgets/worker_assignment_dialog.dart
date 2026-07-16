@@ -1,3 +1,4 @@
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
@@ -418,291 +419,308 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        width: 550,
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryGreen.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.group_add, color: AppTheme.primaryGreen),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Team Planning',
-                        style: GoogleFonts.manrope(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: AppTheme.slate900,
-                        ),
-                      ),
-                      Text(
-                        'Scheduling ${widget.roleName}',
-                        style: GoogleFonts.manrope(
-                          fontSize: 14,
-                          color: AppTheme.slate500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close, color: AppTheme.slate400),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            
-            // Resource Info & Calculation
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryGreen.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.1)),
+    return BackdropFilter(
+      filter: ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Container(
+          width: 550,
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
               ),
-              child: Row(
-                children: [
-                  const Icon(Icons.info_outline, size: 20, color: AppTheme.primaryGreen),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
                       children: [
-                        Text(
-                          'STIPULATED DURATION',
-                          style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen, letterSpacing: 1),
+                        Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryGreen.withOpacity(0.1),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Center(
+                            child: Icon(Icons.group_add, color: AppTheme.primaryGreen, size: 20),
+                          ),
                         ),
-                        Text(
-                          _stipulatedDays != null ? '${_stipulatedDays} Working Days' : 'Not defined',
-                          style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.slate900),
+                        const SizedBox(width: 12),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Team Planning',
+                              style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Scheduling ${widget.roleName}',
+                              style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate500, height: 1.0),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ),
-                  if (_stipulatedDays != null)
-                    Text(
-                      '(Sat = 0.5d)',
-                      style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500, fontStyle: FontStyle.italic),
-                    ),
-                ],
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // Global Scheduling Row
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Start Date', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.slate600)),
-                      const SizedBox(height: 8),
-                      InkWell(
-                        onTap: _selectStartDate,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppTheme.slate200),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.calendar_month, size: 16, color: AppTheme.primaryGreen),
-                              const SizedBox(width: 8),
-                              Text(
-                                _startDate != null ? _startDate!.toString().split(' ')[0] : 'Choose...',
-                                style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('End Date (Estimated)', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.slate600)),
-                      const SizedBox(height: 8),
-                      InkWell(
-                        onTap: _selectEndDate,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: AppTheme.slate200),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.event_available, size: 16, color: AppTheme.primaryGreen),
-                              const SizedBox(width: 8),
-                              Text(
-                                _endDate != null ? _endDate!.toString().split(' ')[0] : 'Choose...',
-                                style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 24),
-            
-            if (_limitError != null)
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.errorRed.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: AppTheme.errorRed.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.warning_amber_rounded, color: AppTheme.errorRed, size: 18),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        _limitError!,
-                        style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.errorRed),
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => Navigator.of(context).pop(),
+                        child: const Icon(Icons.close, color: AppTheme.slate400, size: 24),
                       ),
                     ),
                   ],
                 ),
               ),
-
-            const Divider(),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-              child: TextField(
-                controller: _searchController,
-                onChanged: (v) => setState(() => _searchQuery = v),
-                style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
-                decoration: InputDecoration(
-                  hintText: 'Search by name or ID...',
-                  hintStyle: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400),
-                  prefixIcon: const Icon(Icons.search, size: 18, color: AppTheme.slate400),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, size: 16, color: AppTheme.slate400),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _searchQuery = '');
-                          },
-                        )
-                      : null,
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 1.5),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            if (_isLoading)
-              const Center(child: Padding(padding: EdgeInsets.all(32.0), child: CircularProgressIndicator()))
-            else
+              
+              // Body
               Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: _filteredWorkers.length,
-                  itemBuilder: (context, index) {
-                    final worker = _filteredWorkers[index];
-                    final workerId = worker['id'].toString();
-                    final isAssignedHere = _assignedWorkerIds.contains(workerId);
-                    final busyProject = _globalBusyWorkers[workerId];
-                    final isBusyElsewhere = busyProject != null;
-                    final dates = _workerDates[workerId];
-                    
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      decoration: BoxDecoration(
-                        color: isAssignedHere 
-                            ? AppTheme.primaryGreen.withOpacity(0.05) 
-                            : (isBusyElsewhere ? AppTheme.slate50 : Colors.transparent),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isAssignedHere 
-                              ? AppTheme.primaryGreen.withOpacity(0.2) 
-                              : (isBusyElsewhere ? AppTheme.slate200.withOpacity(0.5) : AppTheme.slate200),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Resource Info & Calculation
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryGreen.withOpacity(0.05),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.1)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline, size: 20, color: AppTheme.primaryGreen),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'STIPULATED DURATION',
+                                    style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen, letterSpacing: 1),
+                                  ),
+                                  Text(
+                                    _stipulatedDays != null ? '${_stipulatedDays} Working Days' : 'Not defined',
+                                    style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.slate900),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_stipulatedDays != null)
+                              Text(
+                                '(Sat = 0.5d)',
+                                style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500, fontStyle: FontStyle.italic),
+                              ),
+                          ],
                         ),
                       ),
-                      child: Column(
+                      
+                      const SizedBox(height: 16),
+                      
+                      // Global Scheduling Row
+                      Row(
                         children: [
-                          CheckboxListTile(
-                            enabled: !isBusyElsewhere && (_startDate != null || isAssignedHere),
-                            value: isAssignedHere,
-                            onChanged: _processingWorkers.contains(workerId) ? null : (val) {
-                              if (isBusyElsewhere) return;
-                              if (val == true && _startDate == null) {
-                                setState(() => _limitError = 'Select a start date for the team first');
-                                return;
-                              }
-                              if (val == true && _assignedWorkerIds.length >= widget.expectedEmployees) {
-                                setState(() => _limitError = 'Limit reached: Only ${widget.expectedEmployees} required.');
-                                return;
-                              }
-                              _toggleAssignment(workerId, val ?? false);
-                            },
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Start Date', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.slate600)),
+                                const SizedBox(height: 8),
+                                InkWell(
+                                  onTap: _selectStartDate,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: AppTheme.slate200),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.calendar_month, size: 16, color: AppTheme.primaryGreen),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          _startDate != null ? _startDate!.toString().split(' ')[0] : 'Choose...',
+                                          style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('End Date (Estimated)', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.slate600)),
+                                const SizedBox(height: 8),
+                                InkWell(
+                                  onTap: _selectEndDate,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: AppTheme.slate200),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.event_available, size: 16, color: AppTheme.primaryGreen),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          _endDate != null ? _endDate!.toString().split(' ')[0] : 'Choose...',
+                                          style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      
+                      const SizedBox(height: 24),
+                      
+                      if (_limitError != null)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 16),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppTheme.errorRed.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppTheme.errorRed.withOpacity(0.3)),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.warning_amber_rounded, color: AppTheme.errorRed, size: 18),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  _limitError!,
+                                  style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.errorRed),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      // Search
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (v) => setState(() => _searchQuery = v),
+                          style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+                          decoration: InputDecoration(
+                            hintText: 'Search by name or ID...',
+                            hintStyle: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400),
+                            prefixIcon: const Icon(Icons.search, size: 18, color: AppTheme.slate400),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: const Icon(Icons.clear, size: 16, color: AppTheme.slate400),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _searchQuery = '');
+                                    },
+                                  )
+                                : null,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 1.5),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      if (_isLoading)
+                        const Center(child: Padding(padding: EdgeInsets.all(32.0), child: CircularProgressIndicator()))
+                      else
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _filteredWorkers.length,
+                          itemBuilder: (context, index) {
+                            final worker = _filteredWorkers[index];
+                            final workerId = worker['id'].toString();
+                            final isAssignedHere = _assignedWorkerIds.contains(workerId);
+                            final busyProject = _globalBusyWorkers[workerId];
+                            final isBusyElsewhere = busyProject != null;
+                            final dates = _workerDates[workerId];
+                            
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              decoration: BoxDecoration(
+                                color: isAssignedHere 
+                                    ? AppTheme.primaryGreen.withOpacity(0.05) 
+                                    : (isBusyElsewhere ? AppTheme.slate50 : Colors.transparent),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isAssignedHere 
+                                      ? AppTheme.primaryGreen.withOpacity(0.2) 
+                                      : (isBusyElsewhere ? AppTheme.slate200.withOpacity(0.5) : AppTheme.slate200),
+                                ),
+                              ),
+                              child: Column(
+                                children: [
+                                  CheckboxListTile(
+                                    enabled: !isBusyElsewhere && (_startDate != null || isAssignedHere),
+                                    value: isAssignedHere,
+                                    onChanged: _processingWorkers.contains(workerId) ? null : (val) {
+                                      if (isBusyElsewhere) return;
+                                      if (val == true && _startDate == null) {
+                                        setState(() => _limitError = 'Select a start date for the team first');
+                                        return;
+                                      }
+                                      if (val == true && _assignedWorkerIds.length >= widget.expectedEmployees) {
+                                        setState(() => _limitError = 'Limit reached: Only ${widget.expectedEmployees} required.');
+                                        return;
+                                      }
+                                      _toggleAssignment(workerId, val ?? false);
+                                    },
                             title: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        worker['full_name'],
-                                        style: GoogleFonts.manrope(
-                                          fontWeight: FontWeight.w700,
-                                          color: isBusyElsewhere ? AppTheme.slate400 : AppTheme.slate900,
-                                        ),
-                                      ),
-                                    ),
-                                    if (isAssignedHere)
-                                      IconButton(
-                                        icon: const Icon(Icons.edit_calendar, size: 20, color: Colors.blue),
-                                        onPressed: () => _editIndividualDates(workerId),
-                                        tooltip: 'Edit individual dates',
-                                      ),
-                                  ],
+                                Text(
+                                  worker['full_name'],
+                                  style: GoogleFonts.manrope(
+                                    fontWeight: FontWeight.w700,
+                                    color: isBusyElsewhere ? AppTheme.slate400 : AppTheme.slate900,
+                                  ),
                                 ),
                                 if (isBusyElsewhere)
                                   Padding(
@@ -719,43 +737,104 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
                                 ),
                               ],
                             ),
+                            secondary: isAssignedHere
+                                ? SizedBox(
+                                    width: 36,
+                                    height: 36,
+                                    child: IconButton(
+                                      padding: EdgeInsets.zero,
+                                      icon: const Icon(Icons.edit_calendar, size: 20, color: Colors.blue),
+                                      onPressed: () => _editIndividualDates(workerId),
+                                      tooltip: 'Edit individual dates',
+                                    ),
+                                  )
+                                : null,
                             activeColor: AppTheme.primaryGreen,
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          ),
-                          if (isAssignedHere && dates != null)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 70, bottom: 12, right: 16),
-                              child: Row(
-                                children: [
-                                  const Icon(Icons.date_range, size: 14, color: AppTheme.slate400),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Planned: ${dates['start']} to ${dates['end']}',
-                                    style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.slate600),
                                   ),
+                                  if (isAssignedHere && dates != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(left: 70, bottom: 12, right: 16),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.date_range, size: 14, color: AppTheme.slate400),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Planned: ${dates['start']} to ${dates['end']}',
+                                            style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.slate600),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                 ],
                               ),
-                            ),
-                        ],
+                            );
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+              
+              // Footer
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF8FAFC),
+                  border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Spacer(),
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => Navigator.of(context).pop(),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0xFFCBD5E1)),
+                          ),
+                          child: Text(
+                            'Cancel',
+                            style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700),
+                          ),
+                        ),
                       ),
-                    );
-                  },
+                    ),
+                    const SizedBox(width: 12),
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context, true),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryGreen,
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.primaryGreen.withOpacity(0.2),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Text(
+                            'Confirm Schedule',
+                            style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.slate900,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-                child: Text('Confirm Schedule', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

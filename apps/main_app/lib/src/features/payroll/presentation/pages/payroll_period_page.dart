@@ -12,6 +12,8 @@ import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
 import '../utils/payroll_pdf_generator.dart';
 import '../utils/payroll_excel_generator.dart';
+import '../utils/worker_signoff_pdf_generator.dart';
+import '../utils/worker_individual_report_pdf_generator.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 
 class PayrollPeriodPage extends ConsumerStatefulWidget {
@@ -45,6 +47,8 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
   List<Map<String, dynamic>> _virtualEntries = [];
   bool _isVirtual = false;
   bool _isRecalculating = false;
+  bool _isSignoffLoading = false;
+  bool _isIndividualLoading = false;
   Timer? _debounce;
   Map<String, dynamic> _virtualTotals = {
     'total_regular_hours': 0,
@@ -242,6 +246,81 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Excel error: $e')));
       }
     }
+  }
+
+  Future<void> _exportWorkerSignoffPdf() async {
+    if (!_hasEntries) return;
+    setState(() => _isSignoffLoading = true);
+    try {
+      final service = ref.read(payrollServiceProvider);
+      final result = await service.getWorkerDetailedLogs(widget.periodId);
+      final workers = List<Map<String, dynamic>>.from(result['workers'] as List);
+      if (workers.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No workers found for this period.')));
+        }
+        return;
+      }
+      final bytes = await WorkerSignoffPdfGenerator.generate(
+        projectTitle: _projectTitle,
+        periodName: _period?['name'] ?? '',
+        startDate: _period?['start_date'] ?? '',
+        endDate: _period?['end_date'] ?? '',
+        workers: workers,
+        totalReg: result['total_regular_hours'] as num,
+        totalOT: result['total_overtime_hours'] as num,
+        totalHours: result['total_hours'] as num,
+        totalWorkers: result['total_workers'] as num,
+      );
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => bytes,
+        name: '${_exportName}_SignOff',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sign-off PDF error: $e')));
+      }
+    }
+    if (mounted) setState(() => _isSignoffLoading = false);
+  }
+
+  Future<void> _exportIndividualReport(Map<String, dynamic> workerEntry) async {
+    setState(() => _isIndividualLoading = true);
+    try {
+      final service = ref.read(payrollServiceProvider);
+      final workerId = workerEntry['worker_id'] as String;
+      final result = await service.getDailyLogsForWorker(widget.periodId, workerId);
+
+      if (result['worker'] == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No logs found for this worker.')));
+        }
+        return;
+      }
+
+      final bytes = await WorkerIndividualReportPdfGenerator.generate(
+        projectTitle: _projectTitle,
+        periodName: _period?['name'] ?? '',
+        startDate: _period?['start_date'] ?? '',
+        endDate: _period?['end_date'] ?? '',
+        worker: result['worker'] as Map<String, dynamic>,
+        dailyLogs: List<Map<String, dynamic>>.from(result['daily_logs'] as List),
+        totalReg: result['total_regular_hours'] as num,
+        totalOT: result['total_overtime_hours'] as num,
+        totalHours: result['total_hours'] as num,
+      );
+
+      final workerName = (result['worker'] as Map<String, dynamic>)['full_name'] ?? 'Worker';
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => bytes,
+        name: '${_exportName}_${workerName.toString().replaceAll(' ', '_')}',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Individual report error: $e')));
+      }
+    }
+    if (mounted) setState(() => _isIndividualLoading = false);
   }
 
   Future<void> _closePeriod() async {
@@ -644,6 +723,15 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
                   ],
                   const SizedBox(width: 12),
                   if (_hasEntries) ...[
+                    if (_isSignoffLoading)
+                      const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryGreen))
+                    else
+                      _exportButton(
+                        icon: Icons.fact_check_outlined,
+                        label: 'Sign-off',
+                        onTap: _exportWorkerSignoffPdf,
+                      ),
+                    const SizedBox(width: 8),
                     _exportButton(
                       icon: Icons.download,
                       label: 'Excel',
@@ -712,7 +800,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
                     child: Center(child: Text('No labor logs found for this period.')),
                   )
                 else
-                  ...(_isVirtual ? _virtualEntries : _entries).map((e) => _buildRow(e)),
+                  ...(_isVirtual ? _virtualEntries : _entries).map((e) => _buildRow(e, onTap: _isIndividualLoading ? null : () => _exportIndividualReport(e))),
                 // Grand total row
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -797,54 +885,72 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
     );
   }
 
-  Widget _buildRow(Map<String, dynamic> e) {
+  Widget _buildRow(Map<String, dynamic> e, {VoidCallback? onTap}) {
     final reg = (e['regular_hours'] ?? 0).toDouble();
     final ot = (e['overtime_hours'] ?? 0).toDouble();
     final rate = (e['hourly_rate'] ?? 0).toDouble();
     final totalCost = (e['total_pay'] ?? (reg + ot) * rate).toDouble();
 
-    return Container(
+    final row = Row(
+      children: [
+        Expanded(flex: 25, child: Text(
+          e['full_name'] ?? 'N/A',
+          style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900),
+        )),
+        Expanded(flex: 18, child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: AppTheme.slate50,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            (e['role_name'] ?? '').toUpperCase(),
+            style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate600, letterSpacing: 0.3),
+            overflow: TextOverflow.ellipsis,
+          ),
+        )),
+        Expanded(flex: 10, child: Text(
+          _fmt(rate),
+          style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700),
+        )),
+        Expanded(flex: 10, child: Text(
+          _fmtHrs(reg),
+          style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700),
+        )),
+        Expanded(flex: 10, child: Text(
+          _fmtHrs(ot),
+          style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700),
+        )),
+        Expanded(flex: 12, child: Text(
+          _fmtHrs(reg + ot),
+          style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate900),
+        )),
+        Expanded(flex: 15, child: Text(
+          _fmt(totalCost),
+          style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen),
+        )),
+      ],
+    );
+
+    final content = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+      child: row,
+    );
+
+    if (onTap == null) {
+      return Container(
+        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
+        child: content,
+      );
+    }
+    return Container(
       decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
-      child: Row(
-        children: [
-          Expanded(flex: 25, child: Text(
-            e['full_name'] ?? 'N/A',
-            style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900),
-          )),
-          Expanded(flex: 18, child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: AppTheme.slate50,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              (e['role_name'] ?? '').toUpperCase(),
-              style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate600, letterSpacing: 0.3),
-              overflow: TextOverflow.ellipsis,
-            ),
-          )),
-          Expanded(flex: 10, child: Text(
-            _fmt(rate),
-            style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700),
-          )),
-          Expanded(flex: 10, child: Text(
-            _fmtHrs(reg),
-            style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700),
-          )),
-          Expanded(flex: 10, child: Text(
-            _fmtHrs(ot),
-            style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700),
-          )),
-          Expanded(flex: 12, child: Text(
-            _fmtHrs(reg + ot),
-            style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate900),
-          )),
-          Expanded(flex: 15, child: Text(
-            _fmt(totalCost),
-            style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen),
-          )),
-        ],
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: onTap,
+          child: content,
+        ),
       ),
     );
   }

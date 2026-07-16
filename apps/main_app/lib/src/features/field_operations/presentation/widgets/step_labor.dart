@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
@@ -123,114 +124,193 @@ class _StepLaborState extends State<StepLabor> {
 
     await showSafeDialog<void>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text('Reassign ${worker['full_name'] ?? 'Worker'}', style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w700)),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              if (currentSvc != null) ...[
-                Text('Current service:', style: TextStyle(fontSize: 13, color: AppTheme.slate400)),
-                Text(currentSvc!, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 12),
+      builder: (ctx) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+        child: Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: 500,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: const [
+                BoxShadow(color: Color(0x1A000000), blurRadius: 20, offset: Offset(0, 4)),
+                BoxShadow(color: Color(0x0F000000), blurRadius: 40, offset: Offset(0, 12)),
               ],
-              if (estimatedCheckIn != null && estimatedCheckIn.isNotEmpty) ...[
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
                 Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryGreen.withAlpha(15),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.primaryGreen.withAlpha(40)),
+                  padding: const EdgeInsets.fromLTRB(32, 24, 32, 24),
+                  decoration: const BoxDecoration(
+                    border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.schedule, size: 16, color: AppTheme.primaryGreen),
-                      const SizedBox(width: 8),
+                      Container(
+                        width: 40, height: 40,
+                        decoration: BoxDecoration(color: AppTheme.primaryGreen.withAlpha(25), borderRadius: BorderRadius.circular(12)),
+                        child: const Icon(Icons.swap_horiz, size: 20, color: AppTheme.primaryGreen),
+                      ),
+                      const SizedBox(width: 16),
                       Text(
-                        'Estimated start time: ${estimatedCheckIn.substring(0, 5)}',
-                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen),
+                        'Reassign ${worker['full_name'] ?? 'Worker'}',
+                        style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900),
+                      ),
+                      const Spacer(),
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(ctx),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(color: AppTheme.slate200.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+                            child: const Icon(Icons.close, size: 18, color: AppTheme.slate400),
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(32),
+                    child: StatefulBuilder(
+                      builder: (ctx, setDialogState) => Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (currentSvc != null) ...[
+                            Text('Current service:', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500)),
+                            const SizedBox(height: 4),
+                            Text(currentSvc!, style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w600, color: AppTheme.slate900)),
+                            const SizedBox(height: 16),
+                          ],
+                          if (estimatedCheckIn != null && estimatedCheckIn.isNotEmpty) ...[
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryGreen.withAlpha(15),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: AppTheme.primaryGreen.withAlpha(40)),
+                              ),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.schedule, size: 16, color: AppTheme.primaryGreen),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'Estimated start time: ${estimatedCheckIn.substring(0, 5)}',
+                                    style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                          Text('Target service', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500)),
+                          const SizedBox(height: 4),
+                          DropdownButtonFormField<String>(
+                            value: targetSvc,
+                            isExpanded: true,
+                            decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10)),
+                            hint: Text('Select service...', style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.slate400)),
+                            items: _allServices()
+                              .where((s) => s != currentSvc)
+                              .map((s) => DropdownMenuItem(value: s, child: Text(s, style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.slate900))))
+                              .toList(),
+                            onChanged: (v) => setDialogState(() => targetSvc = v),
+                          ),
+                          const SizedBox(height: 16),
+                          Text('Deviation reason', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500)),
+                          const SizedBox(height: 4),
+                          DropdownButtonFormField<String>(
+                            value: targetReason,
+                            isExpanded: true,
+                            decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10)),
+                            hint: Text('Select reason...', style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.slate400)),
+                            items: _laborReasons.map((r) {
+                              final desc = r['description'] as String? ?? '';
+                              final en = _reasonEn(desc);
+                              return DropdownMenuItem<String>(
+                                value: r['id'] as String?,
+                                child: Text(en, style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900)),
+                              );
+                            }).toList(),
+                            onChanged: (v) => setDialogState(() => targetReason = v),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.fromLTRB(32, 16, 32, 16),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.only(bottomLeft: Radius.circular(16), bottomRight: Radius.circular(16)),
+                    border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: Text('Cancel', style: GoogleFonts.manrope(color: AppTheme.slate500, fontWeight: FontWeight.w600)),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton(
+                        onPressed: targetSvc != null ? () {
+                          final targetPl = widget.plannedLabor.where((pl) =>
+                            (pl['quote_services']?['name'] as String?) == targetSvc).toList();
+
+                          String? targetPlId;
+                          if (targetPl.length == 1) {
+                            targetPlId = targetPl.first['id'] as String?;
+                          } else if (targetPl.length > 1) {
+                            final roleId = worker['role_id'] as String? ?? worker['role']?['id'] as String?;
+                            if (roleId != null) {
+                              final match = targetPl.cast<Map<String, dynamic>?>().firstWhere(
+                                (pl) => pl?['role_id'] == roleId || pl?['labor_roles']?['id'] == roleId,
+                                orElse: () => null,
+                              );
+                              targetPlId = match?['id'] as String?;
+                            }
+                          }
+                          if (targetPlId == null && targetPl.isNotEmpty) {
+                            targetPlId = targetPl.first['id'] as String?;
+                          }
+
+                          if (targetPlId == null) {
+                            ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('No matching services found')));
+                            return;
+                          }
+
+                          _addEntry(workerId, plannedLaborId: targetPlId, isUnplanned: true, checkInTime: estimatedCheckIn);
+                          if (targetReason != null) {
+                            final idx = _entryIndexFor(workerId, targetPlId);
+                            if (idx >= 0) {
+                              _updateEntryField(idx, 'deviation_reason_id', targetReason);
+                              _updateEntryField(idx, 'notes', 'Reassigned from $currentSvc');
+                            }
+                          }
+                          Navigator.pop(ctx);
+                        } : null,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryGreen,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        child: const Text('Reassign'),
+                      ),
+                    ],
+                  ),
+                ),
               ],
-              Text('Target service', style: TextStyle(fontSize: 13, color: AppTheme.slate400)),
-              const SizedBox(height: 4),
-              DropdownButtonFormField<String>(
-                value: targetSvc,
-                isExpanded: true,
-                decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10)),
-                hint: Text('Select service...', style: TextStyle(fontSize: 15)),
-                items: _allServices()
-                  .where((s) => s != currentSvc)
-                  .map((s) => DropdownMenuItem(value: s, child: Text(s, style: TextStyle(fontSize: 15))))
-                  .toList(),
-                onChanged: (v) => setDialogState(() => targetSvc = v),
-              ),
-              const SizedBox(height: 12),
-              Text('Deviation reason', style: TextStyle(fontSize: 13, color: AppTheme.slate400)),
-              const SizedBox(height: 4),
-              DropdownButtonFormField<String>(
-                value: targetReason,
-                isExpanded: true,
-                decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 10)),
-                hint: Text('Select reason...', style: TextStyle(fontSize: 15)),
-                items: _laborReasons.map((r) {
-                  final desc = r['description'] as String? ?? '';
-                  final en = _reasonEn(desc);
-                  return DropdownMenuItem<String>(
-                    value: r['id'] as String?,
-                    child: Text(en, style: TextStyle(fontSize: 14)),
-                  );
-                }).toList(),
-                onChanged: (v) => setDialogState(() => targetReason = v),
-              ),
-            ]),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
-            ElevatedButton(
-              onPressed: targetSvc != null ? () {
-                final targetPl = widget.plannedLabor.where((pl) =>
-                  (pl['quote_services']?['name'] as String?) == targetSvc).toList();
-
-                String? targetPlId;
-                if (targetPl.length == 1) {
-                  targetPlId = targetPl.first['id'] as String?;
-                } else if (targetPl.length > 1) {
-                  final roleId = worker['role_id'] as String? ?? worker['role']?['id'] as String?;
-                  if (roleId != null) {
-                    final match = targetPl.cast<Map<String, dynamic>?>().firstWhere(
-                      (pl) => pl?['role_id'] == roleId || pl?['labor_roles']?['id'] == roleId,
-                      orElse: () => null,
-                    );
-                    targetPlId = match?['id'] as String?;
-                  }
-                }
-                if (targetPlId == null && targetPl.isNotEmpty) {
-                  targetPlId = targetPl.first['id'] as String?;
-                }
-
-                if (targetPlId == null) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('No matching services found')));
-                  return;
-                }
-
-                _addEntry(workerId, plannedLaborId: targetPlId, isUnplanned: true, checkInTime: estimatedCheckIn);
-                if (targetReason != null) {
-                  final idx = _entryIndexFor(workerId, targetPlId);
-                  if (idx >= 0) {
-                    _updateEntryField(idx, 'deviation_reason_id', targetReason);
-                    _updateEntryField(idx, 'notes', 'Reassigned from $currentSvc');
-                  }
-                }
-                Navigator.pop(ctx);
-              } : null,
-              child: const Text('Reassign'),
             ),
-          ],
+          ),
         ),
       ),
     );

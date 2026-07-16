@@ -345,65 +345,74 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
       padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 32),
       decoration: BoxDecoration(color: Colors.white, border: Border(bottom: BorderSide(color: AppTheme.slate200))),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          if (isMobile) ...[
-            Builder(builder: (ctx) => IconButton(
-              icon: const Icon(Icons.menu, color: AppTheme.slate700),
-              onPressed: () => Scaffold.of(ctx).openDrawer(),
-            )),
-            const SizedBox(width: 8),
-          ],
-          MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: () => context.go('/quotes'),
-              child: Row(
-                children: [
-                  const Icon(Icons.arrow_back, size: 18, color: AppTheme.slate500),
-                  if (!isMobile) ...[
-                    const SizedBox(width: 8),
-                    Text('Estimates', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500, fontWeight: FontWeight.w500)),
-                  ],
-                ],
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isMobile) ...[
+                Builder(builder: (ctx) => IconButton(
+                  icon: const Icon(Icons.menu, color: AppTheme.slate700),
+                  onPressed: () => Scaffold.of(ctx).openDrawer(),
+                )),
+                const SizedBox(width: 8),
+              ],
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => context.go('/quotes'),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.arrow_back, size: 18, color: AppTheme.slate500),
+                      if (!isMobile) ...[
+                        const SizedBox(width: 8),
+                        Text('Estimates', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500, fontWeight: FontWeight.w500)),
+                      ],
+                    ],
+                  ),
+                ),
               ),
-            ),
+              if (!isMobile) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Icon(Icons.chevron_right, size: 16, color: AppTheme.slate400),
+                ),
+                Flexible(
+                  child: Text(
+                    _quote?['title'] ?? '', 
+                    style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900, fontWeight: FontWeight.w700),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ] else ...[
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(_quote?['title'] ?? '', style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis),
+                ),
+              ],
+            ],
           ),
-          if (!isMobile) ...[
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Icon(Icons.chevron_right, size: 16, color: AppTheme.slate400),
-            ),
-            Flexible(
-              child: Text(
-                _quote?['title'] ?? '', 
-                style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900, fontWeight: FontWeight.w700),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ] else
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(left: 8.0),
-                child: Text(_quote?['title'] ?? '', style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900, fontWeight: FontWeight.w800), overflow: TextOverflow.ellipsis),
-              ),
-            ),
-          if (!isMobile) ...[
-            const Spacer(),
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
+          if (!isMobile)
+            Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(userName, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
-                Text('Active User', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500)),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(userName, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+                    Text('Active User', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500)),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(color: AppTheme.slate200, shape: BoxShape.circle, border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2))),
+                  child: Center(child: Text(userName.isNotEmpty ? userName[0].toUpperCase() : '?', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700))),
+                ),
               ],
             ),
-            const SizedBox(width: 12),
-            Container(
-              width: 36, height: 36,
-              decoration: BoxDecoration(color: AppTheme.slate200, shape: BoxShape.circle, border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2))),
-              child: Center(child: Text(userName.isNotEmpty ? userName[0].toUpperCase() : '?', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700))),
-            ),
-          ],
         ],
       ),
     );
@@ -1303,6 +1312,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
       case 'accepted': bg = AppTheme.primaryGreen.withOpacity(0.1); text = AppTheme.primaryGreen; break;
       case 'sent': bg = Colors.blue.withOpacity(0.1); text = Colors.blue; break;
       case 'rejected': bg = AppTheme.errorRed.withOpacity(0.1); text = AppTheme.errorRed; break;
+      case 'partial': bg = Colors.amber.withOpacity(0.15); text = Colors.amber.shade700; break;
       default: bg = AppTheme.slate200; text = AppTheme.slate700; break;
     }
     return Container(

@@ -435,6 +435,7 @@ class _ServiceEstimationDialogState
         'unit': m['unit'],
         'notes': m['notes'],
         'layer_type': m['layer_type'] ?? 'earth',
+        'yield_factor': m['yield_factor'],
       }).toList();
     }
 
@@ -1506,16 +1507,16 @@ class _ServiceEstimationDialogState
 
   Widget _emptyMaterialsPlaceholder() {
     return Center(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.inventory_2_outlined, size: 64, color: AppTheme.slate200),
-            const SizedBox(height: 16),
+            Icon(Icons.inventory_2_outlined, size: 40, color: AppTheme.slate200),
+            const SizedBox(height: 12),
             Text('No materials added yet', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.slate400)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text('Click "Add Material" to select supplies from the catalog', 
                 textAlign: TextAlign.center, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400)),
           ],

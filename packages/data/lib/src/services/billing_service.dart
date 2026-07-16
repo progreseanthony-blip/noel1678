@@ -236,6 +236,7 @@ class BillingService {
       'quantity_lost',
       'replacement_unit_cost',
       'disruption_reason_id',
+      'estimation_metadata',
     };
 
     final batch = details.map((d) {

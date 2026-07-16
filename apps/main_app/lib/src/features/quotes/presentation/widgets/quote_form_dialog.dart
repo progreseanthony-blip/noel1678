@@ -223,6 +223,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
   List<ServiceEntry> _services = [];
   int _activeServiceIndex = 0;
 
+  // Tracks the ID of a newly created quote to prevent duplicate INSERTs on re-save
+  String? _createdQuoteId;
+
   final _currencyFormat = NumberFormat('#,##0.00', 'en_US');
 
   bool get _isEditing => widget.quoteToEdit != null;
@@ -815,7 +818,9 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         totalAmount += svc.totalSaleV2;
       }
 
-      if (_isEditing) {
+      final isUpdate = _isEditing || _createdQuoteId != null;
+      if (isUpdate) {
+        final quoteIdToUpdate = _createdQuoteId ?? widget.quoteToEdit!['id'] as String;
         await supabase
             .from('quotes')
             .update({
@@ -828,8 +833,8 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               'quote_type': _quoteType,
               'updated_at': DateTime.now().toIso8601String(),
             })
-            .eq('id', widget.quoteToEdit!['id']);
-        quoteId = widget.quoteToEdit!['id'];
+            .eq('id', quoteIdToUpdate);
+        quoteId = quoteIdToUpdate;
       } else {
         final result = await supabase
             .from('quotes')
@@ -839,12 +844,13 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               'client_address': _selectedClientAddress,
               'total_amount': totalAmount,
               'quote_date': _quoteDate.toIso8601String().split('T')[0],
-              'status': _selectedStatus,
+              'status': closeDialog ? _selectedStatus : 'partial',
               'quote_type': _quoteType,
             })
             .select()
             .single();
         quoteId = result['id'];
+        _createdQuoteId = quoteId;
       }
 
       // Insert or update services, machineries, labors
@@ -887,6 +893,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
               .select()
               .single();
           svcId = svcResult['id'];
+          svc.dbId = svcId;
         }
 
         for (final m in svc.machineries) {
@@ -1296,92 +1303,122 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
 
     final result = await showSafeDialog<Map<String, dynamic>>(
       context: context,
+      barrierColor: Colors.black.withOpacity(0.6),
       builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: Text('Copy from Existing Estimate', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800)),
-          content: SizedBox(
-            width: 600,
-            height: 480,
-            child: Column(
-              children: [
-                TextField(
-                  controller: searchCtrl,
-                  decoration: InputDecoration(
-                    hintText: 'Search by title or client...',
-                    prefixIcon: const Icon(Icons.search, size: 20),
-                    suffixIcon: query.isNotEmpty
-                        ? IconButton(icon: const Icon(Icons.clear, size: 18), onPressed: () { searchCtrl.clear(); setDialogState(() => query = ''); })
-                        : null,
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-                  ),
-                  onChanged: (v) => setDialogState(() => query = v.toLowerCase().trim()),
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: quotes.isEmpty
-                      ? Center(child: Text('No existing estimates found', style: GoogleFonts.manrope(color: AppTheme.slate400)))
-                      : ListView.separated(
-                          itemCount: quotes.where((q) {
-                            if (query.isEmpty) return true;
-                            return (q['title'] ?? '').toString().toLowerCase().contains(query) ||
-                                (q['client_name'] ?? '').toString().toLowerCase().contains(query);
-                          }).length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
-                          itemBuilder: (context, index) {
-                            final filtered = quotes.where((q) {
-                              if (query.isEmpty) return true;
-                              return (q['title'] ?? '').toString().toLowerCase().contains(query) ||
-                                  (q['client_name'] ?? '').toString().toLowerCase().contains(query);
-                            }).toList();
-                            final q = filtered[index];
-                            final title = q['title'] ?? 'Untitled';
-                            final client = q['client_name'] ?? '—';
-                            final date = q['quote_date'] as String?;
-                            final dateFormatted = date != null ? DateFormat('MMM dd, yyyy').format(DateTime.parse(date)) : '—';
-                            final amount = (q['total_amount'] as num?)?.toDouble() ?? 0;
-                            final type = q['quote_type'] ?? 'standard';
-                            final typeLabel = type == 'staffing' ? 'Labor Supply' : 'Standard';
-                            final f = NumberFormat('#,##0');
+        builder: (ctx, setDialogState) {
+          final filtered = quotes.where((q) {
+            if (query.isEmpty) return true;
+            final t = (q['title'] ?? '').toString().toLowerCase();
+            final c = (q['client_name'] ?? '').toString().toLowerCase();
+            return t.contains(query) || c.contains(query);
+          }).toList();
 
-                            return ListTile(
-                              dense: true,
-                              leading: Container(
-                                width: 40, height: 40,
-                                decoration: BoxDecoration(
-                                  color: type == 'staffing' ? Colors.amber.withAlpha(20) : AppTheme.primaryGreen.withAlpha(20),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Icon(
-                                  type == 'staffing' ? Icons.people_outline : Icons.engineering_outlined,
-                                  color: type == 'staffing' ? Colors.amber : AppTheme.primaryGreen,
-                                  size: 20,
-                                ),
-                              ),
-                              title: Text(title, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700)),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+          final screenWidth = MediaQuery.of(ctx).size.width;
+          final isMobile = screenWidth < 600;
+
+          return BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+            child: Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 24, vertical: 24),
+              child: Container(
+                width: double.infinity,
+                constraints: BoxConstraints(
+                  maxWidth: 640,
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.85,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.15),
+                      blurRadius: 30,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildTemplatePickerHeader(ctx),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                      child: TextField(
+                        controller: searchCtrl,
+                        decoration: InputDecoration(
+                          hintText: 'Search by title or client...',
+                          hintStyle: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate400),
+                          prefixIcon: const Icon(Icons.search, size: 20, color: AppTheme.slate400),
+                          suffixIcon: query.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 18),
+                                  onPressed: () {
+                                    searchCtrl.clear();
+                                    setDialogState(() => query = '');
+                                  },
+                                )
+                              : null,
+                          filled: true,
+                          fillColor: AppTheme.slate50,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 2),
+                          ),
+                        ),
+                        onChanged: (v) => setDialogState(() => query = v.toLowerCase().trim()),
+                      ),
+                    ),
+                    Container(height: 1, color: AppTheme.slate200),
+                    Flexible(
+                      child: filtered.isEmpty
+                          ? Padding(
+                              padding: const EdgeInsets.all(48),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Text('$client · $dateFormatted · $typeLabel', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500)),
-                                  if (amount > 0) Text('\$ ${f.format(amount)}', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+                                  Icon(Icons.folder_open_outlined, size: 48, color: AppTheme.slate400),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    'No existing estimates found',
+                                    style: GoogleFonts.manrope(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppTheme.slate900,
+                                    ),
+                                  ),
                                 ],
                               ),
-                              trailing: TextButton(
-                                onPressed: () => Navigator.pop(ctx, q),
-                                child: Text('Copy', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
-                              ),
-                            );
-                          },
-                        ),
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              itemCount: filtered.length,
+                              separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                              itemBuilder: (context, index) {
+                                final q = filtered[index];
+                                return _TemplateQuoteItem(
+                                  quote: q,
+                                  onCopy: () => Navigator.pop(ctx, q),
+                                );
+                              },
+                            ),
+                    ),
+                    _buildTemplatePickerFooter(ctx, filtered.length),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: GoogleFonts.manrope(fontWeight: FontWeight.w600, color: AppTheme.slate500))),
-          ],
-        ),
+          );
+        },
       ),
     );
 
@@ -1563,6 +1600,106 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildTemplatePickerHeader(BuildContext ctx) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryGreen.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: const Center(
+                  child: Icon(Icons.file_copy_outlined, color: AppTheme.primaryGreen, size: 20),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Copy from Existing Estimate',
+                    style: GoogleFonts.manrope(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.slate900,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Select a previous estimate to use as a template',
+                    style: GoogleFonts.manrope(
+                      fontSize: 14,
+                      color: AppTheme.slate500,
+                      height: 1.0,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () => Navigator.of(ctx).pop(),
+              child: const Icon(Icons.close, color: AppTheme.slate400, size: 24),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTemplatePickerFooter(BuildContext ctx, int count) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8FAFC),
+        border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            '$count estimate${count == 1 ? '' : 's'}',
+            style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500),
+          ),
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () => Navigator.of(ctx).pop(),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: Text(
+                  'Cancel',
+                  style: GoogleFonts.manrope(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.slate700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -4618,5 +4755,124 @@ class _LeverSuggestion {
   final IconData icon;
   final VoidCallback action;
   const _LeverSuggestion({required this.label, required this.icon, required this.action});
+}
+
+// ══════════════════════════════════════════════════════════════
+//  TEMPLATE QUOTE ITEM
+// ══════════════════════════════════════════════════════════════
+class _TemplateQuoteItem extends StatefulWidget {
+  final Map<String, dynamic> quote;
+  final VoidCallback onCopy;
+
+  const _TemplateQuoteItem({
+    required this.quote,
+    required this.onCopy,
+  });
+
+  @override
+  State<_TemplateQuoteItem> createState() => _TemplateQuoteItemState();
+}
+
+class _TemplateQuoteItemState extends State<_TemplateQuoteItem> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final q = widget.quote;
+    final title = q['title'] ?? 'Untitled';
+    final client = q['client_name'] ?? '—';
+    final date = q['quote_date'] as String?;
+    final dateFormatted = date != null ? DateFormat('MMM dd, yyyy').format(DateTime.parse(date)) : '—';
+    final amount = (q['total_amount'] as num?)?.toDouble() ?? 0;
+    final type = q['quote_type'] ?? 'standard';
+    final typeIcon = type == 'staffing' ? Icons.people_outline : Icons.engineering_outlined;
+    final typeColor = type == 'staffing' ? Colors.amber : AppTheme.primaryGreen;
+    final f = NumberFormat('#,##0');
+
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: Container(
+        color: _hovered ? const Color(0xFFFAFAFB) : Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: typeColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Center(
+                child: Icon(typeIcon, color: typeColor, size: 20),
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: GoogleFonts.manrope(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.slate900,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    children: [
+                      Text(
+                        '$client · $dateFormatted',
+                        style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500),
+                      ),
+                      const SizedBox(width: 8),
+                      if (amount > 0)
+                        Text(
+                          '\$${f.format(amount)}',
+                          style: GoogleFonts.manrope(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.slate900,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            AnimatedOpacity(
+              duration: const Duration(milliseconds: 200),
+              opacity: _hovered ? 1.0 : 0.0,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: widget.onCopy,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGreen,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      'Copy',
+                      style: GoogleFonts.manrope(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 

@@ -138,7 +138,8 @@ class _StepReviewSignState extends State<StepReviewSign> {
             label: Text(_isSubmitting ? 'Submitting...' : 'Submit Report for Review',
                 style: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 15)),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF22C55E),
+              backgroundColor: AppTheme.primaryGreen,
+              foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
           ),

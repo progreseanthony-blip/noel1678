@@ -51,7 +51,7 @@ class _PendingApprovalsPageState extends ConsumerState<PendingApprovalsPage> {
       await ref.read(dailyReportServiceProvider).approveReport(id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Report approved'), backgroundColor: Colors.green),
+          const SnackBar(content: Text('Report approved'), backgroundColor: AppTheme.primaryGreen),
         );
         _loadData();
       }
@@ -85,7 +85,7 @@ class _PendingApprovalsPageState extends ConsumerState<PendingApprovalsPage> {
       await ref.read(dailyReportServiceProvider).rejectReport(id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Report rejected'), backgroundColor: Colors.orange),
+          SnackBar(content: Text('Report rejected'), backgroundColor: AppTheme.errorRed),
         );
         _loadData();
       }

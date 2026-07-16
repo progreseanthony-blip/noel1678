@@ -762,7 +762,7 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
               _isLoadingCatalogs ? const LinearProgressIndicator(color: AppTheme.primaryGreen) : 
                 _error != null 
                   ? Text(_error!, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.errorRed, fontWeight: FontWeight.w600))
-                  : _buildCatalogDropdown(),
+                  : _buildSearchableCatalogDropdown(),
               
               if (!_isPrincipal && _selectedType == 'Machinery') ...[
                 const SizedBox(height: 24),
@@ -863,18 +863,138 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
     );
   }
 
-  Widget _buildCatalogDropdown() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(color: const Color(0xFF0F172A), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFF334155))),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: _selectedCatalogItemId, isExpanded: true, hint: Text('Select Item...', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 14)),
-          dropdownColor: const Color(0xFF1E293B), style: GoogleFonts.manrope(color: Colors.white, fontSize: 14), icon: const Icon(Icons.search, color: AppTheme.slate400, size: 18),
-          items: _catalogItems.map((item) => DropdownMenuItem(value: item['id'].toString(), child: Text(item['description'] ?? item['name'] ?? 'Unknown'))).toList(),
-          onChanged: (val) { if (val != null) _onResourceSelected(val); },
-        ),
-      ),
+  Widget _buildSearchableCatalogDropdown() {
+    return Autocomplete<Map<String, dynamic>>(
+      key: ValueKey('catalog_$_selectedType'),
+      initialValue: TextEditingValue(text: _selectedCatalogItemId != null
+          ? _catalogItems
+              .where((i) => i['id'].toString() == _selectedCatalogItemId)
+              .map((i) => i['description'] ?? i['name'] ?? '')
+              .firstOrNull ?? ''
+          : ''),
+      displayStringForOption: (option) => option['description'] ?? option['name'] ?? '',
+      optionsBuilder: (textEditingValue) {
+        final t = textEditingValue.text.toLowerCase();
+        if (t.isEmpty) return _catalogItems;
+        return _catalogItems.where((item) {
+          final name = (item['description'] ?? item['name'] ?? '').toString().toLowerCase();
+          return name.contains(t);
+        }).toList();
+      },
+      onSelected: (option) {
+        _onResourceSelected(option['id'].toString());
+      },
+      fieldViewBuilder: (context, controller, focusNode, onFieldSubmitted) {
+        return TextField(
+          controller: controller,
+          focusNode: focusNode,
+          style: GoogleFonts.manrope(color: Colors.white, fontSize: 14),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: const Color(0xFF0F172A),
+            hintText: 'Search catalog...',
+            hintStyle: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 14),
+            prefixIcon: const Icon(Icons.search, color: AppTheme.slate400, size: 20),
+            suffixIcon: controller.text.isNotEmpty
+                ? GestureDetector(
+                    onTap: () {
+                      controller.clear();
+                      focusNode.requestFocus();
+                    },
+                    child: const Icon(Icons.close, color: AppTheme.slate400, size: 18),
+                  )
+                : null,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFF334155)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFF334155)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFF334155)),
+            ),
+            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            isDense: true,
+          ),
+          onChanged: (_) => setState(() {}),
+        );
+      },
+      optionsViewBuilder: (context, onSelectedInternal, options) {
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Material(
+            color: const Color(0xFF1E293B),
+            elevation: 8,
+            borderRadius: BorderRadius.circular(10),
+            clipBehavior: Clip.antiAlias,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 450, maxHeight: 260),
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFF334155)),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  shrinkWrap: true,
+                  children: [
+                    if (options.isEmpty)
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(
+                          'No items found',
+                          style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 13),
+                        ),
+                      )
+                    else
+                      Theme(
+                        data: Theme.of(context).copyWith(
+                          splashColor: AppTheme.primaryGreen.withOpacity(0.3),
+                          highlightColor: AppTheme.primaryGreen.withOpacity(0.1),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: options.map((option) {
+                            final name = option['description'] ?? option['name'] ?? 'Unknown';
+                            final subtitle = option['unit'] != null
+                                ? 'Unit: ${option['unit']}'
+                                : (option['hourly_rate'] != null
+                                    ? '\$${option['hourly_rate']}/hr'
+                                    : null);
+                            return ListTile(
+                              dense: true,
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              title: Text(
+                                name,
+                                style: GoogleFonts.manrope(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              subtitle: subtitle != null
+                                  ? Text(
+                                      subtitle,
+                                      style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400),
+                                    )
+                                  : null,
+                              tileColor: Colors.transparent,
+                              hoverColor: AppTheme.primaryGreen.withOpacity(0.15),
+                              onTap: () => onSelectedInternal(option),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
