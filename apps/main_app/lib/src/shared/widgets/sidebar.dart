@@ -174,7 +174,7 @@ class _SidebarState extends State<Sidebar> {
                         scrollController: _scrollController,
                         children: [
                           _SubNavItem(key: _resourcePlanningKey, icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')), onTap: () => context.go('/projects')),
-                          _SubNavItem(key: _receptionKey, icon: Icons.inventory, label: 'Reception', isActive: currentPath.contains('/reception'), onTap: () {
+                          _SubNavItem(key: _receptionKey, icon: Icons.inventory, label: 'Receive / Return', isActive: currentPath.contains('/reception'), onTap: () {
                             final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
                             if (projectId.isNotEmpty) {
                               context.go('/projects/$projectId/reception');

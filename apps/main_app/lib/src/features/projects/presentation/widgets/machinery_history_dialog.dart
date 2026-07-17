@@ -6,6 +6,7 @@ import 'package:noel_core/noel_core.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'machinery_reception_dialog.dart';
+import 'machinery_return_dialog.dart';
 
 class MachineryHistoryDialog extends StatefulWidget {
   final String projectId;
@@ -74,56 +75,44 @@ class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
     }
   }
 
-  Future<void> _demobilizeMachinery(String inspectionId) async {
-    final hmController = TextEditingController();
+  Future<void> _demobilizeMachinery(Map<String, dynamic> inspection) async {
     final result = await showSafeDialog<bool>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
-      builder: (_) => AlertDialog(
-        title: Text('Demobilize Machine', style: GoogleFonts.manrope(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Enter the final hour meter reading (optional):', style: GoogleFonts.manrope(fontSize: 14)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: hmController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Final Hour Meter',
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                await Supabase.instance.client
-                    .from('machinery_inspections')
-                    .update({
-                      'returned_at': DateTime.now().toUtc().toIso8601String(),
-                      if (hmController.text.isNotEmpty) 'hour_meter_end': double.tryParse(hmController.text),
-                    })
-                    .eq('id', inspectionId);
-                if (mounted) Navigator.pop(context, true);
-              } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
-            child: const Text('Confirm Return', style: TextStyle(color: Colors.white)),
-          ),
-        ],
+      builder: (_) => MachineryReturnDialog(
+        projectId: widget.projectId,
+        inspectionId: inspection['id'],
+        projectMachineryId: widget.projectMachineryId,
+        machineryName: widget.machineryName,
+        serviceName: widget.serviceName,
+        hourMeterStart: (inspection['hour_meter_start'] as num?)?.toDouble(),
+        hourMeterEnd: (inspection['hour_meter_end'] as num?)?.toDouble(),
+        odometerUnit: inspection['odometer_unit'] as String?,
       ),
     );
 
     if (result == true) {
       _loadHistory();
     }
+  }
+
+  Future<void> _editReturn(Map<String, dynamic> inspection) async {
+    final result = await showSafeDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (_) => MachineryReturnDialog(
+        projectId: widget.projectId,
+        inspectionId: inspection['id'],
+        projectMachineryId: widget.projectMachineryId,
+        machineryName: widget.machineryName,
+        serviceName: widget.serviceName,
+        hourMeterStart: (inspection['hour_meter_start'] as num?)?.toDouble(),
+        hourMeterEnd: (inspection['hour_meter_end'] as num?)?.toDouble(),
+        odometerUnit: inspection['odometer_unit'] as String?,
+        existingReturn: inspection,
+      ),
+    );
+    if (result == true) _loadHistory();
   }
 
   void _openEditDialog(String inspectionId) {
@@ -246,7 +235,7 @@ class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
                                     children: [
                                       if (item['returned_at'] == null)
                                         TextButton.icon(
-                                          onPressed: () => _demobilizeMachinery(item['id']),
+                                          onPressed: () => _demobilizeMachinery(item),
                                           icon: const Icon(Icons.outbound_outlined, size: 16, color: Colors.orange),
                                           label: Text('Return', style: GoogleFonts.manrope(color: Colors.orange, fontWeight: FontWeight.bold)),
                                           style: TextButton.styleFrom(
@@ -254,11 +243,22 @@ class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
                                             backgroundColor: Colors.orange.withOpacity(0.05),
                                           ),
                                         ),
+                                      if (item['returned_at'] != null)
+                                        TextButton.icon(
+                                          onPressed: () => _editReturn(item),
+                                          icon: const Icon(Icons.edit_outlined, size: 16, color: Colors.orange),
+                                          label: Text('Edit Return', style: GoogleFonts.manrope(color: Colors.orange, fontWeight: FontWeight.bold)),
+                                          style: TextButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            backgroundColor: Colors.orange.withOpacity(0.05),
+                                          ),
+                                        ),
                                       if (item['returned_at'] == null) const SizedBox(width: 8),
+                                      if (item['returned_at'] != null) const SizedBox(width: 4),
                                       TextButton.icon(
                                         onPressed: () => _openEditDialog(item['id']),
                                         icon: const Icon(Icons.edit_outlined, size: 16, color: AppTheme.primaryGreen),
-                                        label: Text('Edit', style: GoogleFonts.manrope(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
+                                        label: Text('Edit Reception', style: GoogleFonts.manrope(color: AppTheme.primaryGreen, fontWeight: FontWeight.bold)),
                                         style: TextButton.styleFrom(
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                           backgroundColor: AppTheme.primaryGreen.withOpacity(0.05),

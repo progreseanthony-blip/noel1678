@@ -6,6 +6,7 @@ import 'package:noel_core/noel_core.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'instrument_reception_dialog.dart';
+import 'instrument_return_dialog.dart';
 
 class InstrumentHistoryDialog extends StatefulWidget {
   final String projectId;
@@ -72,6 +73,37 @@ class _InstrumentHistoryDialogState extends State<InstrumentHistoryDialog> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _returnInstrument(Map<String, dynamic> inspection) async {
+    final result = await showSafeDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (_) => InstrumentReturnDialog(
+        projectId: widget.projectId,
+        inspectionId: inspection['id'],
+        projectInstrumentId: widget.projectInstrumentId,
+        instrumentName: widget.instrumentName,
+        serviceName: widget.serviceName,
+      ),
+    );
+    if (result == true) _loadHistory();
+  }
+
+  Future<void> _editReturn(Map<String, dynamic> inspection) async {
+    final result = await showSafeDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.5),
+      builder: (_) => InstrumentReturnDialog(
+        projectId: widget.projectId,
+        inspectionId: inspection['id'],
+        projectInstrumentId: widget.projectInstrumentId,
+        instrumentName: widget.instrumentName,
+        serviceName: widget.serviceName,
+        existingReturn: inspection,
+      ),
+    );
+    if (result == true) _loadHistory();
   }
 
   void _openEditDialog(String inspectionId) {
@@ -190,14 +222,40 @@ class _InstrumentHistoryDialogState extends State<InstrumentHistoryDialog> {
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(dateStr, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
-                                  TextButton.icon(
-                                    onPressed: () => _openEditDialog(item['id']),
-                                    icon: const Icon(Icons.edit_outlined, size: 16, color: Colors.purple),
-                                    label: Text('Edit', style: GoogleFonts.manrope(color: Colors.purple, fontWeight: FontWeight.bold)),
-                                    style: TextButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                      backgroundColor: Colors.purple.withOpacity(0.05),
-                                    ),
+                                  Row(
+                                    children: [
+                                      if (item['returned_at'] == null)
+                                        TextButton.icon(
+                                          onPressed: () => _returnInstrument(item),
+                                          icon: const Icon(Icons.outbound_outlined, size: 16, color: Colors.orange),
+                                          label: Text('Return', style: GoogleFonts.manrope(color: Colors.orange, fontWeight: FontWeight.bold)),
+                                          style: TextButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            backgroundColor: Colors.orange.withOpacity(0.05),
+                                          ),
+                                        ),
+                                      if (item['returned_at'] != null)
+                                        TextButton.icon(
+                                          onPressed: () => _editReturn(item),
+                                          icon: const Icon(Icons.edit_outlined, size: 16, color: Colors.purple),
+                                          label: Text('Edit Return', style: GoogleFonts.manrope(color: Colors.purple, fontWeight: FontWeight.bold)),
+                                          style: TextButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                            backgroundColor: Colors.purple.withOpacity(0.05),
+                                          ),
+                                        ),
+                                      if (item['returned_at'] == null) const SizedBox(width: 8),
+                                      if (item['returned_at'] != null) const SizedBox(width: 4),
+                                      TextButton.icon(
+                                        onPressed: () => _openEditDialog(item['id']),
+                                        icon: const Icon(Icons.edit_outlined, size: 16, color: Colors.purple),
+                                        label: Text('Edit Reception', style: GoogleFonts.manrope(color: Colors.purple, fontWeight: FontWeight.bold)),
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          backgroundColor: Colors.purple.withOpacity(0.05),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
@@ -214,6 +272,10 @@ class _InstrumentHistoryDialogState extends State<InstrumentHistoryDialog> {
                               if (item['observations'] != null && item['observations'].toString().isNotEmpty) ...[
                                 const SizedBox(height: 8),
                                 Text('Notes: ${item['observations']}', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate600)),
+                              ],
+                              if (item['returned_at'] != null) ...[
+                                const SizedBox(height: 8),
+                                Text('Returned: ${DateFormat('MMM dd, yyyy - hh:mm a').format(DateTime.parse(item['returned_at']).toLocal())}', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.orange)),
                               ],
                               if (photos.isNotEmpty) ...[
                                 const SizedBox(height: 12),

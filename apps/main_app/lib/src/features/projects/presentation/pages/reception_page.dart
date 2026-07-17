@@ -10,10 +10,12 @@ import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
 import '../widgets/machinery_reception_dialog.dart';
 import '../widgets/machinery_history_dialog.dart';
+import '../widgets/machinery_return_dialog.dart';
 import '../widgets/material_reception_dialog.dart';
 import '../widgets/material_history_dialog.dart';
 import '../widgets/instrument_reception_dialog.dart';
 import '../widgets/instrument_history_dialog.dart';
+import '../widgets/instrument_return_dialog.dart';
 
 class ReceptionPage extends StatefulWidget {
   final String projectId;
@@ -37,6 +39,10 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
   Map<String, double> _materialUsage = {};
 
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
+  Map<String, int> _activeRentalCounts = {};
+  Map<String, int> _activeInstrumentCounts = {};
+  Map<String, int> _returnedMachineryCounts = {};
+  Map<String, int> _returnedInstrumentCounts = {};
 
   @override
   void initState() {
@@ -129,12 +135,65 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
           debugPrint('Error loading material usage: $e');
         }
 
+        // Load rental/return counts
+        final Map<String, int> rentalCounts = {};
+        final Map<String, int> instrCounts = {};
+        final Map<String, int> returnedMachCounts = {};
+        final Map<String, int> returnedInstrCounts = {};
+        try {
+          final machRentals = await supabase
+              .from('machinery_inspections')
+              .select('project_machinery_id')
+              .is_('returned_at', null)
+              .eq('ownership_type', 'rented');
+          for (final r in (machRentals as List? ?? [])) {
+            final pmId = r['project_machinery_id'] as String?;
+            if (pmId != null) rentalCounts[pmId] = (rentalCounts[pmId] ?? 0) + 1;
+          }
+        } catch (_) {}
+        try {
+          final instrRentals = await supabase
+              .from('instrument_inspections')
+              .select('project_instrument_id')
+              .is_('returned_at', null);
+          for (final r in (instrRentals as List? ?? [])) {
+            final piId = r['project_instrument_id'] as String?;
+            if (piId != null) instrCounts[piId] = (instrCounts[piId] ?? 0) + 1;
+          }
+        } catch (_) {}
+        try {
+          final machReturned = await supabase
+              .from('machinery_inspections')
+              .select('project_machinery_id, returned_at');
+          for (final r in (machReturned as List? ?? [])) {
+            if (r['returned_at'] != null) {
+              final pmId = r['project_machinery_id'] as String?;
+              if (pmId != null) returnedMachCounts[pmId] = (returnedMachCounts[pmId] ?? 0) + 1;
+            }
+          }
+        } catch (_) {}
+        try {
+          final instrReturned = await supabase
+              .from('instrument_inspections')
+              .select('project_instrument_id, returned_at');
+          for (final r in (instrReturned as List? ?? [])) {
+            if (r['returned_at'] != null) {
+              final piId = r['project_instrument_id'] as String?;
+              if (piId != null) returnedInstrCounts[piId] = (returnedInstrCounts[piId] ?? 0) + 1;
+            }
+          }
+        } catch (_) {}
+
         setState(() {
           _project = pResult;
           _machinery = List<Map<String, dynamic>>.from(mResult as List? ?? []);
           _materials = List<Map<String, dynamic>>.from(matResult as List? ?? []);
           _instruments = List<Map<String, dynamic>>.from(iResult as List? ?? []);
           _machineryPhotos = photoMap;
+          _activeRentalCounts = rentalCounts;
+          _activeInstrumentCounts = instrCounts;
+          _returnedMachineryCounts = returnedMachCounts;
+          _returnedInstrumentCounts = returnedInstrCounts;
           _materialUsage = matUsage;
           _projectServices = allServices.toList()..sort((a, b) {
             if (a == 'All Services') return -1;
@@ -426,6 +485,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
               final expected = (m['expected_quantity'] as num?)?.toInt() ?? 0;
               final received = (m['received_quantity'] as num?)?.toInt() ?? 0;
               final isComplete = received >= expected;
+              final returnedCount = _returnedMachineryCounts[m['id']] ?? 0;
               final photoUrl = _machineryPhotos[mName];
 
               return Container(
@@ -441,18 +501,35 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      width: 60, height: 60,
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                        image: photoUrl != null && photoUrl.isNotEmpty
-                            ? DecorationImage(image: NetworkImage(photoUrl), fit: BoxFit.cover)
+                    Stack(
+                      children: [
+                        Container(
+                          width: 60, height: 60,
+                          decoration: BoxDecoration(
+                            color: Colors.orange.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
+                            image: photoUrl != null && photoUrl.isNotEmpty
+                                ? DecorationImage(image: NetworkImage(photoUrl), fit: BoxFit.cover)
+                                : null,
+                          ),
+                          child: (photoUrl == null || photoUrl.isEmpty)
+                            ? const Icon(Icons.precision_manufacturing, color: Colors.orange)
                             : null,
-                      ),
-                      child: (photoUrl == null || photoUrl.isEmpty)
-                        ? const Icon(Icons.precision_manufacturing, color: Colors.orange)
-                        : null,
+                        ),
+                        if (returnedCount >= received && received > 0)
+                          Positioned(
+                            top: -2, right: -2,
+                            child: Container(
+                              width: 22, height: 22,
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryGreen,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                              child: const Icon(Icons.check, size: 14, color: Colors.white),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -472,6 +549,25 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                               color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
                             ),
                           ),
+                          if (received > 0) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Text(
+                                  'Returned: $returnedCount / $received',
+                                  style: GoogleFonts.manrope(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: returnedCount >= received ? AppTheme.primaryGreen : Colors.orange,
+                                  ),
+                                ),
+                                if (returnedCount >= received) ...[
+                                  const SizedBox(width: 4),
+                                  Icon(Icons.check_circle, size: 14, color: AppTheme.primaryGreen),
+                                ],
+                              ],
+                            ),
+                          ],
                           if (!isComplete && expected > 0)
                             Container(
                               margin: const EdgeInsets.only(top: 8),
@@ -505,12 +601,57 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                           });
                         },
                         icon: const Icon(Icons.history, color: Colors.orange),
-                        tooltip: 'View History & Edit',
+                        tooltip: 'View History',
                         style: IconButton.styleFrom(
                           backgroundColor: Colors.orange.withOpacity(0.1),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
+                    if (returnedCount > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryGreen.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_circle_outline, size: 14, color: AppTheme.primaryGreen),
+                            const SizedBox(width: 4),
+                            Text('$returnedCount returned', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (_activeRentalCounts[m['id']] != null && _activeRentalCounts[m['id']]! > 0) ...[
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          showSafeDialog(
+                            context: context,
+                            barrierColor: Colors.black.withOpacity(0.5),
+                            builder: (_) => MachineryHistoryDialog(
+                              projectId: widget.projectId,
+                              projectMachineryId: m['id'],
+                              machineryName: mName,
+                              serviceName: sName,
+                            ),
+                          ).then((updated) {
+                            if (updated == true) _loadData();
+                          });
+                        },
+                        icon: const Icon(Icons.outbound_outlined, size: 16, color: Colors.white),
+                        label: Text('Return (${_activeRentalCounts[m['id']]})', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                      ),
+                    ],
                     if (received > 0) const SizedBox(width: 8),
                     if (!isComplete)
                       ElevatedButton.icon(
@@ -751,6 +892,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
               final expected = (m['expected_quantity'] as num?)?.toDouble() ?? 0.0;
               final received = (m['received_quantity'] as num?)?.toDouble() ?? 0.0;
               final isComplete = received >= expected;
+              final returnedCount = _returnedInstrumentCounts[m['id']] ?? 0;
               final mName = m['instrument_name'] ?? 'Unknown Instrument';
 
               return Container(
@@ -766,13 +908,30 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      width: 60, height: 60,
-                      decoration: BoxDecoration(
-                        color: isComplete ? AppTheme.primaryGreen.withOpacity(0.1) : Colors.purple.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(Icons.handyman, color: isComplete ? AppTheme.primaryGreen : Colors.purple),
+                    Stack(
+                      children: [
+                        Container(
+                          width: 60, height: 60,
+                          decoration: BoxDecoration(
+                            color: isComplete ? AppTheme.primaryGreen.withOpacity(0.1) : Colors.purple.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(Icons.handyman, color: isComplete ? AppTheme.primaryGreen : Colors.purple),
+                        ),
+                        if (returnedCount >= received && received > 0)
+                          Positioned(
+                            top: -2, right: -2,
+                            child: Container(
+                              width: 22, height: 22,
+                              decoration: BoxDecoration(
+                                color: AppTheme.primaryGreen,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                              child: const Icon(Icons.check, size: 14, color: Colors.white),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -792,6 +951,25 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                               color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
                             ),
                           ),
+                          if (received > 0) ...[
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                Text(
+                                  'Returned: $returnedCount / $received',
+                                  style: GoogleFonts.manrope(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: returnedCount >= received ? AppTheme.primaryGreen : Colors.orange,
+                                  ),
+                                ),
+                                if (returnedCount >= received) ...[
+                                  const SizedBox(width: 4),
+                                  Icon(Icons.check_circle, size: 14, color: AppTheme.primaryGreen),
+                                ],
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -813,12 +991,57 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                           });
                         },
                         icon: const Icon(Icons.history, color: AppTheme.primaryGreen),
-                        tooltip: 'View History & Edit',
+                        tooltip: 'View History',
                         style: IconButton.styleFrom(
                           backgroundColor: AppTheme.primaryGreen.withOpacity(0.1),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                         ),
                       ),
+                    if (returnedCount > 0) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryGreen.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.check_circle_outline, size: 14, color: AppTheme.primaryGreen),
+                            const SizedBox(width: 4),
+                            Text('$returnedCount returned', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (_activeInstrumentCounts[m['id']] != null && _activeInstrumentCounts[m['id']]! > 0) ...[
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          showSafeDialog(
+                            context: context,
+                            barrierColor: Colors.black.withOpacity(0.5),
+                            builder: (_) => InstrumentHistoryDialog(
+                              projectId: widget.projectId,
+                              projectInstrumentId: m['id'],
+                              instrumentName: mName,
+                              serviceName: sName,
+                            ),
+                          ).then((updated) {
+                            if (updated == true) _loadData();
+                          });
+                        },
+                        icon: const Icon(Icons.outbound_outlined, size: 16, color: Colors.white),
+                        label: Text('Return (${_activeInstrumentCounts[m['id']]})', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        ),
+                      ),
+                    ],
                     if (received > 0) const SizedBox(width: 8),
                     if (!isComplete)
                       ElevatedButton.icon(
