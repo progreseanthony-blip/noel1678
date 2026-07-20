@@ -179,8 +179,10 @@ class _SidebarState extends State<Sidebar> {
                         children: [
                           _SubNavItem(key: _resourcePlanningKey, icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && currentPath != '/projects' && !currentPath.endsWith('/dashboard') && (currentPath.split('/').length <= 3 || currentPath.endsWith('/baseline')), onTap: () {
                             final segments = currentPath.split('/');
-                            if (segments.length >= 4 && segments[1] == 'projects') {
+                            if (segments.length >= 3 && segments[1] == 'projects' && segments[2].isNotEmpty) {
                               context.go('/projects/${segments[2]}');
+                            } else {
+                              context.go('/projects');
                             }
                           }),
                           _SubNavItem(key: _receptionKey, icon: Icons.inventory, label: 'Receive / Return', isActive: currentPath.contains('/reception'), onTap: () {
