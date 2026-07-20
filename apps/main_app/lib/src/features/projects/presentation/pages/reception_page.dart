@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
+import '../../../../shared/widgets/completed_project_banner.dart';
 import '../widgets/machinery_reception_dialog.dart';
 import '../widgets/machinery_history_dialog.dart';
 import '../widgets/machinery_return_dialog.dart';
@@ -26,6 +27,7 @@ class ReceptionPage extends StatefulWidget {
 }
 
 class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateMixin {
+  bool _isCompleted = false;
   List<Map<String, dynamic>> _machinery = [];
   List<Map<String, dynamic>> _materials = [];
   List<Map<String, dynamic>> _instruments = [];
@@ -312,10 +314,15 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
   }
 
   Widget _buildContent(bool isMobile) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
+    return CompletedProjectBanner(
+      projectId: widget.projectId,
+      isCompletedCallback: (completed) {
+        if (completed != _isCompleted) setState(() => _isCompleted = completed);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
           width: double.infinity,
           color: Colors.white,
           padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, isMobile ? 12 : 16, isMobile ? 16 : 32, 0),
@@ -363,7 +370,8 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
             ],
           ),
         ),
-      ],
+        ],
+      ),
     );
   }
 
@@ -629,7 +637,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                     if (_activeRentalCounts[m['id']] != null && _activeRentalCounts[m['id']]! > 0) ...[
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
-                        onPressed: () {
+                        onPressed: _isCompleted ? null : () {
                           showSafeDialog(
                             context: context,
                             barrierColor: Colors.black.withOpacity(0.5),
@@ -646,14 +654,14 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                         icon: const Icon(Icons.outbound_outlined, size: 16, color: Colors.white),
                         label: Text('Return (${_activeRentalCounts[m['id']]})', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
+                          backgroundColor: _isCompleted ? AppTheme.slate400 : Colors.orange,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         ),
                       ),
                     ],
                     if (received > 0) const SizedBox(width: 8),
-                    if (!isComplete)
+                    if (!isComplete && !_isCompleted)
                       ElevatedButton.icon(
                         onPressed: () {
                           showSafeDialog(
@@ -789,7 +797,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                     const SizedBox(width: 16),
                     if (received > 0)
                       IconButton(
-                        onPressed: () {
+                        onPressed: _isCompleted ? null : () {
                           showSafeDialog(
                             context: context,
                             barrierColor: Colors.black.withOpacity(0.5),
@@ -813,7 +821,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                         ),
                       ),
                     if (received > 0) const SizedBox(width: 8),
-                    if (!isComplete)
+                    if (!isComplete && !_isCompleted)
                       ElevatedButton.icon(
                         onPressed: () {
                           showSafeDialog(
@@ -1019,7 +1027,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                     if (_activeInstrumentCounts[m['id']] != null && _activeInstrumentCounts[m['id']]! > 0) ...[
                       const SizedBox(width: 8),
                       ElevatedButton.icon(
-                        onPressed: () {
+                        onPressed: _isCompleted ? null : () {
                           showSafeDialog(
                             context: context,
                             barrierColor: Colors.black.withOpacity(0.5),
@@ -1036,14 +1044,14 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                         icon: const Icon(Icons.outbound_outlined, size: 16, color: Colors.white),
                         label: Text('Return (${_activeInstrumentCounts[m['id']]})', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple,
+                          backgroundColor: _isCompleted ? AppTheme.slate400 : Colors.purple,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         ),
                       ),
                     ],
                     if (received > 0) const SizedBox(width: 8),
-                    if (!isComplete)
+                    if (!isComplete && !_isCompleted)
                       ElevatedButton.icon(
                         onPressed: () {
                           showSafeDialog(

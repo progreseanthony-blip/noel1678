@@ -28,6 +28,7 @@ class _SidebarState extends State<Sidebar> {
 
   final _userMgmtKey = GlobalKey();
   final _estimatesKey = GlobalKey();
+  final _portfolioKey = GlobalKey();
   final _resourcePlanningKey = GlobalKey();
   final _receptionKey = GlobalKey();
   final _dailyReportsKey = GlobalKey();
@@ -74,7 +75,9 @@ class _SidebarState extends State<Sidebar> {
       activeKey = _userMgmtKey;
     } else if (path.startsWith('/quotes')) {
       activeKey = _estimatesKey;
-    } else if (path == '/projects' || path.endsWith('/baseline')) {
+    } else if (path == '/projects' || path.contains('/dashboard')) {
+      activeKey = _portfolioKey;
+    } else if (path.startsWith('/projects') && !path.contains('/dashboard') && path.endsWith('/baseline')) {
       activeKey = _resourcePlanningKey;
     } else if (path.contains('/reception')) {
       activeKey = _receptionKey;
@@ -167,13 +170,19 @@ class _SidebarState extends State<Sidebar> {
                     initiallyExpanded: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/billing') || currentPath.startsWith('/change-orders') || currentPath.startsWith('/incidents') || currentPath.startsWith('/reception') || currentPath.startsWith('/weekly-inspections'),
                     scrollController: _scrollController,
                     children: [
+                      _SubNavItem(key: _portfolioKey, icon: Icons.space_dashboard, label: 'Portfolio', isActive: currentPath == '/projects' || currentPath.endsWith('/dashboard'), onTap: () => context.go('/projects')),
                       _SubExpandableNavItem(
                         label: 'Planning',
-                        isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline') || currentPath.contains('/reception')) || currentPath.startsWith('/reception'),
+                        isActive: currentPath.startsWith('/projects') && currentPath != '/projects' && !currentPath.endsWith('/dashboard') && (currentPath.endsWith('/baseline') || currentPath.contains('/reception')) || currentPath.startsWith('/reception'),
                         initiallyExpanded: true,
                         scrollController: _scrollController,
                         children: [
-                          _SubNavItem(key: _resourcePlanningKey, icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && (currentPath == '/projects' || currentPath.endsWith('/baseline')), onTap: () => context.go('/projects')),
+                          _SubNavItem(key: _resourcePlanningKey, icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && currentPath != '/projects' && !currentPath.endsWith('/dashboard') && (currentPath.split('/').length <= 3 || currentPath.endsWith('/baseline')), onTap: () {
+                            final segments = currentPath.split('/');
+                            if (segments.length >= 4 && segments[1] == 'projects') {
+                              context.go('/projects/${segments[2]}');
+                            }
+                          }),
                           _SubNavItem(key: _receptionKey, icon: Icons.inventory, label: 'Receive / Return', isActive: currentPath.contains('/reception'), onTap: () {
                             final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
                             if (projectId.isNotEmpty) {

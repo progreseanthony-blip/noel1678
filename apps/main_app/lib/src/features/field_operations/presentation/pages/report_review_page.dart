@@ -8,6 +8,7 @@ import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
+import '../../../../shared/widgets/completed_project_banner.dart';
 
 class ReportReviewPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -19,6 +20,7 @@ class ReportReviewPage extends ConsumerStatefulWidget {
 }
 
 class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
+  bool _isCompleted = false;
   Map<String, dynamic>? _report;
   List<Map<String, dynamic>> _laborLogs = [];
   List<Map<String, dynamic>> _machineryLogs = [];
@@ -201,7 +203,12 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
       );
     }
 
-    return SingleChildScrollView(
+    return CompletedProjectBanner(
+      projectId: widget.projectId,
+      isCompletedCallback: (completed) {
+        if (completed != _isCompleted) setState(() => _isCompleted = completed);
+      },
+      child: SingleChildScrollView(
       padding: EdgeInsets.all(isMobile ? 16 : 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -352,6 +359,7 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
           if (_isAdmin) _buildDecisionSection(r['status'] as String?),
         ],
       ),
+      ),
     );
   }
 
@@ -418,13 +426,13 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
           const SizedBox(height: 16),
           Row(children: [
             Expanded(child: OutlinedButton.icon(
-              onPressed: _reject, icon: const Icon(Icons.close, size: 18),
+              onPressed: _isCompleted ? null : _reject, icon: const Icon(Icons.close, size: 18),
               label: Text('REJECT', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 14)),
               style: OutlinedButton.styleFrom(foregroundColor: AppTheme.errorRed, side: const BorderSide(color: AppTheme.errorRed), padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
             )),
             const SizedBox(width: 12),
             Expanded(child: FilledButton.icon(
-              onPressed: _approve, icon: const Icon(Icons.check, size: 18),
+              onPressed: _isCompleted ? null : _approve, icon: const Icon(Icons.check, size: 18),
               label: Text('APPROVE', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 14)),
               style: FilledButton.styleFrom(backgroundColor: AppTheme.primaryGreen, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
             )),

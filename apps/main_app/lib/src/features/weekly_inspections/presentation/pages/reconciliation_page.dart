@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_data/noel_data.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
+import '../../../../shared/widgets/completed_project_banner.dart';
 
 class ReconciliationPage extends StatefulWidget {
   final String projectId;
@@ -25,6 +26,7 @@ class ReconciliationPage extends StatefulWidget {
 }
 
 class _ReconciliationPageState extends State<ReconciliationPage> {
+  bool _isCompleted = false;
   final _notesController = TextEditingController();
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -573,7 +575,12 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
 
     final remainingToAdjust = _totalAdjusted - inspectionMeasured;
 
-    return SingleChildScrollView(
+    return CompletedProjectBanner(
+      projectId: widget.projectId,
+      isCompletedCallback: (completed) {
+        if (completed != _isCompleted) setState(() => _isCompleted = completed);
+      },
+      child: SingleChildScrollView(
       padding: EdgeInsets.all(isMobile ? 16 : 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -693,7 +700,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
                   if (isPendingApproval && !isProposedByCurrent) ...[
                     const SizedBox(width: 8),
                     TextButton(
-                      onPressed: _approveReconciliation,
+                      onPressed: _isCompleted ? null : _approveReconciliation,
                       child: Text(
                         'Approve',
                         style: GoogleFonts.manrope(
@@ -703,7 +710,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
                       ),
                     ),
                     TextButton(
-                      onPressed: _rejectReconciliation,
+                      onPressed: _isCompleted ? null : _rejectReconciliation,
                       child: Text(
                         'Reject',
                         style: GoogleFonts.manrope(
@@ -802,12 +809,12 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
               child: SizedBox(
                 width: isMobile ? double.infinity : 360,
                 height: 52,
-                child: ElevatedButton.icon(
-                  onPressed: _isSaving
-                      ? null
-                      : _pendingAdjustments.isEmpty
-                          ? null
-                          : _submitProposal,
+              child: ElevatedButton.icon(
+                onPressed: _isCompleted || _isSaving
+                    ? null
+                    : _pendingAdjustments.isEmpty
+                        ? null
+                        : _submitProposal,
                   icon: _isSaving
                       ? const SizedBox(
                           width: 18,
@@ -841,6 +848,7 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
 
           const SizedBox(height: 40),
         ],
+      ),
       ),
     );
   }

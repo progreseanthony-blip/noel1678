@@ -8,6 +8,7 @@ import 'package:noel_data/noel_data.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
+import '../../../../shared/widgets/completed_project_banner.dart';
 
 class InspectionFormPage extends StatefulWidget {
   final String projectId;
@@ -19,6 +20,7 @@ class InspectionFormPage extends StatefulWidget {
 }
 
 class _InspectionFormPageState extends State<InspectionFormPage> {
+  bool _isCompleted = false;
   final _formKey = GlobalKey<FormState>();
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -411,7 +413,12 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
   }
 
   Widget _buildForm(bool isMobile) {
-    return Form(
+    return CompletedProjectBanner(
+      projectId: widget.projectId,
+      isCompletedCallback: (completed) {
+        if (completed != _isCompleted) setState(() => _isCompleted = completed);
+      },
+      child: Form(
       key: _formKey,
       child: SingleChildScrollView(
         padding: EdgeInsets.all(isMobile ? 16 : 32),
@@ -623,7 +630,7 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
                 width: isMobile ? double.infinity : 320,
                 height: 52,
                 child: ElevatedButton.icon(
-                  onPressed: _isSaving ? null : _save,
+                  onPressed: _isCompleted || _isSaving ? null : _save,
                   icon: _isSaving
                       ? const SizedBox(
                           width: 18,
@@ -658,6 +665,7 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
             const SizedBox(height: 40),
           ],
         ),
+      ),
       ),
     );
   }

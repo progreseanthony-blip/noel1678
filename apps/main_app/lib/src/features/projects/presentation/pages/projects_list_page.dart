@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
@@ -15,12 +16,14 @@ class ProjectsListPage extends StatefulWidget {
 
 class _ProjectsListPageState extends State<ProjectsListPage> {
   List<Map<String, dynamic>>? _projects;
+  Map<String, Map<String, dynamic>> _allServiceCompletions = {};
   bool _isLoading = true;
   String? _error;
   String _searchQuery = '';
+  String _statusFilter = 'all';
   int _currentPage = 1;
   static const int _pageSize = 10;
-  
+
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
@@ -37,14 +40,108 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     });
 
     try {
-      final response = await Supabase.instance.client
+      final supabase = Supabase.instance.client;
+      final response = await supabase
           .from('projects')
           .select()
           .order('created_at', ascending: false);
-      
+
+      final projects = List<Map<String, dynamic>>.from(response ?? []);
+
+      // Load quote_services for all projects (planned quantities + direct_cost)
+      final quoteIds = projects.map((p) => p['quote_id'] as String?).where((q) => q != null).toList();
+      final Map<String, List<Map<String, dynamic>>> servicesByQuote = {};
+      if (quoteIds.isNotEmpty) {
+        final qsResult = await supabase
+            .from('quote_services')
+            .select('id, name, quantity, unit_of_measure, direct_cost, quote_id')
+            .in_('quote_id', quoteIds);
+        for (final s in (qsResult as List? ?? [])) {
+          final qid = s['quote_id'] as String?;
+          if (qid != null) {
+            servicesByQuote.putIfAbsent(qid, () => []).add(Map<String, dynamic>.from(s));
+          }
+        }
+      }
+
+      // Load actual production from machinery logs aggregated by project
+      // Only include submitted/approved daily reports
+      final projectIds = projects.map((p) => p['id'] as String).toList();
+      List<Map<String, dynamic>> machLogs = [];
+
+      if (projectIds.isNotEmpty) {
+        final machResult = await supabase
+            .from('report_machinery_logs')
+            .select('''
+              production_value,
+              machinery!inner(capacity_yards),
+              project_machinery!inner(quote_service_id, project_id),
+              daily_reports!inner(status)
+            ''')
+            .in_('daily_reports.status', ['submitted', 'approved']);
+
+        machLogs = List<Map<String, dynamic>>.from(machResult ?? []);
+      }
+
+      // Build unit_of_measure lookup per quote_service_id
+      final Map<String, String> serviceUnits = {};
+      for (final entry in servicesByQuote.entries) {
+        for (final s in entry.value) {
+          serviceUnits[s['id'] as String] = (s['unit_of_measure'] as String?)?.toLowerCase() ?? '';
+        }
+      }
+
+      // Build progress per project (same logic as ProductionMeasurementService)
+      final Map<String, Map<String, dynamic>> allCompletions = {};
+      for (final p in projects) {
+        final pid = p['id'] as String;
+        final quoteId = p['quote_id'] as String?;
+        final services = quoteId != null ? (servicesByQuote[quoteId] ?? []) : [];
+
+        if (services.isEmpty) {
+          allCompletions[pid] = {'pct': 0.0, 'totalServices': 0, 'completedServices': 0};
+          continue;
+        }
+
+        // Aggregate actual production by quote_service_id for this project
+        final Map<String, double> actualProd = {};
+        for (final log in machLogs) {
+          final pm = log['project_machinery'];
+          if ((pm['project_id'] as String?) != pid) continue;
+          final qsId = pm['quote_service_id'] as String?;
+          if (qsId == null) continue;
+          final cap = (log['machinery']?['capacity_yards'] as num?)?.toDouble() ?? 0;
+          final prod = (log['production_value'] as num?)?.toDouble() ?? 0;
+          final unit = serviceUnits[qsId] ?? '';
+          final isVolumeUnit = unit == 'cy' || unit == 'ft2' || unit == 'sqft' || unit == 'sf';
+          actualProd[qsId] = (actualProd[qsId] ?? 0) + (isVolumeUnit && cap > 0 ? prod * cap : prod);
+        }
+
+        double totalPlannedUnits = 0;
+        double totalActualUnits = 0;
+        int completedSvcs = 0;
+        for (final s in services) {
+          final qsId = s['id'] as String? ?? '';
+          final plannedQty = (s['quantity'] as num?)?.toDouble() ?? 0;
+          final actual = actualProd[qsId] ?? 0;
+          totalPlannedUnits += plannedQty;
+          totalActualUnits += actual;
+          if (plannedQty > 0 && actual >= plannedQty) completedSvcs++;
+        }
+
+        final pct = totalPlannedUnits > 0 ? (totalActualUnits / totalPlannedUnits * 100).clamp(0, 100) : 0.0;
+
+        allCompletions[pid] = {
+          'pct': pct,
+          'totalServices': services.length,
+          'completedServices': completedSvcs,
+        };
+      }
+
       if (mounted) {
         setState(() {
-          _projects = List<Map<String, dynamic>>.from(response ?? []);
+          _projects = projects;
+          _allServiceCompletions = allCompletions;
           _isLoading = false;
         });
       }
@@ -58,16 +155,25 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     }
   }
 
+  int get _totalActive => _projects?.where((p) => p['status'] == 'active').length ?? 0;
+  int get _totalCompleted => _projects?.where((p) => p['status'] == 'completed').length ?? 0;
+  int get _totalOnHold => _projects?.where((p) => p['status'] == 'on_hold').length ?? 0;
+
   List<Map<String, dynamic>> get _filteredProjects {
     final base = _projects ?? [];
-    if (_searchQuery.isEmpty) return base;
-    
-    final q = _searchQuery.toLowerCase();
-    return base.where((u) {
-      final title = (u['title'] ?? '').toString().toLowerCase();
-      final client = (u['client_name'] ?? '').toString().toLowerCase();
-      return title.contains(q) || client.contains(q);
-    }).toList();
+    var filtered = base;
+    if (_statusFilter != 'all') {
+      filtered = filtered.where((p) => p['status'] == _statusFilter).toList();
+    }
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      filtered = filtered.where((u) {
+        final title = (u['title'] ?? '').toString().toLowerCase();
+        final client = (u['client_name'] ?? '').toString().toLowerCase();
+        return title.contains(q) || client.contains(q);
+      }).toList();
+    }
+    return filtered;
   }
 
   List<Map<String, dynamic>> get _paginatedProjects {
@@ -119,7 +225,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
             child: Column(
               children: [
                 if (!isMobile)
-                  TopHeader(userName: userName, breadcrumbs: const ['Operations', 'Projects']),
+                  TopHeader(userName: userName, breadcrumbs: const ['Operations', 'Dashboard']),
                 if (isMobile)
                   _buildMobileHeader(userName),
                 Expanded(
@@ -152,7 +258,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
           ),
           const SizedBox(width: 12),
           Text(
-            'Projects',
+            'Dashboard',
             style: GoogleFonts.manrope(
               fontSize: 18,
               fontWeight: FontWeight.w800,
@@ -171,7 +277,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Active Projects',
+            'Portfolio Dashboard',
             style: GoogleFonts.manrope(
               fontSize: isMobile ? 24 : 30,
               fontWeight: FontWeight.w800,
@@ -181,7 +287,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Monitor and manage your operational projects and machinery.',
+            'Overview of all operational projects, progress, and status.',
             style: GoogleFonts.manrope(
               fontSize: 14,
               color: AppTheme.slate500,
@@ -189,10 +295,68 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
             ),
           ),
           const SizedBox(height: 24),
+          _buildStatsRow(isMobile),
+          const SizedBox(height: 24),
           _buildSearchFilters(),
           const SizedBox(height: 24),
           _buildTable(isMobile),
         ],
+      ),
+    );
+  }
+
+  Widget _buildStatsRow(bool isMobile) {
+    final total = _projects?.length ?? 0;
+    return Row(
+      children: [
+        _buildStatCard('Total Projects', total.toString(), AppTheme.slate900, Icons.folder_outlined, const Color(0xFFF1F5F9), isMobile),
+        const SizedBox(width: 12),
+        _buildStatCard('Active', _totalActive.toString(), AppTheme.primaryGreen, Icons.play_circle_outline, AppTheme.primaryGreen.withOpacity(0.1), isMobile),
+        const SizedBox(width: 12),
+        _buildStatCard('Completed', _totalCompleted.toString(), Colors.blue, Icons.check_circle_outline, Colors.blue.withOpacity(0.1), isMobile),
+        const SizedBox(width: 12),
+        _buildStatCard('On Hold', _totalOnHold.toString(), Colors.orange, Icons.pause_circle_outline, Colors.orange.withOpacity(0.1), isMobile),
+      ],
+    );
+  }
+
+  Widget _buildStatCard(String label, String value, Color color, IconData icon, Color bgColor, bool isMobile) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.slate200),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(8)),
+              child: Icon(icon, size: 18, color: color),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              value,
+              style: GoogleFonts.manrope(
+                fontSize: isMobile ? 20 : 24,
+                fontWeight: FontWeight.w900,
+                color: color,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: GoogleFonts.manrope(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.slate500,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -205,29 +369,63 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.slate200),
       ),
-      child: Container(
-        height: 44,
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFC),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppTheme.slate200),
-        ),
-        child: TextField(
-          onChanged: (val) {
-            setState(() {
-              _searchQuery = val;
-              _currentPage = 1;
-            });
-          },
-          decoration: InputDecoration(
-            hintText: 'Search by title or client...',
-            hintStyle: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 13),
-            prefixIcon: const Icon(Icons.search, color: AppTheme.slate400, size: 18),
-            border: InputBorder.none,
-            contentPadding: const EdgeInsets.symmetric(vertical: 14),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 44,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppTheme.slate200),
+              ),
+              child: TextField(
+                onChanged: (val) {
+                  setState(() {
+                    _searchQuery = val;
+                    _currentPage = 1;
+                  });
+                },
+                decoration: InputDecoration(
+                  hintText: 'Search by title or client...',
+                  hintStyle: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 13),
+                  prefixIcon: const Icon(Icons.search, color: AppTheme.slate400, size: 18),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+              ),
+            ),
           ),
-          style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
-        ),
+          const SizedBox(width: 12),
+          Container(
+            height: 44,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.slate200),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _statusFilter,
+                items: const [
+                  DropdownMenuItem(value: 'all', child: Text('All Status', style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: 'active', child: Text('Active', style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: 'completed', child: Text('Completed', style: TextStyle(fontSize: 13))),
+                  DropdownMenuItem(value: 'on_hold', child: Text('On Hold', style: TextStyle(fontSize: 13))),
+                ],
+                onChanged: (v) {
+                  setState(() {
+                    _statusFilter = v ?? 'all';
+                    _currentPage = 1;
+                  });
+                },
+                style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -250,10 +448,11 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
               ),
               child: Row(
                 children: [
-                  Expanded(flex: 25, child: _colHeader('PROJECT TITLE')),
-                  Expanded(flex: 20, child: _colHeader('CLIENT')),
-                  Expanded(flex: 15, child: _colHeader('START DATE')),
-                  Expanded(flex: 15, child: _colHeader('STATUS')),
+                  Expanded(flex: 22, child: _colHeader('PROJECT TITLE')),
+                  Expanded(flex: 16, child: _colHeader('CLIENT')),
+                  Expanded(flex: 14, child: _colHeader('START DATE')),
+                  Expanded(flex: 10, child: _colHeader('STATUS')),
+                  Expanded(flex: 26, child: _colHeader('PROGRESS')),
                 ],
               ),
             ),
@@ -261,7 +460,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
              const Padding(padding: EdgeInsets.all(32), child: Center(child: Text("No projects found.")))
           else
             ...items.map((q) => _buildTableRow(q, isMobile)),
-            
+
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             decoration: const BoxDecoration(
@@ -317,16 +516,51 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     );
   }
 
+  Widget _buildProgressBar(double pct) {
+    final color = pct >= 100 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.slate400);
+    return Row(
+      children: [
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: (pct / 100).clamp(0.0, 1.0),
+              backgroundColor: AppTheme.slate200,
+              color: color,
+              minHeight: 8,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: 42,
+          child: Text(
+            '${pct.toStringAsFixed(0)}%',
+            style: GoogleFonts.manrope(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: color,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildTableRow(Map<String, dynamic> project, bool isMobile) {
     final title = project['title'] ?? 'N/A';
     final status = project['status'] ?? 'active';
-    final date = project['start_date'] != null 
+    final date = project['start_date'] != null
       ? DateFormat('MMM dd, yyyy').format(DateTime.parse(project['start_date']).toLocal())
       : '-';
+    final progress = _allServiceCompletions[project['id'] as String];
+    final pct = (progress?['pct'] as num?)?.toDouble() ?? 0.0;
+    final completed = progress?['completedServices'] as int? ?? 0;
+    final totalSvcs = progress?['totalServices'] as int? ?? 0;
 
     if (isMobile) {
       return InkWell(
-        onTap: () => context.go('/projects/${project['id']}'),
+        onTap: () => context.go('/projects/${project['id']}/dashboard'),
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: const BoxDecoration(
@@ -346,6 +580,16 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
               Text(project['client_name'] ?? '-', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate600)),
               const SizedBox(height: 4),
               Text('Started: $date', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate400)),
+              const SizedBox(height: 8),
+              _buildProgressBar(pct),
+              if (totalSvcs > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    '$completed of $totalSvcs services',
+                    style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400),
+                  ),
+                ),
             ],
           ),
         ),
@@ -355,7 +599,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () => context.go('/projects/${project['id']}'),
+        onTap: () => context.go('/projects/${project['id']}/dashboard'),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           decoration: const BoxDecoration(
@@ -363,10 +607,24 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
           ),
           child: Row(
             children: [
-              Expanded(flex: 25, child: Padding(padding: const EdgeInsets.only(right: 16), child: Text(title, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900), overflow: TextOverflow.ellipsis, maxLines: 2))),
-              Expanded(flex: 20, child: Padding(padding: const EdgeInsets.only(right: 16), child: Text(project['client_name'] ?? '-', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700), overflow: TextOverflow.ellipsis, maxLines: 2))),
-              Expanded(flex: 15, child: Text(date, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500))),
-              Expanded(flex: 15, child: _buildStatusBadge(status)),
+              Expanded(flex: 22, child: Padding(padding: const EdgeInsets.only(right: 16), child: Text(title, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900), overflow: TextOverflow.ellipsis, maxLines: 2))),
+              Expanded(flex: 16, child: Padding(padding: const EdgeInsets.only(right: 16), child: Text(project['client_name'] ?? '-', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700), overflow: TextOverflow.ellipsis, maxLines: 2))),
+              Expanded(flex: 14, child: Text(date, style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500))),
+              Expanded(flex: 10, child: _buildStatusBadge(status)),
+              Expanded(flex: 26, child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildProgressBar(pct),
+                  if (totalSvcs > 0)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        '$completed of $totalSvcs services complete',
+                        style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate400),
+                      ),
+                    ),
+                ],
+              )),
             ],
           ),
         ),
@@ -383,7 +641,7 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
       case 'on_hold': bg = Colors.orange.withOpacity(0.1); text = Colors.orange; break;
       default: bg = AppTheme.slate200; text = AppTheme.slate700; break;
     }
-    
+
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(

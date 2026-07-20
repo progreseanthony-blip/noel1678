@@ -37,11 +37,11 @@ BEGIN
     VALUES ('Project Golf 2 - Baseline Test', 'Accepted')
     RETURNING id INTO quote_id;
 
-    -- Insert Quote Services
-    INSERT INTO public.quote_services (quote_id, name, unit_of_measure, quantity)
+    -- Insert Quote Services (with direct_cost for weighted progress calculation)
+    INSERT INTO public.quote_services (quote_id, name, unit_of_measure, quantity, direct_cost, completion_pct, completion_status)
     VALUES 
-    (quote_id, 'BULK EXCAVATION', 'CY', 5000),
-    (quote_id, 'FINISH GRADING', 'SQFT', 45000);
+    (quote_id, 'BULK EXCAVATION', 'CY', 5000, 50000, 50, 'in_progress'),
+    (quote_id, 'FINISH GRADING', 'SQFT', 45000, 30000, 0, 'pending');
 
     -- Insert a Project linked to this quote
     INSERT INTO public.projects (quote_id, title, status)

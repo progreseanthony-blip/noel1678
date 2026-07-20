@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
+import '../../../../shared/widgets/completed_project_banner.dart';
 import 'package:uuid/uuid.dart';
 
 class IncidentFormPage extends ConsumerStatefulWidget {
@@ -19,6 +20,7 @@ class IncidentFormPage extends ConsumerStatefulWidget {
 }
 
 class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
+  bool _isCompleted = false;
   final _formKey = GlobalKey<FormState>();
   final _uuid = const Uuid();
   bool _isSubmitting = false;
@@ -276,7 +278,12 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
       ),
       body: _isLoadingResources
           ? const Center(child: CircularProgressIndicator())
-          : Form(
+          : CompletedProjectBanner(
+              projectId: widget.projectId,
+              isCompletedCallback: (completed) {
+                if (completed != _isCompleted) setState(() => _isCompleted = completed);
+              },
+              child: Form(
               key: _formKey,
               child: ListView(
                 padding: const EdgeInsets.all(16),
@@ -459,7 +466,7 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
                   SizedBox(
                     height: 48,
                     child: FilledButton.icon(
-                      onPressed: _isSubmitting ? null : _submit,
+                      onPressed: _isCompleted || _isSubmitting ? null : _submit,
                       icon: _isSubmitting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send),
                       label: Text(_isSubmitting ? 'Saving...' : (widget.incidentId != null ? 'Update Incident' : 'Report Incident')),
                       style: FilledButton.styleFrom(
@@ -471,6 +478,7 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
                   const SizedBox(height: 32),
                 ],
               ),
+            ),
             ),
     );
   }

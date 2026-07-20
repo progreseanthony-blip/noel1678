@@ -11,6 +11,7 @@ import '../providers/change_order_controller.dart';
 import '../widgets/standby_form_section.dart';
 import '../widgets/baseline_impact_section.dart';
 import '../../../../shared/widgets/sidebar.dart';
+import '../../../../shared/widgets/completed_project_banner.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 import '../../../../features/quotes/presentation/widgets/service_estimation_dialog.dart';
 
@@ -28,6 +29,7 @@ class ChangeOrderFormPage extends ConsumerStatefulWidget {
 }
 
 class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
+  bool _isCompleted = false;
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _schedDaysCtrl = TextEditingController();
@@ -1011,7 +1013,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
           ],
           const Spacer(),
           ElevatedButton.icon(
-            onPressed: _saving ? null : _save,
+            onPressed: _isCompleted || _saving ? null : _save,
             icon: _saving
                 ? const SizedBox(
                     width: 16,
@@ -1044,7 +1046,12 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
   }
 
   Widget _buildForm(bool isMobile) {
-    return Column(
+    return CompletedProjectBanner(
+      projectId: widget.projectId,
+      isCompletedCallback: (completed) {
+        if (completed != _isCompleted) setState(() => _isCompleted = completed);
+      },
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
@@ -1286,6 +1293,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
           ),
         ],
       ],
+      ),
     );
   }
 

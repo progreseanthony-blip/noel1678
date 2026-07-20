@@ -9,6 +9,7 @@ import 'package:noel_data/noel_data.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
 import '../widgets/add_unplanned_resource_dialog.dart';
+import '../../../../shared/widgets/completed_project_banner.dart';
 
 class ProjectBaselinePage extends StatefulWidget {
   final String projectId;
@@ -20,6 +21,7 @@ class ProjectBaselinePage extends StatefulWidget {
 }
 
 class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
+  bool _isCompleted = false;
   Map<String, dynamic>? _project;
   bool _isLoading = true;
   String? _error;
@@ -420,7 +422,12 @@ currentPath: '/projects/${widget.projectId}/baseline',
     // Simple formatters since intl might not be imported here
     String formatCurrency(double amount) => '\$${amount.toStringAsFixed(2).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]},')}';
 
-    return SingleChildScrollView(
+    return CompletedProjectBanner(
+      projectId: widget.projectId,
+      isCompletedCallback: (completed) {
+        if (completed != _isCompleted) setState(() => _isCompleted = completed);
+      },
+      child: SingleChildScrollView(
       padding: EdgeInsets.all(isMobile ? 16 : 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -730,7 +737,7 @@ currentPath: '/projects/${widget.projectId}/baseline',
                 ),
               ),
               ElevatedButton.icon(
-                onPressed: () {
+                onPressed: _isCompleted ? null : () {
                   final isFrozen = _project?['calculation_metadata']?['baseline_latest_version'] != null
                       || _project?['calculation_metadata']?['baseline_frozen'] == true;
                   showSafeDialog(
@@ -1114,7 +1121,7 @@ currentPath: '/projects/${widget.projectId}/baseline',
                                 const SizedBox(width: 12),
                                 IconButton(
                                   icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
-                                  onPressed: () => _deleteUnplannedResource(res),
+                                  onPressed: _isCompleted ? null : () => _deleteUnplannedResource(res),
                                 ),
                               ],
                             ),
@@ -1127,6 +1134,7 @@ currentPath: '/projects/${widget.projectId}/baseline',
               }).toList();
             }()),
         ],
+      ),
       ),
     );
   }

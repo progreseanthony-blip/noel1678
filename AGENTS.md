@@ -62,7 +62,7 @@ melos run dev
 
 ## Architecture notes
 - **State management**: Riverpod with code generation
-- **Routing**: GoRouter, initial location `/signin`, routes defined in `apps/main_app/lib/src/routing/router.dart`
+- **Routing**: GoRouter with auth redirect (`/projects` as landing when logged in, `/signin` when not), routes defined in `apps/main_app/lib/src/routing/router.dart`
 - **Feature structure**: `apps/main_app/lib/src/features/<name>/presentation/pages/`
 - **Theme**: centralized in `packages/core/lib/src/theme/app_theme.dart` — use `Theme.of(context)`, never hardcoded colors
 - **Data layer**: Supabase is the remote backend. The `AppDatabase` class in the data package is a **stub for web compatibility** — Drift/SQLite is not wired in
@@ -82,3 +82,44 @@ melos run dev
 ## Git conventions
 - Feature branches: `feat/description`
 - Merge to `main` when done, push to `origin main`
+
+---
+## Session: Project Completion Cycle (feat/project-completion)
+
+### Objective
+Complete project lifecycle: service completion (with slider % + "Mark Complete"), project close with validation checklist, portfolio dashboard as landing page.
+
+### Branch: feat/project-completion (from main after feat/machinery-return merge)
+
+### Completed
+- **Phase 1**: Migration `20260720000000_add_service_completion.sql` — added `completion_status`, `completion_pct`, `completed_at`, `completed_by` to `quote_services`
+- **Phase 1b**: Migration `20260720000001_add_project_completion_fields.sql` — added `completed_at`, `completed_by`, `completion_notes` to `projects` (applied via `supabase db query`)
+- **Phase 2**: `ServiceCompletionDialog` — slider 0-100%, "Mark Complete"/"Save Progress", saves to DB. Integrated in all 4 tabs (machinery, materials, instruments, labor) with completion badge and "Complete/Edit" button per service header
+- **Phase 3**: Overall progress bar in `ProjectDetailPage` header — weighted by `direct_cost`, animated `LinearProgressIndicator` with % label and "X of Y services completed" subtitle
+- **Phase 4**: `CloseProjectDialog` — validation checklist (services completed, machinery received/returned, materials received, instruments received), admin-only close button, completion notes field
+- **Phase 5**: Portfolio dashboard — `ProjectsListPage` enhanced with stats cards (Total/Active/Completed/On Hold), status filter dropdown, progress bars per project with "X of Y services" detail
+- **Routing**: Auth redirect added — logged-in users land on `/projects`, unauthenticated users redirected to `/signin`
+
+### Key decisions
+- Progress weighted by `direct_cost` (not simple ratio) — must unify across all modules later
+- Admin detection via `profiles.role == 'Admin'` — only admins can close/reopen projects
+- Completed button shows "Completed" (disabled) when project is already completed
+
+### Files changed
+- `supabase/migrations/20260720000001_add_project_completion_fields.sql` (new)
+- `apps/main_app/lib/src/features/projects/presentation/widgets/service_completion_dialog.dart` (new, Phase 2)
+- `apps/main_app/lib/src/features/projects/presentation/widgets/close_project_dialog.dart` (new, Phase 4)
+- `apps/main_app/lib/src/features/projects/presentation/pages/project_detail_page.dart` (modified: Phase 2-4)
+- `apps/main_app/lib/src/features/projects/presentation/pages/projects_list_page.dart` (rewritten: Phase 5, navigation to /dashboard)
+- `apps/main_app/lib/src/features/projects/presentation/pages/project_dashboard_page.dart` (NEW — lightweight tracking dashboard)
+- `apps/main_app/lib/src/routing/router.dart` (modified: auth redirect, added `/projects/:id/dashboard` route, Phase 5)
+- `apps/main_app/lib/src/shared/widgets/sidebar.dart` (modified: Portfolio as top-level nav item, decoupled from Projects section)
+
+### Key decisions (updated)
+- Portfolio nav is independent top-level item (`Icons.space_dashboard`), not under Projects > Planning
+- Clicking project in portfolio → `/projects/:id/dashboard` (new lightweight page), NOT Resource Planning
+- Progress auto-calculated from daily reports via `ProductionMeasurementService` (same data as Production Metrics), NOT `quote_services.completion_pct`
+- Dashboard shows: overall progress bar with EVM metrics (CPI, SPI, Earned/Actual), quick actions to related modules, service-level progress table with costs, recent daily reports
+
+### Pending
+- **Phase 6**: Protect edits on completed projects — add banner/disable buttons in `reception_page.dart` and other edit pages

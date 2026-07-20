@@ -10,6 +10,7 @@ import '../widgets/step_labor.dart';
 import '../widgets/step_machinery.dart';
 import '../widgets/step_materials.dart';
 import '../widgets/step_review_sign.dart';
+import '../../../../shared/widgets/completed_project_banner.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 
 class DailyReportWizardPage extends ConsumerStatefulWidget {
@@ -25,6 +26,7 @@ class DailyReportWizardPage extends ConsumerStatefulWidget {
 
 class _DailyReportWizardPageState
     extends ConsumerState<DailyReportWizardPage> {
+  bool _isCompleted = false;
   int _currentStep = 0;
   bool _isInitializing = true;
   String? _error;
@@ -405,7 +407,7 @@ class _DailyReportWizardPageState
             Container(
               margin: const EdgeInsets.only(right: 8),
               child: ElevatedButton.icon(
-                onPressed: _saveDraft,
+                onPressed: _isCompleted ? null : _saveDraft,
                 icon: const Icon(Icons.save, size: 16),
                 label: Text('Save Draft', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 12)),
                 style: ElevatedButton.styleFrom(
@@ -419,7 +421,12 @@ class _DailyReportWizardPageState
             ),
         ],
       ),
-      body: Stepper(
+      body: CompletedProjectBanner(
+        projectId: widget.projectId,
+        isCompletedCallback: (completed) {
+          if (completed != _isCompleted) setState(() => _isCompleted = completed);
+        },
+        child: Stepper(
         currentStep: _currentStep,
         onStepContinue: _onStepContinue,
         onStepCancel: _currentStep > 0 ? () => setState(() => _currentStep--) : null,
@@ -512,10 +519,11 @@ class _DailyReportWizardPageState
               machineryLogs: _machineryLogs,
               materialUsage: _materialUsage,
               isReadOnly: _reportData['status'] == 'approved' || _reportData['status'] == 'submitted',
-              onSubmit: _handleSubmit,
+              onSubmit: _isCompleted ? () async {} : _handleSubmit,
             ),
           ),
         ],
+      ),
       ),
     );
   }

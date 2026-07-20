@@ -10,6 +10,7 @@ import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
+import '../../../../shared/widgets/completed_project_banner.dart';
 import '../utils/payroll_pdf_generator.dart';
 import '../utils/payroll_excel_generator.dart';
 import '../utils/worker_signoff_pdf_generator.dart';
@@ -31,6 +32,7 @@ class PayrollPeriodPage extends ConsumerStatefulWidget {
 }
 
 class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
+  bool _isCompleted = false;
   Map<String, dynamic>? _period;
   List<Map<String, dynamic>> _entries = [];
   bool _isLoading = true;
@@ -620,7 +622,12 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
 
     final isClosed = p['status'] == 'closed';
 
-    return SingleChildScrollView(
+    return CompletedProjectBanner(
+      projectId: widget.projectId,
+      isCompletedCallback: (completed) {
+        if (completed != _isCompleted) setState(() => _isCompleted = completed);
+      },
+      child: SingleChildScrollView(
       padding: const EdgeInsets.all(32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -698,7 +705,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
                   ),
                   if (!isClosed) ...[
                     FilledButton.icon(
-                      onPressed: _isVirtual ? null : _recalculate,
+                      onPressed: _isCompleted || _isVirtual ? null : _recalculate,
                       icon: _isCalculating
                           ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                           : const Icon(Icons.refresh, size: 20),
@@ -711,7 +718,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
                     ),
                     const SizedBox(width: 12),
                     OutlinedButton.icon(
-                      onPressed: _closePeriod,
+                      onPressed: _isCompleted ? null : _closePeriod,
                       icon: const Icon(Icons.lock_outline, size: 20),
                       label: const Text('Close Period'),
                       style: OutlinedButton.styleFrom(
@@ -839,6 +846,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
             ),
           ),
         ],
+      ),
       ),
     );
   }

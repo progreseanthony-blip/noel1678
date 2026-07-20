@@ -15,6 +15,7 @@ import '../providers/billing_controller.dart';
 import '../utils/invoice_pdf_generator.dart';
 import '../utils/invoice_excel_generator.dart';
 import '../../../../shared/widgets/sidebar.dart';
+import '../../../../shared/widgets/completed_project_banner.dart';
 
 class BillingMatrixPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -35,6 +36,7 @@ class BillingMatrixPage extends ConsumerStatefulWidget {
 }
 
 class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
+  bool _isCompleted = false;
   Map<String, dynamic>? _invoice;
   List<Map<String, dynamic>> _lines = [];
   bool _isLoading = true;
@@ -706,7 +708,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
           const Spacer(),
           if (_invoice?['status'] == 'submitted') ...[
             ElevatedButton.icon(
-              onPressed: _markAsPaid,
+              onPressed: _isCompleted ? null : _markAsPaid,
               icon: const Icon(Icons.check_circle_outline, size: 18, color: Colors.white),
               label: Text('Mark as Paid', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
               style: ElevatedButton.styleFrom(
@@ -720,7 +722,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
           ],
           if (!isSubmitted) ...[
             ElevatedButton.icon(
-              onPressed: _isSaving ? null : _save,
+              onPressed: _isCompleted || _isSaving ? null : _save,
               icon: _isSaving
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                   : const Icon(Icons.save, size: 18, color: Colors.white),
@@ -734,7 +736,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
             ),
             const SizedBox(width: 8),
             ElevatedButton.icon(
-              onPressed: _isSaving ? null : _submit,
+              onPressed: _isCompleted || _isSaving ? null : _submit,
               icon: const Icon(Icons.send, size: 18, color: Colors.white),
               label: Text('Submit', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
               style: ElevatedButton.styleFrom(
@@ -789,7 +791,12 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
   }
 
   Widget _buildContent(bool isMobile, bool isSubmitted) {
-    return SingleChildScrollView(
+    return CompletedProjectBanner(
+      projectId: widget.projectId,
+      isCompletedCallback: (completed) {
+        if (completed != _isCompleted) setState(() => _isCompleted = completed);
+      },
+      child: SingleChildScrollView(
       padding: EdgeInsets.all(isMobile ? 16 : 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -798,6 +805,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
           const SizedBox(height: 24),
           _buildPayAppTable(isMobile, isSubmitted),
         ],
+      ),
       ),
     );
   }

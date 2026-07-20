@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../features/auth/presentation/pages/signin_page.dart';
 import '../features/auth/presentation/pages/signup_page.dart';
 import '../features/users/presentation/pages/user_list_page.dart';
@@ -10,6 +11,7 @@ import '../features/workers/presentation/pages/workers_page.dart';
 import '../features/customers/presentation/pages/customers_list_page.dart';
 import '../features/projects/presentation/pages/projects_list_page.dart';
 import '../features/projects/presentation/pages/project_detail_page.dart';
+import '../features/projects/presentation/pages/project_dashboard_page.dart';
 import '../features/projects/presentation/pages/project_baseline_page.dart';
 import '../features/projects/presentation/pages/reception_page.dart';
 import '../features/projects/presentation/pages/reception_projects_page.dart';
@@ -43,6 +45,14 @@ import '../features/weekly_inspections/presentation/pages/inspection_detail_page
 import '../features/weekly_inspections/presentation/pages/reconciliation_page.dart';
 final goRouter = GoRouter(
   initialLocation: '/signin',
+  redirect: (context, state) {
+    final user = Supabase.instance.client.auth.currentUser;
+    final loggedIn = user != null;
+    final onAuthPage = state.matchedLocation == '/signin' || state.matchedLocation == '/signup';
+    if (!loggedIn && !onAuthPage) return '/signin';
+    if (loggedIn && onAuthPage) return '/projects';
+    return null;
+  },
   routes: [
     GoRoute(
       path: '/signin',
@@ -71,6 +81,10 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/projects',
       builder: (context, state) => const ProjectsListPage(),
+    ),
+    GoRoute(
+      path: '/projects/:id/dashboard',
+      builder: (context, state) => ProjectDashboardPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/projects/:id',

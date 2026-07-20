@@ -9,10 +9,13 @@ import 'package:intl/intl.dart';
 import 'package:noel_data/noel_data.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
+import '../../../../shared/widgets/completed_project_banner.dart';
 import '../widgets/worker_assignment_dialog.dart';
 import '../widgets/machinery_scheduling_dialog.dart';
 import '../widgets/instrument_scheduling_dialog.dart';
 import '../widgets/labor_scheduling_dialog.dart';
+import '../widgets/service_completion_dialog.dart';
+import '../widgets/close_project_dialog.dart';
 import 'package:flutter/gestures.dart';
 import 'package:printing/printing.dart';
 import '../utils/timeline_pdf_generator.dart';
@@ -26,7 +29,7 @@ class ProjectDetailPage extends StatefulWidget {
 }
 
 class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProviderStateMixin {
-  Map<String, dynamic>? _project;
+  bool _isCompleted = false;  Map<String, dynamic>? _project;
   List<Map<String, dynamic>> _machinery = [];
   List<Map<String, dynamic>> _materials = [];
   List<Map<String, dynamic>> _labor = [];
@@ -44,6 +47,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
   int? _baselineVersion;
   Map<String, double> _materialUsage = {};
   Map<String, double> _machineryProduction = {};
+  Map<String, Map<String, dynamic>> _serviceCompletion = {};
+  bool _isAdmin = false;
 
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -74,6 +79,17 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
       // 1. Project Details
       final pResult = await supabase.from('projects').select().eq('id', widget.projectId).maybeSingle();
       if (pResult == null) throw 'Project not found';
+
+      // Load admin status
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser != null) {
+        final profile = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', currentUser.id)
+            .maybeSingle();
+        _isAdmin = profile?['role'] == 'Admin';
+      }
 
       // 2. Load Machinery
       final mResult = await supabase
@@ -188,6 +204,26 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
           calculatedBurnRate += price * qty;
         }
 
+        // Load service completion data
+        final Map<String, Map<String, dynamic>> serviceCompletion = {};
+        final quoteId = pResult['quote_id'] as String?;
+        if (quoteId != null) {
+          try {
+            final qsResult = await supabase
+                .from('quote_services')
+                .select('id, name, completion_status, completion_pct, direct_cost')
+                .eq('quote_id', quoteId);
+            for (final qs in (qsResult as List? ?? [])) {
+              final name = qs['name']?.toString();
+              if (name != null) {
+                serviceCompletion[name] = Map<String, dynamic>.from(qs);
+              }
+            }
+          } catch (e) {
+            debugPrint('Error loading service completion: $e');
+          }
+        }
+
         // Load latest baseline snapshot
         try {
           final baselineService = BaselineService(Supabase.instance.client);
@@ -221,6 +257,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
           _machineryPhotos = photoMap;
           _materialUsage = matUsage;
           _machineryProduction = machProd;
+          _serviceCompletion = serviceCompletion;
           _serviceDurations = serviceDurations;
           _projectServices = allServices.toList()..sort((a, b) {
             if (a == 'All Services') return -1;
@@ -609,8 +646,31 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
     );
   }
 
-  Widget _buildServiceHeader(String name) {
+  String? _extractServiceId(Map<String, dynamic> item, String relationName) {
+    dynamic service = item['quote_services'];
+    if (service == null) {
+      final data = item[relationName];
+      if (data is List && data.isNotEmpty) {
+        service = data[0]['quote_services'];
+      } else if (data is Map) {
+        service = data['quote_services'];
+      }
+    }
+    if (service != null) {
+      final sData = (service is List && service.isNotEmpty) ? service[0] : (service is Map ? service : null);
+      return sData?['id']?.toString();
+    }
+    return null;
+  }
+
+  Widget _buildServiceHeader(String name, {String? serviceId}) {
     final duration = _serviceDurations[name];
+    final completion = _serviceCompletion[name];
+    final pct = (completion?['completion_pct'] as num?)?.toInt() ?? 0;
+    final status = completion?['completion_status'] as String? ?? 'pending';
+    final isComplete = pct >= 100;
+    final sid = serviceId ?? completion?['id'] as String?;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 16, top: 12),
       child: Row(
@@ -618,10 +678,16 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
           Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: AppTheme.primaryGreen.withOpacity(0.1),
+              color: isComplete
+                  ? AppTheme.primaryGreen.withOpacity(0.1)
+                  : (pct > 0 ? Colors.orange.withOpacity(0.1) : AppTheme.slate200),
               borderRadius: BorderRadius.circular(4),
             ),
-            child: const Icon(Icons.inventory_2_outlined, size: 14, color: AppTheme.primaryGreen),
+            child: Icon(
+              isComplete ? Icons.check_circle : Icons.inventory_2_outlined,
+              size: 14,
+              color: isComplete ? AppTheme.primaryGreen : (pct > 0 ? Colors.orange : AppTheme.slate400),
+            ),
           ),
           const SizedBox(width: 10),
           Text(
@@ -647,6 +713,67 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
                   color: AppTheme.slate600,
+                ),
+              ),
+            ),
+          ],
+          if (completion != null) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+              decoration: BoxDecoration(
+                color: isComplete
+                    ? AppTheme.primaryGreen.withOpacity(0.1)
+                    : (pct > 0 ? Colors.orange.withOpacity(0.1) : AppTheme.slate200),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                '$pct%',
+                style: GoogleFonts.manrope(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: isComplete ? AppTheme.primaryGreen : (pct > 0 ? Colors.orange : AppTheme.slate400),
+                ),
+              ),
+            ),
+          ],
+          if (sid != null) ...[
+            const SizedBox(width: 8),
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: _isCompleted ? null : () {
+                  showSafeDialog(
+                    context: context,
+                    barrierColor: Colors.black.withOpacity(0.5),
+                    builder: (_) => ServiceCompletionDialog(
+                      serviceId: sid,
+                      serviceName: name,
+                      projectId: widget.projectId,
+                      currentPct: pct,
+                      currentStatus: status,
+                    ),
+                  ).then((updated) {
+                    if (updated == true) _loadProjectData();
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isComplete ? AppTheme.primaryGreen.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(
+                      color: isComplete ? AppTheme.primaryGreen.withOpacity(0.3) : Colors.orange.withOpacity(0.3),
+                    ),
+                  ),
+                  child: Text(
+                    isComplete ? 'Edit' : 'Complete',
+                    style: GoogleFonts.manrope(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: isComplete ? AppTheme.primaryGreen : Colors.orange,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -786,8 +913,106 @@ currentPath: '/projects/${widget.projectId}',
     );
   }
 
+  Widget _buildOverallProgress() {
+    double totalWeighted = 0;
+    double totalCost = 0;
+    int completedServices = 0;
+    final totalServices = _serviceCompletion.length;
+
+    for (final entry in _serviceCompletion.entries) {
+      final cost = (entry.value['direct_cost'] as num?)?.toDouble() ?? 0;
+      final pct = (entry.value['completion_pct'] as num?)?.toDouble() ?? 0;
+      totalWeighted += cost * pct / 100;
+      totalCost += cost;
+      if (pct >= 100) completedServices++;
+    }
+
+    final pct = totalCost > 0 ? (totalWeighted / totalCost * 100) : 0.0;
+    final displayPct = pct.clamp(0, 100);
+
+    Color barColor;
+    if (displayPct >= 100) {
+      barColor = AppTheme.primaryGreen;
+    } else if (displayPct >= 50) {
+      barColor = Colors.orange;
+    } else {
+      barColor = AppTheme.slate400;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.slate200),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'Overall Progress',
+                      style: GoogleFonts.manrope(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.slate700,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${displayPct.toStringAsFixed(1)}%',
+                      style: GoogleFonts.manrope(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        color: barColor,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(begin: 0, end: displayPct / 100),
+                    duration: const Duration(milliseconds: 800),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, _) => LinearProgressIndicator(
+                      value: value,
+                      backgroundColor: AppTheme.slate200,
+                      color: barColor,
+                      minHeight: 8,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$completedServices of $totalServices services completed',
+                  style: GoogleFonts.manrope(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.slate500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMainContent(bool isMobile) {
-    return Column(
+    return CompletedProjectBanner(
+      projectId: widget.projectId,
+      isCompletedCallback: (completed) {
+        if (completed != _isCompleted) setState(() => _isCompleted = completed);
+      },
+      child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Header Section
@@ -905,6 +1130,37 @@ currentPath: '/projects/${widget.projectId}',
                           minimumSize: const Size(0, 36),
                         ),
                       ),
+                      ElevatedButton.icon(
+                        onPressed: _project?['status'] == 'completed'
+                            ? null
+                            : () async {
+                                final result = await showSafeDialog(
+                                  context: context,
+                                  barrierColor: Colors.black.withOpacity(0.5),
+                                  builder: (_) => CloseProjectDialog(
+                                    projectId: widget.projectId,
+                                    projectTitle: _project?['title'] ?? '',
+                                    isAdmin: _isAdmin,
+                                  ),
+                                );
+                                if (result == true && mounted) _loadProjectData();
+                              },
+                        icon: Icon(
+                          _project?['status'] == 'completed' ? Icons.check_circle : Icons.checklist,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                        label: Text(
+                          _project?['status'] == 'completed' ? 'Completed' : 'Close',
+                          style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: _project?['status'] == 'completed' ? AppTheme.primaryGreen : const Color(0xFF059669),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                          minimumSize: const Size(0, 36),
+                        ),
+                      ),
                       if (_baselineVersion != null) ...[
                         ElevatedButton.icon(
                           onPressed: _recalculateSchedule,
@@ -940,6 +1196,7 @@ currentPath: '/projects/${widget.projectId}',
                 'Client: ${_project?['client_name'] ?? '-'}',
                 style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.slate600, fontWeight: FontWeight.w500),
               ),
+              _buildOverallProgress(),
               const SizedBox(height: 16),
               
               // Service Filter
@@ -985,6 +1242,7 @@ currentPath: '/projects/${widget.projectId}',
           ),
         ),
       ],
+      ),
     );
   }
 
@@ -1076,7 +1334,7 @@ currentPath: '/projects/${widget.projectId}',
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildServiceHeader(sName),
+            _buildServiceHeader(sName, serviceId: _extractServiceId(groupItems.first, 'quote_service_machineries')),
             ...groupItems.map((m) {
               final mName = m['machinery_name'] ?? 'Unknown Machine';
               final expected = (m['expected_quantity'] as num?)?.toInt() ?? 0;
@@ -1276,7 +1534,7 @@ currentPath: '/projects/${widget.projectId}',
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildServiceHeader(sName),
+            _buildServiceHeader(sName, serviceId: _extractServiceId(groupItems.first, 'quote_service_materials')),
             ...groupItems.map((m) {
               final expected = (m['expected_quantity'] as num?)?.toDouble() ?? 0.0;
               final received = (m['received_quantity'] as num?)?.toDouble() ?? 0.0;
@@ -1392,7 +1650,7 @@ currentPath: '/projects/${widget.projectId}',
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildServiceHeader(sName),
+            _buildServiceHeader(sName, serviceId: _extractServiceId(groupItems.first, 'quote_service_instruments')),
             ...groupItems.map((m) {
               final expected = (m['expected_quantity'] as num?)?.toDouble() ?? 0.0;
               final received = (m['received_quantity'] as num?)?.toDouble() ?? 0.0;
@@ -1523,7 +1781,7 @@ currentPath: '/projects/${widget.projectId}',
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildServiceHeader(sName),
+            _buildServiceHeader(sName, serviceId: _extractServiceId(groupItems.first, 'quote_service_labors')),
             ...groupItems.map((l) {
               final expected = (l['expected_employees'] as num?)?.toInt() ?? 0;
               final active = (l['active_employees'] as num?)?.toInt() ?? 0;
