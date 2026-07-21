@@ -76,7 +76,9 @@ class _CompletedProjectBannerState extends State<CompletedProjectBanner> {
               ],
             ),
           ),
-        widget.child,
+        Expanded(
+          child: widget.child,
+        ),
       ],
     );
   }

@@ -79,6 +79,8 @@ class _SidebarState extends State<Sidebar> {
       activeKey = _portfolioKey;
     } else if (path.startsWith('/projects') && !path.contains('/dashboard') && path.endsWith('/baseline')) {
       activeKey = _resourcePlanningKey;
+    } else if (path.startsWith('/resource-planning')) {
+      activeKey = _resourcePlanningKey;
     } else if (path.contains('/reception')) {
       activeKey = _receptionKey;
     } else if (path.startsWith('/daily-reports/pending')) {
@@ -166,26 +168,26 @@ class _SidebarState extends State<Sidebar> {
                   _ExpandableNavItem(
                     icon: Icons.rocket_launch_outlined,
                     label: 'Projects',
-                    isActive: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/billing') || currentPath.startsWith('/change-orders') || currentPath.startsWith('/incidents') || currentPath.startsWith('/reception') || currentPath.startsWith('/weekly-inspections'),
-                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/billing') || currentPath.startsWith('/change-orders') || currentPath.startsWith('/incidents') || currentPath.startsWith('/reception') || currentPath.startsWith('/weekly-inspections'),
+                    isActive: currentPath.startsWith('/projects') || currentPath.startsWith('/resource-planning') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/billing') || currentPath.startsWith('/change-orders') || currentPath.startsWith('/incidents') || currentPath.startsWith('/reception') || currentPath.startsWith('/weekly-inspections'),
+                    initiallyExpanded: currentPath.startsWith('/projects') || currentPath.startsWith('/resource-planning') || currentPath.startsWith('/daily-reports') || currentPath.startsWith('/payroll') || currentPath.startsWith('/labor-cost') || currentPath.startsWith('/production-measurement') || currentPath.startsWith('/monitoring') || currentPath.startsWith('/billing') || currentPath.startsWith('/change-orders') || currentPath.startsWith('/incidents') || currentPath.startsWith('/reception') || currentPath.startsWith('/weekly-inspections'),
                     scrollController: _scrollController,
                     children: [
                       _SubNavItem(key: _portfolioKey, icon: Icons.space_dashboard, label: 'Portfolio', isActive: currentPath == '/projects' || currentPath.endsWith('/dashboard'), onTap: () => context.go('/projects')),
                       _SubExpandableNavItem(
                         label: 'Planning',
-                        isActive: currentPath.startsWith('/projects') && currentPath != '/projects' && !currentPath.endsWith('/dashboard') && (currentPath.endsWith('/baseline') || currentPath.contains('/reception')) || currentPath.startsWith('/reception'),
+                        isActive: currentPath.startsWith('/projects') && currentPath != '/projects' && !currentPath.endsWith('/dashboard') && (currentPath.endsWith('/baseline') || currentPath.contains('/reception')) || currentPath.startsWith('/reception') || currentPath.startsWith('/resource-planning'),
                         initiallyExpanded: true,
                         scrollController: _scrollController,
                         children: [
-                          _SubNavItem(key: _resourcePlanningKey, icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && currentPath != '/projects' && !currentPath.endsWith('/dashboard') && (currentPath.split('/').length <= 3 || currentPath.endsWith('/baseline')), onTap: () {
-                            final segments = currentPath.split('/');
-                            if (segments.length >= 3 && segments[1] == 'projects' && segments[2].isNotEmpty) {
-                              context.go('/projects/${segments[2]}');
+                          _SubNavItem(key: _resourcePlanningKey, indent: 4, icon: Icons.build_circle, label: 'Resource Planning', isActive: currentPath.startsWith('/projects') && currentPath != '/projects' && !currentPath.endsWith('/dashboard') && (currentPath.split('/').length <= 3 || currentPath.endsWith('/baseline')) || currentPath.startsWith('/resource-planning'), onTap: () {
+                            final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
+                            if (projectId.isNotEmpty) {
+                              context.go('/projects/$projectId');
                             } else {
-                              context.go('/projects');
+                              context.go('/resource-planning');
                             }
                           }),
-                          _SubNavItem(key: _receptionKey, icon: Icons.inventory, label: 'Receive / Return', isActive: currentPath.contains('/reception'), onTap: () {
+                          _SubNavItem(key: _receptionKey, indent: 4, icon: Icons.inventory, label: 'Receive / Return', isActive: currentPath.contains('/reception'), onTap: () {
                             final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
                             if (projectId.isNotEmpty) {
                               context.go('/projects/$projectId/reception');
@@ -201,10 +203,10 @@ class _SidebarState extends State<Sidebar> {
                         initiallyExpanded: currentPath.startsWith('/daily-reports') || currentPath.startsWith('/incidents') || currentPath.startsWith('/weekly-inspections') || currentPath.contains('/weekly-inspections'),
                         scrollController: _scrollController,
                         children: [
-                          _SubNavItem(key: _dailyReportsKey, icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), onTap: () => context.go('/daily-reports')),
-                          _SubNavItem(key: _pendingApprovalsKey, icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), onTap: () => context.go('/daily-reports/pending')),
-                          _SubNavItem(key: _incidentsKey, icon: Icons.warning_amber_rounded, label: 'Incidents', isActive: currentPath.startsWith('/incidents') || currentPath.contains('/incidents'), onTap: () => context.go('/incidents')),
-                          _SubNavItem(key: _weeklyInspectionsKey, icon: Icons.satellite_alt, label: 'Weekly Inspections', isActive: currentPath.startsWith('/weekly-inspections') || currentPath.contains('/weekly-inspections'), onTap: () => context.go('/weekly-inspections')),
+                          _SubNavItem(key: _dailyReportsKey, indent: 4, icon: Icons.assignment, label: 'Daily Reports', isActive: (currentPath.startsWith('/daily-reports') && !currentPath.contains('/pending')) || currentPath.contains('/daily-report'), onTap: () => context.go('/daily-reports')),
+                          _SubNavItem(key: _pendingApprovalsKey, indent: 4, icon: Icons.fact_check_outlined, label: 'Pending Approvals', isActive: currentPath.startsWith('/daily-reports/pending'), onTap: () => context.go('/daily-reports/pending')),
+                          _SubNavItem(key: _incidentsKey, indent: 4, icon: Icons.warning_amber_rounded, label: 'Incidents', isActive: currentPath.startsWith('/incidents') || currentPath.contains('/incidents'), onTap: () => context.go('/incidents')),
+                          _SubNavItem(key: _weeklyInspectionsKey, indent: 4, icon: Icons.satellite_alt, label: 'Weekly Inspections', isActive: currentPath.startsWith('/weekly-inspections') || currentPath.contains('/weekly-inspections'), onTap: () => context.go('/weekly-inspections')),
                         ],
                       ),
                       _SubExpandableNavItem(
@@ -213,15 +215,15 @@ class _SidebarState extends State<Sidebar> {
                         initiallyExpanded: currentPath.contains('/payroll') || currentPath.contains('/labor-cost') || currentPath.contains('/production-measurement') || currentPath.contains('/monitoring') || currentPath.contains('/billing') || currentPath.contains('/change-orders'),
                         scrollController: _scrollController,
                         children: [
-                          _SubNavItem(key: _laborCostKey, icon: Icons.attach_money, label: 'Labor Cost', isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost'), onTap: () => context.go('/labor-cost')),
-                          _SubNavItem(key: _productionMetricsKey, icon: Icons.speed, label: 'Production Metrics', isActive: currentPath.contains('/production-measurement'), onTap: () => context.go('/production-measurement')),
-                          _SubNavItem(key: _monitoringDashKey, icon: Icons.dashboard, label: 'Monitoring Dashboard', isActive: currentPath.contains('/monitoring'), onTap: () => context.go('/monitoring')),
-                          _SubNavItem(key: _billingKey, icon: Icons.receipt_long_outlined, label: 'Billing', isActive: currentPath.contains('/billing'), onTap: () {
+                          _SubNavItem(key: _laborCostKey, indent: 4, icon: Icons.attach_money, label: 'Labor Cost', isActive: currentPath.contains('/payroll') || currentPath.contains('/labor-cost'), onTap: () => context.go('/labor-cost')),
+                          _SubNavItem(key: _productionMetricsKey, indent: 4, icon: Icons.speed, label: 'Production Metrics', isActive: currentPath.contains('/production-measurement'), onTap: () => context.go('/production-measurement')),
+                          _SubNavItem(key: _monitoringDashKey, indent: 4, icon: Icons.dashboard, label: 'Monitoring Dashboard', isActive: currentPath.contains('/monitoring'), onTap: () => context.go('/monitoring')),
+                          _SubNavItem(key: _billingKey, indent: 4, icon: Icons.receipt_long_outlined, label: 'Billing', isActive: currentPath.contains('/billing'), onTap: () {
                             final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
                             if (projectId.isNotEmpty) context.go('/projects/$projectId/billing');
                             else context.go('/billing');
                           }),
-                          _SubNavItem(key: _changeOrdersKey, icon: Icons.swap_horizontal_circle_outlined, label: 'Change Orders', isActive: currentPath.contains('/change-orders'), onTap: () {
+                          _SubNavItem(key: _changeOrdersKey, indent: 4, icon: Icons.swap_horizontal_circle_outlined, label: 'Change Orders', isActive: currentPath.contains('/change-orders'), onTap: () {
                             final projectId = currentPath.replaceAll(RegExp(r'/projects/'), '').split('/').first;
                             if (projectId.isNotEmpty) context.go('/projects/$projectId/change-orders');
                             else context.go('/change-orders');
@@ -503,7 +505,7 @@ class _SubExpandableNavItemState extends State<_SubExpandableNavItem> {
           onTap: _toggleExpand,
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.only(left: 32, right: 16, top: 10, bottom: 10),
+            padding: const EdgeInsets.only(left: 4, right: 16, top: 10, bottom: 10),
             decoration: BoxDecoration(
               color: widget.isActive
                   ? AppTheme.primaryGreen.withOpacity(0.08)
@@ -525,7 +527,7 @@ class _SubExpandableNavItemState extends State<_SubExpandableNavItem> {
         duration: const Duration(milliseconds: 200),
         crossFadeState: _isExpanded ? CrossFadeState.showFirst : CrossFadeState.showSecond,
         firstChild: Padding(
-          padding: const EdgeInsets.only(left: 10),
+          padding: const EdgeInsets.only(left: 0),
           child: Container(
             decoration: BoxDecoration(
               border: const Border(left: BorderSide(color: Color(0xFF334155), width: 1.5)),
@@ -539,7 +541,7 @@ class _SubExpandableNavItemState extends State<_SubExpandableNavItem> {
                 ),
               ],
             ),
-            padding: const EdgeInsets.fromLTRB(8, 4, 4, 4),
+            padding: const EdgeInsets.fromLTRB(0, 4, 4, 4),
             child: Column(children: widget.children),
           ),
         ),
@@ -554,8 +556,9 @@ class _SubNavItem extends StatefulWidget {
   final String label;
   final bool isActive;
   final VoidCallback onTap;
+  final double indent;
 
-  const _SubNavItem({super.key, required this.icon, required this.label, required this.isActive, required this.onTap});
+  const _SubNavItem({super.key, required this.icon, required this.label, required this.isActive, required this.onTap, this.indent = 28.0});
 
   @override
   State<_SubNavItem> createState() => _SubNavItemState();
@@ -575,7 +578,7 @@ class _SubNavItemState extends State<_SubNavItem> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.only(left: 28, right: 16, top: 10, bottom: 10),
+          padding: EdgeInsets.only(left: widget.indent, right: 16, top: 10, bottom: 10),
           decoration: BoxDecoration(
             color: widget.isActive ? AppTheme.primaryGreen.withOpacity(0.08) : (_isHovered ? Colors.white.withOpacity(0.03) : Colors.transparent),
             borderRadius: BorderRadius.circular(8),

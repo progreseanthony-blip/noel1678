@@ -6,8 +6,10 @@ import 'package:noel_data/noel_data.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
+import '../widgets/close_project_dialog.dart';
 
 class ProjectDashboardPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -24,6 +26,8 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
   bool _isLoading = true;
   String? _error;
   List<Map<String, dynamic>> _recentReports = [];
+  bool _isAdmin = false;
+  bool _closingProject = false;
 
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -52,11 +56,21 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
       final service = ref.read(productionMeasurementServiceProvider);
       final measurement = await service.getProjectMeasurement(widget.projectId);
 
+      bool admin = false;
+      try {
+        final currentUser = supabase.auth.currentUser;
+        if (currentUser != null) {
+          final profile = await supabase.from('profiles').select('role').eq('id', currentUser.id).maybeSingle();
+          admin = profile?['role'] == 'Admin';
+        }
+      } catch (_) {}
+
       if (mounted) {
         setState(() {
           _project = Map<String, dynamic>.from(pResult ?? {});
           _measurement = measurement;
           _recentReports = List<Map<String, dynamic>>.from(reports ?? []);
+          _isAdmin = admin;
           _isLoading = false;
           _error = (measurement is Map && measurement['error'] != null) ? measurement['error'] as String : null;
         });
@@ -179,6 +193,10 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
 
           // Overall Progress Card
           _buildProgressCard(overallProgress, cpi, spi, totalPlannedCost, totalActualCost, totalEarnedValue),
+          const SizedBox(height: 20),
+
+          // Project Status
+          _buildProjectStatus(),
           const SizedBox(height: 20),
 
           // Quick Actions
@@ -452,6 +470,102 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
             ),
           );
         }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildProjectStatus() {
+    final status = _project?['status'] as String? ?? 'active';
+    final isCompleted = status == 'completed';
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.slate200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                isCompleted ? Icons.check_circle : Icons.info_outline,
+                size: 18,
+                color: isCompleted ? AppTheme.primaryGreen : AppTheme.slate500,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Project Status',
+                style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700),
+              ),
+              const Spacer(),
+              _buildStatusBadge(status),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (isCompleted) ...[
+            Row(
+              children: [
+                Icon(Icons.lock, size: 14, color: AppTheme.primaryGreen),
+                const SizedBox(width: 6),
+                Text(
+                  'This project is completed. No further edits are allowed.',
+                  style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.slate600),
+                ),
+              ],
+            ),
+          ] else ...[
+            if (_isAdmin)
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _closingProject ? null : () async {
+                    setState(() => _closingProject = true);
+                    final result = await showSafeDialog(
+                      context: context,
+                      barrierColor: Colors.black.withOpacity(0.5),
+                      builder: (_) => CloseProjectDialog(
+                        projectId: widget.projectId,
+                        projectTitle: _project?['title'] ?? '',
+                        isAdmin: _isAdmin,
+                      ),
+                    );
+                    if (mounted) {
+                      setState(() => _closingProject = false);
+                      if (result == true) _loadData();
+                    }
+                  },
+                  icon: _closingProject
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : const Icon(Icons.checklist, size: 16, color: Colors.white),
+                  label: Text(
+                    _closingProject ? 'Closing...' : 'Close Project',
+                    style: GoogleFonts.manrope(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primaryGreen,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                ),
+              )
+            else
+              Row(
+                children: [
+                  Icon(Icons.admin_panel_settings, size: 14, color: Colors.orange),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      'Only Administrators can close projects.',
+                      style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w500, color: Colors.orange),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ],
       ),
     );
   }

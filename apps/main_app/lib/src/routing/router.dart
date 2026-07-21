@@ -13,6 +13,7 @@ import '../features/projects/presentation/pages/projects_list_page.dart';
 import '../features/projects/presentation/pages/project_detail_page.dart';
 import '../features/projects/presentation/pages/project_dashboard_page.dart';
 import '../features/projects/presentation/pages/project_baseline_page.dart';
+import '../features/projects/presentation/pages/resource_planning_projects_page.dart';
 import '../features/projects/presentation/pages/reception_page.dart';
 import '../features/projects/presentation/pages/reception_projects_page.dart';
 import '../features/field_operations/presentation/pages/daily_report_wizard_page.dart';
@@ -93,6 +94,10 @@ final goRouter = GoRouter(
     GoRoute(
       path: '/projects/:id/baseline',
       builder: (context, state) => ProjectBaselinePage(projectId: state.pathParameters['id']!, initialDate: state.uri.queryParameters['reportDate']),
+    ),
+    GoRoute(
+      path: '/resource-planning',
+      builder: (context, state) => const ResourcePlanningProjectsPage(),
     ),
     GoRoute(
       path: '/projects/:id/reception',
