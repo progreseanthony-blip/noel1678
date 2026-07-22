@@ -69,7 +69,7 @@ class ProjectService {
           'project_id': projectId,
           'quote_service_machinery_id': mach['id'],
           'quote_service_id': service['id'],
-          'machinery_name': mach['machine_name'] ?? 'Unknown Machine',
+          'machinery_name': _nonEmpty(mach['machine_name'], 'Unknown Machine'),
           'expected_quantity': mach['quantity'] ?? 1,
           'received_quantity': 0,
           'is_principal': mach['is_primary_mover'] ?? false,
@@ -145,5 +145,10 @@ class ProjectService {
     }
 
     return projectId;
+  }
+
+  static String _nonEmpty(dynamic value, String fallback) {
+    final s = value?.toString() ?? '';
+    return s.isNotEmpty ? s : fallback;
   }
 }

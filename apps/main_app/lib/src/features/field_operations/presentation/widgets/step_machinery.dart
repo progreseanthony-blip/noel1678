@@ -723,6 +723,7 @@ class _StepMachineryState extends State<StepMachinery> {
       for (var d = startDate; !d.isAfter(refDate); d = d.add(const Duration(days: 1))) {
         final nwRatio = _nonWorkingRatio(d);
         if (nwRatio >= 1.0) continue;
+        if (d.weekday == DateTime.sunday) continue;
         final dayWeight = d.weekday == DateTime.saturday ? 0.5 : 1.0;
         effectiveDays += dayWeight * (1.0 - nwRatio);
       }

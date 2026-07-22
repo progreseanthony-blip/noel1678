@@ -68,7 +68,7 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
       // 1. Get machinery details and stipulated duration
       final mRes = await supabase
           .from('project_machinery')
-          .select('project_id, quote_service_id, calculation_metadata, quote_service_machineries(quote_services(quote_service_estimations(total_working_days)))')
+          .select('project_id, quote_service_id, calculation_metadata, quote_service_machineries(quote_services(quote_service_estimations(total_working_days, start_date, end_date)))')
           .eq('id', widget.projectMachineryId)
           .single();
       
@@ -76,6 +76,7 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
       final projectId = mRes['project_id'];
       
       dynamic duration;
+      String? _estStartDate, _estEndDate;
       try {
         final meta = mRes['calculation_metadata'] as Map<String, dynamic>?;
         if (meta != null && meta['days'] != null) {
@@ -86,14 +87,20 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
             final qs = qsm['quote_services'];
             if (qs != null) {
               final est = qs['quote_service_estimations'];
+              dynamic firstEst;
               if (est is List && est.isNotEmpty) {
-                duration = est[0]['total_working_days'];
+                firstEst = est[0];
               } else if (est is Map) {
-                duration = est['total_working_days'];
+                firstEst = est;
               }
+              if (firstEst != null) {
+                duration = firstEst['total_working_days'];
+                _estStartDate = firstEst['start_date']?.toString();
+                _estEndDate = firstEst['end_date']?.toString();
             }
           }
-        }
+        } // end if (_batchStartDate == null)
+      }
       } catch (e) {
         debugPrint('Error parsing duration: $e');
       }
@@ -106,8 +113,17 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
           .eq('project_machinery_id', widget.projectMachineryId)
           .order('created_at');
 
-      // 3. Try to find DEFAULT dates from OTHER resources in the same service (Request 5)
+      // 3. Try to find DEFAULT dates: estimation dates first, then other resources
       if (assignments.isEmpty && _quoteServiceId != null) {
+        if (_estStartDate != null) {
+          _batchStartDate = DateTime.tryParse(_estStartDate!);
+          if (_batchStartDate != null && _stipulatedDays != null) {
+            _batchEndDate = _calculateEndDate(_batchStartDate!, _stipulatedDays!);
+          } else if (_estEndDate != null) {
+            _batchEndDate = DateTime.tryParse(_estEndDate!);
+          }
+        }
+        if (_batchStartDate == null) {
         // Try Labor first
         final laborAssign = await supabase
             .from('project_labor_assignments')
@@ -142,6 +158,7 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
             }
           }
         }
+        } // if (_batchStartDate == null)
       }
 
       // Load non-working days

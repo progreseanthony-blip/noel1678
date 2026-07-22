@@ -66,7 +66,7 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
 
       final mRes = await supabase
           .from('project_instruments')
-          .select('project_id, quote_service_id, quote_service_instruments(quote_services(quote_service_estimations(total_working_days)))')
+          .select('project_id, quote_service_id, quote_service_instruments(quote_services(quote_service_estimations(total_working_days, start_date, end_date)))')
           .eq('id', widget.projectInstrumentId)
           .single();
       
@@ -74,16 +74,23 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
       final projectId = mRes['project_id'];
       
       dynamic duration;
+      String? _estStartDate, _estEndDate;
       try {
         final qsi = mRes['quote_service_instruments'];
         if (qsi != null) {
           final qs = qsi['quote_services'];
           if (qs != null) {
             final est = qs['quote_service_estimations'];
+            dynamic firstEst;
             if (est is List && est.isNotEmpty) {
-              duration = est[0]['total_working_days'];
+              firstEst = est[0];
             } else if (est is Map) {
-              duration = est['total_working_days'];
+              firstEst = est;
+            }
+            if (firstEst != null) {
+              duration = firstEst['total_working_days'];
+              _estStartDate = firstEst['start_date']?.toString();
+              _estEndDate = firstEst['end_date']?.toString();
             }
           }
         }
@@ -98,8 +105,15 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
           .eq('project_instrument_id', widget.projectInstrumentId)
           .order('created_at');
 
-      // Request 5: Default dates from other resources
+      // Default dates: estimation dates first, then other resources
       if (assignments.isEmpty && _quoteServiceId != null) {
+        if (_estStartDate != null) {
+          _batchStartDate = DateTime.tryParse(_estStartDate!);
+          if (_batchStartDate != null && _estEndDate != null) {
+            _batchEndDate = DateTime.tryParse(_estEndDate!);
+          }
+        }
+        if (_batchStartDate == null) {
         final laborAssign = await supabase
             .from('project_labor_assignments')
             .select('start_date, end_date')
@@ -110,6 +124,7 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
         if (laborAssign != null) {
           _batchStartDate = DateTime.parse(laborAssign['start_date']);
           _batchEndDate = DateTime.parse(laborAssign['end_date']);
+        }
         }
       }
 

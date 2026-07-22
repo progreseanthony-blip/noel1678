@@ -402,10 +402,20 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 hourlyRate: (role['hourly_rate'] as num?)?.toDouble() ?? 0,
                 perDiem: (role['per_diem'] as num?)?.toDouble() ?? 0,
               ),
-            );
-          }
-        }
-      }
+    );
+  }
+}
+
+String _nonEmptyStr(dynamic value) {
+  final s = value?.toString() ?? '';
+  return s.isNotEmpty ? s : '';
+  }
+}
+
+String _nonEmptyStr(dynamic value) {
+  final s = value?.toString() ?? '';
+  return s.isNotEmpty ? s : '';
+}
     }
 
     // Merge with manual labors (keeping roles that are NOT auto-generated to avoid deleting manual entries like 'Helper')
@@ -651,7 +661,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
         final machineries = machData
             .map<MachineryEntry>(
               (m) => MachineryEntry(
-                machineName: m['machine_name'] ?? '',
+          machineName: _nonEmptyStr(m['machine_name']),
                 monthsToUse: (m['months_to_use'] as num?)?.toDouble() ?? 0,
                 monthlyRentCost:
                     (m['monthly_rent_cost'] as num?)?.toDouble() ?? 0,
@@ -1451,7 +1461,7 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
 
         final machList = svcData['machineries'] as List? ?? [];
         final machineries = machList.map<MachineryEntry>((m) => MachineryEntry(
-          machineName: m['machine_name'] ?? '',
+          machineName: _nonEmptyStr(m['machine_name']),
           monthsToUse: (m['months_to_use'] as num?)?.toDouble() ?? 0,
           monthlyRentCost: (m['monthly_rent_cost'] as num?)?.toDouble() ?? 0,
           quantity: (m['quantity'] as num?)?.toDouble() ?? 1,
@@ -4876,3 +4886,8 @@ class _TemplateQuoteItemState extends State<_TemplateQuoteItem> {
   }
 }
 
+
+String _nonEmptyStr(dynamic value) {
+  final s = value?.toString() ?? '';
+  return s.isNotEmpty ? s : '';
+}

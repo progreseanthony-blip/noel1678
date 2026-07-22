@@ -360,6 +360,7 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
               color: portfolioProgress >= 50 ? AppTheme.primaryGreen : Colors.orange,
               progress: portfolioProgress / 100,
               padding: const EdgeInsets.all(12),
+              compact: true,
             ),
             const SizedBox(height: 12),
             KpiCard.light(
@@ -369,6 +370,7 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
               icon: Icons.account_balance,
               color: portfolioCPI >= 0.95 ? AppTheme.primaryGreen : AppTheme.errorRed,
               padding: const EdgeInsets.all(12),
+              compact: true,
             ),
             const SizedBox(height: 12),
             KpiCard.light(
@@ -378,6 +380,7 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
               icon: Icons.attach_money,
               color: budgetVariance <= 5 ? AppTheme.primaryGreen : AppTheme.errorRed,
               padding: const EdgeInsets.all(12),
+              compact: true,
             ),
             const SizedBox(height: 12),
             KpiCard.light(
@@ -387,6 +390,7 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
               icon: Icons.warning_amber_rounded,
               color: totalAlerts == 0 ? AppTheme.primaryGreen : AppTheme.errorRed,
               padding: const EdgeInsets.all(12),
+              compact: true,
             ),
           ])
         else
@@ -401,6 +405,7 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
                 color: portfolioProgress >= 50 ? AppTheme.primaryGreen : Colors.orange,
                 progress: portfolioProgress / 100,
                 padding: const EdgeInsets.all(12),
+              compact: true,
               ),
             ),
             SizedBox(
@@ -412,6 +417,7 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
                 icon: Icons.account_balance,
                 color: portfolioCPI >= 0.95 ? AppTheme.primaryGreen : AppTheme.errorRed,
                 padding: const EdgeInsets.all(12),
+              compact: true,
               ),
             ),
             SizedBox(
@@ -423,6 +429,7 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
                 icon: Icons.attach_money,
                 color: budgetVariance <= 5 ? AppTheme.primaryGreen : AppTheme.errorRed,
                 padding: const EdgeInsets.all(12),
+              compact: true,
               ),
             ),
             SizedBox(
@@ -434,6 +441,7 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
                 icon: Icons.warning_amber_rounded,
                 color: totalAlerts == 0 ? AppTheme.primaryGreen : AppTheme.errorRed,
                 padding: const EdgeInsets.all(12),
+              compact: true,
               ),
             ),
           ]),

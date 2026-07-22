@@ -60,7 +60,7 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
       final supabase = Supabase.instance.client;
       final data = await supabase
           .from('project_labor')
-          .select('project_id, start_date, end_date, quote_service_labors(quote_services(quote_service_estimations(total_working_days)))')
+          .select('project_id, start_date, end_date, quote_service_labors(quote_services(quote_service_estimations(total_working_days, start_date, end_date)))')
           .eq('id', widget.projectLaborId)
           .maybeSingle();
 
@@ -99,13 +99,24 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
             if (est != null) {
               final days = est['quote_service_estimations'];
               dynamic d;
+              dynamic estStart, estEnd;
               if (days is List && days.isNotEmpty) {
                 d = days[0]['total_working_days'];
+                estStart = days[0]['start_date'];
+                estEnd = days[0]['end_date'];
               } else if (days is Map) {
                 d = days['total_working_days'];
+                estStart = days['start_date'];
+                estEnd = days['end_date'];
               }
               if (d != null) {
                 _stipulatedDays = (d as num).toDouble();
+              }
+              if (_startDate == null && estStart != null) {
+                _startDate = DateTime.tryParse(estStart.toString());
+              }
+              if (_endDate == null && estEnd != null) {
+                _endDate = DateTime.tryParse(estEnd.toString());
               }
             }
           }
@@ -221,7 +232,7 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Modificar Fechas',
+                                    'Modify Dates',
                                     style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900),
                                   ),
                                   const SizedBox(height: 4),

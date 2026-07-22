@@ -50,6 +50,7 @@ class DailyReportService {
       final key = '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
       final nwRatio = ratios[key] ?? 0;
       if (nwRatio >= 1.0) continue;
+      if (d.weekday == DateTime.sunday) continue;
       final dayWeight = d.weekday == DateTime.saturday ? 0.5 : 1.0;
       effectiveDays += dayWeight * (1.0 - nwRatio);
     }

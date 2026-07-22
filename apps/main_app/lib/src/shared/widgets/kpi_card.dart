@@ -14,6 +14,7 @@ class KpiCard extends StatelessWidget {
   final Color? titleColor;
   final Color? subtitleColor;
   final EdgeInsetsGeometry? padding;
+  final bool compact;
 
   const KpiCard({
     super.key,
@@ -29,6 +30,7 @@ class KpiCard extends StatelessWidget {
     this.titleColor,
     this.subtitleColor,
     this.padding,
+    this.compact = false,
   });
 
   factory KpiCard.dark({
@@ -39,6 +41,7 @@ class KpiCard extends StatelessWidget {
     required IconData icon,
     required Color color,
     double? progress,
+    bool compact = false,
   }) {
     return KpiCard(
       key: key,
@@ -48,6 +51,7 @@ class KpiCard extends StatelessWidget {
       icon: icon,
       color: color,
       progress: progress,
+      compact: compact,
       backgroundColor: const Color(0xFF1E293B),
       borderColor: color.withOpacity(0.3),
       valueColor: Colors.white,
@@ -65,6 +69,7 @@ class KpiCard extends StatelessWidget {
     required Color color,
     double? progress,
     EdgeInsetsGeometry? padding,
+    bool compact = false,
   }) {
     return KpiCard(
       key: key,
@@ -75,6 +80,7 @@ class KpiCard extends StatelessWidget {
       color: color,
       progress: progress,
       padding: padding,
+      compact: compact,
       backgroundColor: Colors.white,
       borderColor: AppTheme.slate200,
       valueColor: AppTheme.slate900,
@@ -91,6 +97,12 @@ class KpiCard extends StatelessWidget {
     final tColor = titleColor ?? AppTheme.slate400;
     final subColor = subtitleColor ?? AppTheme.slate500;
     final pad = padding ?? const EdgeInsets.all(20);
+    final iconSize = compact ? 14.0 : 18.0;
+    final iconPad = compact ? 5.0 : 8.0;
+    final titleGap = compact ? 6.0 : 12.0;
+    final valSize = compact ? 20.0 : 28.0;
+    final progressGap = compact ? 6.0 : 12.0;
+    final progressH = compact ? 4.0 : 6.0;
 
     return Container(
       padding: pad,
@@ -105,12 +117,12 @@ class KpiCard extends StatelessWidget {
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: EdgeInsets.all(iconPad),
                 decoration: BoxDecoration(
                   color: color.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(icon, color: color, size: 18),
+                child: Icon(icon, color: color, size: iconSize),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -126,12 +138,12 @@ class KpiCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: titleGap),
           Text(
             value,
             style: GoogleFonts.manrope(
               color: valColor,
-              fontSize: 28,
+              fontSize: valSize,
               fontWeight: FontWeight.w800,
             ),
           ),
@@ -145,7 +157,7 @@ class KpiCard extends StatelessWidget {
             ),
           ),
           if (progress != null) ...[
-            const SizedBox(height: 12),
+            SizedBox(height: progressGap),
             ClipRRect(
               borderRadius: BorderRadius.circular(4),
               child: LinearProgressIndicator(
@@ -154,7 +166,7 @@ class KpiCard extends StatelessWidget {
                     ? AppTheme.slate200
                     : const Color(0xFF0F172A),
                 valueColor: AlwaysStoppedAnimation(color),
-                minHeight: 6,
+                minHeight: progressH,
               ),
             ),
           ],

@@ -108,10 +108,10 @@ class _StepLaborState extends State<StepLabor> {
 
   void _addEntry(String workerId, {String? plannedLaborId, bool isUnplanned = false, String? checkInTime}) {
     String? ci;
-    if (isUnplanned) {
-      ci = (checkInTime != null && checkInTime.isNotEmpty)
-          ? checkInTime
-          : '${TimeOfDay.now().hour.toString().padLeft(2, '0')}:${TimeOfDay.now().minute.toString().padLeft(2, '0')}:00';
+    if (checkInTime != null && checkInTime.isNotEmpty) {
+      ci = checkInTime;
+    } else if (isUnplanned) {
+      ci = '${TimeOfDay.now().hour.toString().padLeft(2, '0')}:${TimeOfDay.now().minute.toString().padLeft(2, '0')}:00';
     }
     setState(() { _entries.add({ 'worker_id': workerId, 'project_labor_id': plannedLaborId, 'check_in_time': ci, 'check_out_time': null, 'regular_hours': 0.0, 'overtime_hours': 0.0, 'break_minutes': 30, 'total_net_hours': 0.0, 'is_unplanned': isUnplanned, 'deviation_reason_id': null, 'notes': '' }); });
     _emit();

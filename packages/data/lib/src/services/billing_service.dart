@@ -611,7 +611,7 @@ class BillingService {
                 await _supabase.from('project_machinery').insert({
                   'project_id': projectId,
                   'quote_service_id': quoteServiceId,
-                  'machinery_name': e['machinery_name'] ?? 'Additional Machinery',
+                  'machinery_name': _nonEmpty(e['machinery_name'], 'Additional Machinery'),
                   'expected_quantity': qty,
                   'is_unplanned': true,
                   'change_type': 'change_order',
@@ -770,5 +770,10 @@ class BillingService {
         }
       }
     }
+  }
+
+  String _nonEmpty(dynamic value, String fallback) {
+    final s = value?.toString() ?? '';
+    return s.isNotEmpty ? s : fallback;
   }
 }
