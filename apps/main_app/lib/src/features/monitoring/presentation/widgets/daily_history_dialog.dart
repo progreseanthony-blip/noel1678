@@ -35,7 +35,7 @@ class _DailyHistoryDialogState extends State<DailyHistoryDialog> {
 
   Future<void> _load() async {
     try {
-      final service = ProjectMonitoringService(Supabase.instance.client);
+      final service = ProductionMeasurementService(Supabase.instance.client);
       final entries = await service.getDailyHistory(
         widget.projectId, widget.resourceType, widget.resourceId,
       );

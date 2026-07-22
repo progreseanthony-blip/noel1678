@@ -4,7 +4,7 @@ import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
-import '../widgets/evm_kpi_card.dart';
+import '../../../../shared/widgets/kpi_card.dart';
 import '../widgets/alert_banner.dart';
 import '../widgets/service_progress_table.dart';
 
@@ -197,20 +197,20 @@ currentPath: '/projects/${widget.projectId}/production-measurement',
           // KPI Cards
           if (isMobile)
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              EvmKpiCard(title: 'PHYSICAL PROGRESS', value: '${progress.toStringAsFixed(1)}%', subtitle: '${_fmtCurrency(m['total_actual_units'])} / ${_fmtCurrency(m['total_planned_units'])} ${m['total_planned_units'] > 0 ? 'units' : ''}', icon: Icons.speed, color: progress >= 50 ? AppTheme.primaryGreen : Colors.orange, progress: progress / 100),
+              KpiCard.dark(title: 'PHYSICAL PROGRESS', value: '${progress.toStringAsFixed(1)}%', subtitle: '${_fmtCurrency(m['total_actual_units'])} / ${_fmtCurrency(m['total_planned_units'])} ${m['total_planned_units'] > 0 ? 'units' : ''}', icon: Icons.speed, color: progress >= 50 ? AppTheme.primaryGreen : Colors.orange, progress: progress / 100),
               const SizedBox(height: 12),
-              EvmKpiCard(title: 'CPI (COST INDEX)', value: cpi.toStringAsFixed(2), subtitle: cpi >= 1 ? 'Under budget (EV > AC)' : 'Over budget (EV < AC)', icon: Icons.account_balance, color: cpi >= 0.95 ? AppTheme.primaryGreen : Colors.redAccent, progress: cpi.clamp(0.0, 2.0) / 2),
+              KpiCard.dark(title: 'CPI (COST INDEX)', value: cpi.toStringAsFixed(2), subtitle: cpi >= 1 ? 'Under budget (EV > AC)' : 'Over budget (EV < AC)', icon: Icons.account_balance, color: cpi >= 0.95 ? AppTheme.primaryGreen : Colors.redAccent, progress: cpi.clamp(0.0, 2.0) / 2),
               const SizedBox(height: 12),
-              EvmKpiCard(title: 'SPI (SCHEDULE INDEX)', value: spi.toStringAsFixed(2), subtitle: spi >= 1 ? 'Ahead of schedule' : 'Behind schedule', icon: Icons.schedule, color: spi >= 0.9 ? AppTheme.primaryGreen : Colors.redAccent, progress: spi.clamp(0.0, 2.0) / 2),
+              KpiCard.dark(title: 'SPI (SCHEDULE INDEX)', value: spi.toStringAsFixed(2), subtitle: spi >= 1 ? 'Ahead of schedule' : 'Behind schedule', icon: Icons.schedule, color: spi >= 0.9 ? AppTheme.primaryGreen : Colors.redAccent, progress: spi.clamp(0.0, 2.0) / 2),
               const SizedBox(height: 12),
-              EvmKpiCard(title: 'COST VARIANCE', value: '${costDev >= 0 ? '+' : ''}${costDev.toStringAsFixed(1)}%', subtitle: 'EAC: ${_fmtCurrency(eac)}', icon: Icons.trending_up, color: costDev <= 5 ? AppTheme.primaryGreen : Colors.redAccent),
+              KpiCard.dark(title: 'COST VARIANCE', value: '${costDev >= 0 ? '+' : ''}${costDev.toStringAsFixed(1)}%', subtitle: 'EAC: ${_fmtCurrency(eac)}', icon: Icons.trending_up, color: costDev <= 5 ? AppTheme.primaryGreen : Colors.redAccent),
             ])
           else
             Wrap(spacing: 16, runSpacing: 16, children: [
-              SizedBox(width: 240, child: EvmKpiCard(title: 'PHYSICAL PROGRESS', value: '${progress.toStringAsFixed(1)}%', subtitle: '${_fmtCurrency(m['total_actual_units'])} / ${_fmtCurrency(m['total_planned_units'])} ${m['total_planned_units'] > 0 ? 'units' : ''}', icon: Icons.speed, color: progress >= 50 ? AppTheme.primaryGreen : Colors.orange, progress: progress / 100)),
-              SizedBox(width: 240, child: EvmKpiCard(title: 'CPI (COST INDEX)', value: cpi.toStringAsFixed(2), subtitle: cpi >= 1 ? 'Under budget (EV > AC)' : 'Over budget (EV < AC)', icon: Icons.account_balance, color: cpi >= 0.95 ? AppTheme.primaryGreen : Colors.redAccent, progress: cpi.clamp(0.0, 2.0) / 2)),
-              SizedBox(width: 240, child: EvmKpiCard(title: 'SPI (SCHEDULE INDEX)', value: spi.toStringAsFixed(2), subtitle: spi >= 1 ? 'Ahead of schedule' : 'Behind schedule', icon: Icons.schedule, color: spi >= 0.9 ? AppTheme.primaryGreen : Colors.redAccent, progress: spi.clamp(0.0, 2.0) / 2)),
-              SizedBox(width: 240, child: EvmKpiCard(title: 'COST VARIANCE', value: '${costDev >= 0 ? '+' : ''}${costDev.toStringAsFixed(1)}%', subtitle: 'EAC: ${_fmtCurrency(eac)}', icon: Icons.trending_up, color: costDev <= 5 ? AppTheme.primaryGreen : Colors.redAccent)),
+              SizedBox(width: 240, child: KpiCard.dark(title: 'PHYSICAL PROGRESS', value: '${progress.toStringAsFixed(1)}%', subtitle: '${_fmtCurrency(m['total_actual_units'])} / ${_fmtCurrency(m['total_planned_units'])} ${m['total_planned_units'] > 0 ? 'units' : ''}', icon: Icons.speed, color: progress >= 50 ? AppTheme.primaryGreen : Colors.orange, progress: progress / 100)),
+              SizedBox(width: 240, child: KpiCard.dark(title: 'CPI (COST INDEX)', value: cpi.toStringAsFixed(2), subtitle: cpi >= 1 ? 'Under budget (EV > AC)' : 'Over budget (EV < AC)', icon: Icons.account_balance, color: cpi >= 0.95 ? AppTheme.primaryGreen : Colors.redAccent, progress: cpi.clamp(0.0, 2.0) / 2)),
+              SizedBox(width: 240, child: KpiCard.dark(title: 'SPI (SCHEDULE INDEX)', value: spi.toStringAsFixed(2), subtitle: spi >= 1 ? 'Ahead of schedule' : 'Behind schedule', icon: Icons.schedule, color: spi >= 0.9 ? AppTheme.primaryGreen : Colors.redAccent, progress: spi.clamp(0.0, 2.0) / 2)),
+              SizedBox(width: 240, child: KpiCard.dark(title: 'COST VARIANCE', value: '${costDev >= 0 ? '+' : ''}${costDev.toStringAsFixed(1)}%', subtitle: 'EAC: ${_fmtCurrency(eac)}', icon: Icons.trending_up, color: costDev <= 5 ? AppTheme.primaryGreen : Colors.redAccent)),
             ]),
 
           const SizedBox(height: 24),

@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'daily_report_service.dart';
 
+@Deprecated('Use ProductionMeasurementService instead. All methods have been migrated there.')
 class ProjectMonitoringService {
   final SupabaseClient _supabase;
   ProjectMonitoringService(this._supabase);

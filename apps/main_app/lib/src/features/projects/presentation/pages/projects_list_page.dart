@@ -1,22 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_data/noel_data.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
+import '../../../../shared/widgets/kpi_card.dart';
 
-class ProjectsListPage extends StatefulWidget {
+class ProjectsListPage extends ConsumerStatefulWidget {
   const ProjectsListPage({super.key});
 
   @override
-  State<ProjectsListPage> createState() => _ProjectsListPageState();
+  ConsumerState<ProjectsListPage> createState() => _ProjectsListPageState();
 }
 
-class _ProjectsListPageState extends State<ProjectsListPage> {
+class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
   List<Map<String, dynamic>>? _projects;
   Map<String, Map<String, dynamic>> _allServiceCompletions = {};
+  Map<String, dynamic>? _portfolioSummary;
   bool _isLoading = true;
   String? _error;
   String _searchQuery = '';
@@ -48,100 +51,36 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
 
       final projects = List<Map<String, dynamic>>.from(response ?? []);
 
-      // Load quote_services for all projects (planned quantities + direct_cost)
-      final quoteIds = projects.map((p) => p['quote_id'] as String?).where((q) => q != null).toList();
-      final Map<String, List<Map<String, dynamic>>> servicesByQuote = {};
-      if (quoteIds.isNotEmpty) {
-        final qsResult = await supabase
-            .from('quote_services')
-            .select('id, name, quantity, unit_of_measure, direct_cost, quote_id')
-            .in_('quote_id', quoteIds);
-        for (final s in (qsResult as List? ?? [])) {
-          final qid = s['quote_id'] as String?;
-          if (qid != null) {
-            servicesByQuote.putIfAbsent(qid, () => []).add(Map<String, dynamic>.from(s));
-          }
-        }
-      }
-
-      // Load actual production from machinery logs aggregated by project
-      // Only include submitted/approved daily reports
-      final projectIds = projects.map((p) => p['id'] as String).toList();
-      List<Map<String, dynamic>> machLogs = [];
-
-      if (projectIds.isNotEmpty) {
-        final machResult = await supabase
-            .from('report_machinery_logs')
-            .select('''
-              production_value,
-              machinery!inner(capacity_yards),
-              project_machinery!inner(quote_service_id, project_id),
-              daily_reports!inner(status)
-            ''')
-            .in_('daily_reports.status', ['submitted', 'approved']);
-
-        machLogs = List<Map<String, dynamic>>.from(machResult ?? []);
-      }
-
-      // Build unit_of_measure lookup per quote_service_id
-      final Map<String, String> serviceUnits = {};
-      for (final entry in servicesByQuote.entries) {
-        for (final s in entry.value) {
-          serviceUnits[s['id'] as String] = (s['unit_of_measure'] as String?)?.toLowerCase() ?? '';
-        }
-      }
-
-      // Build progress per project (same logic as ProductionMeasurementService)
+      final service = ref.read(productionMeasurementServiceProvider);
+      Map<String, dynamic>? portfolioSummary;
       final Map<String, Map<String, dynamic>> allCompletions = {};
+
+      try {
+        portfolioSummary = await service.getPortfolioSummary();
+        final summaries = List<Map<String, dynamic>>.from(
+          portfolioSummary['project_summaries'] ?? [],
+        );
+        for (final s in summaries) {
+          allCompletions[s['project_id'] as String] = {
+            'pct': (s['progress'] as num?)?.toDouble() ?? 0,
+            'totalServices': (s['total_services'] as int?) ?? 0,
+            'completedServices': (s['completed_services'] as int?) ?? 0,
+          };
+        }
+      } catch (_) {}
+
       for (final p in projects) {
         final pid = p['id'] as String;
-        final quoteId = p['quote_id'] as String?;
-        final services = quoteId != null ? (servicesByQuote[quoteId] ?? []) : [];
-
-        if (services.isEmpty) {
+        if (!allCompletions.containsKey(pid)) {
           allCompletions[pid] = {'pct': 0.0, 'totalServices': 0, 'completedServices': 0};
-          continue;
         }
-
-        // Aggregate actual production by quote_service_id for this project
-        final Map<String, double> actualProd = {};
-        for (final log in machLogs) {
-          final pm = log['project_machinery'];
-          if ((pm['project_id'] as String?) != pid) continue;
-          final qsId = pm['quote_service_id'] as String?;
-          if (qsId == null) continue;
-          final cap = (log['machinery']?['capacity_yards'] as num?)?.toDouble() ?? 0;
-          final prod = (log['production_value'] as num?)?.toDouble() ?? 0;
-          final unit = serviceUnits[qsId] ?? '';
-          final isVolumeUnit = unit == 'cy' || unit == 'ft2' || unit == 'sqft' || unit == 'sf';
-          actualProd[qsId] = (actualProd[qsId] ?? 0) + (isVolumeUnit && cap > 0 ? prod * cap : prod);
-        }
-
-        double totalPlannedUnits = 0;
-        double totalActualUnits = 0;
-        int completedSvcs = 0;
-        for (final s in services) {
-          final qsId = s['id'] as String? ?? '';
-          final plannedQty = (s['quantity'] as num?)?.toDouble() ?? 0;
-          final actual = actualProd[qsId] ?? 0;
-          totalPlannedUnits += plannedQty;
-          totalActualUnits += actual;
-          if (plannedQty > 0 && actual >= plannedQty) completedSvcs++;
-        }
-
-        final pct = totalPlannedUnits > 0 ? (totalActualUnits / totalPlannedUnits * 100).clamp(0, 100) : 0.0;
-
-        allCompletions[pid] = {
-          'pct': pct,
-          'totalServices': services.length,
-          'completedServices': completedSvcs,
-        };
       }
 
       if (mounted) {
         setState(() {
           _projects = projects;
           _allServiceCompletions = allCompletions;
+          _portfolioSummary = portfolioSummary;
           _isLoading = false;
         });
       }
@@ -271,36 +210,44 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
   }
 
   Widget _buildMainContent(bool isMobile) {
-    return SingleChildScrollView(
-      padding: EdgeInsets.all(isMobile ? 16 : 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Portfolio Dashboard',
-            style: GoogleFonts.manrope(
-              fontSize: isMobile ? 24 : 30,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.slate900,
-              letterSpacing: -0.5,
+    return RefreshIndicator(
+      onRefresh: _loadProjects,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.all(isMobile ? 16 : 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Portfolio Dashboard',
+              style: GoogleFonts.manrope(
+                fontSize: isMobile ? 24 : 30,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.slate900,
+                letterSpacing: -0.5,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Overview of all operational projects, progress, and status.',
-            style: GoogleFonts.manrope(
-              fontSize: 14,
-              color: AppTheme.slate500,
-              height: 1.5,
+            const SizedBox(height: 8),
+            Text(
+              'Overview of all operational projects, progress, and status.',
+              style: GoogleFonts.manrope(
+                fontSize: 14,
+                color: AppTheme.slate500,
+                height: 1.5,
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
-          _buildStatsRow(isMobile),
-          const SizedBox(height: 24),
-          _buildSearchFilters(),
-          const SizedBox(height: 24),
-          _buildTable(isMobile),
-        ],
+            const SizedBox(height: 24),
+            _buildStatsRow(isMobile),
+            const SizedBox(height: 24),
+            if (_portfolioSummary != null) ...[
+              _buildPortfolioOverview(isMobile),
+              const SizedBox(height: 24),
+            ],
+            _buildSearchFilters(),
+            const SizedBox(height: 24),
+            _buildTable(isMobile),
+          ],
+        ),
       ),
     );
   }
@@ -323,28 +270,33 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
   Widget _buildStatCard(String label, String value, Color color, IconData icon, Color bgColor, bool isMobile) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.symmetric(horizontal: 14, vertical: isMobile ? 10 : 12),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppTheme.slate200),
         ),
+        clipBehavior: Clip.antiAlias,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(8)),
-              child: Icon(icon, size: 18, color: color),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              value,
-              style: GoogleFonts.manrope(
-                fontSize: isMobile ? 20 : 24,
-                fontWeight: FontWeight.w900,
-                color: color,
-              ),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(8)),
+                  child: Icon(icon, size: 16, color: color),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  value,
+                  style: GoogleFonts.manrope(
+                    fontSize: isMobile ? 18 : 20,
+                    fontWeight: FontWeight.w900,
+                    color: color,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 4),
             Text(
@@ -359,6 +311,140 @@ class _ProjectsListPageState extends State<ProjectsListPage> {
         ),
       ),
     );
+  }
+
+  Widget _buildPortfolioOverview(bool isMobile) {
+    final ps = _portfolioSummary!;
+    final totalPlanned = (ps['total_planned_cost'] as num?)?.toDouble() ?? 0;
+    final totalActual = (ps['total_actual_cost'] as num?)?.toDouble() ?? 0;
+    final portfolioCPI = (ps['portfolio_cpi'] as num?)?.toDouble() ?? 1;
+    final portfolioProgress = (ps['portfolio_progress'] as num?)?.toDouble() ?? 0;
+    final totalAlerts = (ps['total_alerts'] as int?) ?? 0;
+    final projectsAtRisk = (ps['projects_at_risk'] as int?) ?? 0;
+    final completedSvcs = (ps['completed_services'] as int?) ?? 0;
+    final totalSvcs = (ps['total_services'] as int?) ?? 0;
+    final budgetVariance = totalPlanned > 0 ? ((totalActual - totalPlanned) / totalPlanned * 100) : 0.0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              'Portfolio Overview',
+              style: GoogleFonts.manrope(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.slate900,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              'Active projects: ${ps['total_projects'] ?? 0}',
+              style: GoogleFonts.manrope(
+                fontSize: 12,
+                color: AppTheme.slate500,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (isMobile)
+          Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            KpiCard.light(
+              title: 'PORTFOLIO PROGRESS',
+              value: '${portfolioProgress.toStringAsFixed(1)}%',
+              subtitle: '$completedSvcs of $totalSvcs services completed',
+              icon: Icons.trending_up,
+              color: portfolioProgress >= 50 ? AppTheme.primaryGreen : Colors.orange,
+              progress: portfolioProgress / 100,
+              padding: const EdgeInsets.all(12),
+            ),
+            const SizedBox(height: 12),
+            KpiCard.light(
+              title: 'PORTFOLIO CPI',
+              value: portfolioCPI.toStringAsFixed(2),
+              subtitle: portfolioCPI >= 1 ? 'Under budget' : 'Over budget',
+              icon: Icons.account_balance,
+              color: portfolioCPI >= 0.95 ? AppTheme.primaryGreen : AppTheme.errorRed,
+              padding: const EdgeInsets.all(12),
+            ),
+            const SizedBox(height: 12),
+            KpiCard.light(
+              title: 'BUDGET',
+              value: '\$${_fmtCurrency(totalActual)} / \$${_fmtCurrency(totalPlanned)}',
+              subtitle: '${budgetVariance >= 0 ? '+' : ''}${budgetVariance.toStringAsFixed(1)}% variance',
+              icon: Icons.attach_money,
+              color: budgetVariance <= 5 ? AppTheme.primaryGreen : AppTheme.errorRed,
+              padding: const EdgeInsets.all(12),
+            ),
+            const SizedBox(height: 12),
+            KpiCard.light(
+              title: 'ALERTS & RISKS',
+              value: '$totalAlerts',
+              subtitle: '$projectsAtRisk project${projectsAtRisk == 1 ? '' : 's'} at risk',
+              icon: Icons.warning_amber_rounded,
+              color: totalAlerts == 0 ? AppTheme.primaryGreen : AppTheme.errorRed,
+              padding: const EdgeInsets.all(12),
+            ),
+          ])
+        else
+          Wrap(spacing: 16, runSpacing: 16, children: [
+            SizedBox(
+              width: 190,
+              child: KpiCard.light(
+                title: 'PORTFOLIO PROGRESS',
+                value: '${portfolioProgress.toStringAsFixed(1)}%',
+                subtitle: '$completedSvcs of $totalSvcs services completed',
+                icon: Icons.trending_up,
+                color: portfolioProgress >= 50 ? AppTheme.primaryGreen : Colors.orange,
+                progress: portfolioProgress / 100,
+                padding: const EdgeInsets.all(12),
+              ),
+            ),
+            SizedBox(
+              width: 190,
+              child: KpiCard.light(
+                title: 'PORTFOLIO CPI',
+                value: portfolioCPI.toStringAsFixed(2),
+                subtitle: portfolioCPI >= 1 ? 'Under budget' : 'Over budget',
+                icon: Icons.account_balance,
+                color: portfolioCPI >= 0.95 ? AppTheme.primaryGreen : AppTheme.errorRed,
+                padding: const EdgeInsets.all(12),
+              ),
+            ),
+            SizedBox(
+              width: 190,
+              child: KpiCard.light(
+                title: 'BUDGET',
+                value: '\$${_fmtCurrency(totalActual)} / \$${_fmtCurrency(totalPlanned)}',
+                subtitle: '${budgetVariance >= 0 ? '+' : ''}${budgetVariance.toStringAsFixed(1)}% variance',
+                icon: Icons.attach_money,
+                color: budgetVariance <= 5 ? AppTheme.primaryGreen : AppTheme.errorRed,
+                padding: const EdgeInsets.all(12),
+              ),
+            ),
+            SizedBox(
+              width: 190,
+              child: KpiCard.light(
+                title: 'ALERTS & RISKS',
+                value: '$totalAlerts',
+                subtitle: '$projectsAtRisk project${projectsAtRisk == 1 ? '' : 's'} at risk',
+                icon: Icons.warning_amber_rounded,
+                color: totalAlerts == 0 ? AppTheme.primaryGreen : AppTheme.errorRed,
+                padding: const EdgeInsets.all(12),
+              ),
+            ),
+          ]),
+      ],
+    );
+  }
+
+  String _fmtCurrency(double v) {
+    if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
+    if (v >= 1000) return '${(v / 1000).toStringAsFixed(0)}K';
+    return v.toStringAsFixed(0);
   }
 
   Widget _buildSearchFilters() {

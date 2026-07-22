@@ -4,7 +4,7 @@ import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
-import '../widgets/monitoring_summary_card.dart';
+import '../../../../shared/widgets/kpi_card.dart';
 import '../widgets/alert_list.dart';
 import '../widgets/service_accordion.dart';
 
@@ -18,6 +18,7 @@ class ProjectMonitoringPage extends StatefulWidget {
 
 class _ProjectMonitoringPageState extends State<ProjectMonitoringPage> {
   Map<String, dynamic>? _summary;
+  Map<String, dynamic>? _measurement;
   List<Map<String, dynamic>> _services = [];
   List<Map<String, dynamic>> _alerts = [];
   Map<String, List<Map<String, dynamic>>> _resources = {};
@@ -37,11 +38,11 @@ class _ProjectMonitoringPageState extends State<ProjectMonitoringPage> {
     if (!mounted) return;
     setState(() { _isLoading = true; _error = null; });
     try {
-      final service = ProjectMonitoringService(Supabase.instance.client);
+      final service = ProductionMeasurementService(Supabase.instance.client);
       final summary = await service.getProjectSummary(widget.projectId);
-      final svcResult = await service.getServiceDetails(widget.projectId);
-      final services = List<Map<String, dynamic>>.from(svcResult['services'] ?? []);
-      final allAlerts = List<Map<String, dynamic>>.from(svcResult['alerts'] ?? []);
+      final measurement = await service.getProjectMeasurement(widget.projectId);
+      final services = List<Map<String, dynamic>>.from(measurement['services'] ?? []);
+      final allAlerts = List<Map<String, dynamic>>.from(measurement['alerts'] ?? []);
 
       final Map<String, List<Map<String, dynamic>>> resources = {};
       for (final svc in services) {
@@ -78,6 +79,7 @@ class _ProjectMonitoringPageState extends State<ProjectMonitoringPage> {
       if (mounted) {
         setState(() {
           _summary = summary;
+          _measurement = measurement;
           _services = services;
           _alerts = allAlerts;
           _resources = resources;
@@ -179,20 +181,13 @@ currentPath: '/projects/${widget.projectId}/monitoring',
 
   Widget _buildContent(bool isMobile) {
     final s = _summary!;
-    final totalPlanned = (s['total_planned_cost'] as num?)?.toDouble() ?? 0;
+    final m = _measurement!;
     final elapsedDays = (s['elapsed_days'] as int?) ?? 0;
     final totalDays = (s['total_days'] as int?) ?? 1;
     final servicesCount = (s['services_count'] as int?) ?? 0;
-
-    final totalActualQty = _services.fold<double>(0, (sum, svc) => sum + ((svc['actual_quantity'] as num?)?.toDouble() ?? 0));
-    final totalPlannedQty = _services.fold<double>(0, (sum, svc) => sum + ((svc['planned_quantity'] as num?)?.toDouble() ?? 0));
-    final overallProgress = totalPlannedQty > 0 ? (totalActualQty / totalPlannedQty * 100) : 0.0;
-    final totalActualCost = _services.fold<double>(0, (sum, svc) => sum + ((svc['actual_cost'] as num?)?.toDouble() ?? 0));
-    final totalEv = _services.fold<double>(0, (sum, svc) => sum + ((svc['earned_value'] as num?)?.toDouble() ?? 0));
-    final cpi = totalActualCost > 0 ? totalEv / totalActualCost : 1.0;
-    final spi = totalPlanned > 0 && elapsedDays > 0
-        ? totalEv / ((elapsedDays / totalDays.clamp(1, 9999)) * totalPlanned)
-        : 1.0;
+    final overallProgress = (m['overall_progress'] as num?)?.toDouble() ?? 0;
+    final cpi = (m['cpi'] as num?)?.toDouble() ?? 1;
+    final spi = (m['spi'] as num?)?.toDouble() ?? 1;
 
     return SingleChildScrollView(
       padding: EdgeInsets.all(isMobile ? 16 : 32),
@@ -230,28 +225,28 @@ currentPath: '/projects/${widget.projectId}/monitoring',
           // Summary cards
           if (isMobile)
             Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-              MonitoringSummaryCard(
+              KpiCard.dark(
                 title: 'PHYSICAL PROGRESS', value: '${overallProgress.toStringAsFixed(1)}%',
                 subtitle: '$servicesCount services · Day $elapsedDays/$totalDays',
                 icon: Icons.speed, color: overallProgress >= 50 ? AppTheme.primaryGreen : Colors.orange,
                 progress: overallProgress / 100,
               ),
               const SizedBox(height: 12),
-              MonitoringSummaryCard(
+              KpiCard.dark(
                 title: 'CPI (COST INDEX)', value: cpi.toStringAsFixed(2),
                 subtitle: cpi >= 1 ? 'Under budget' : 'Over budget',
                 icon: Icons.account_balance, color: cpi >= 0.95 ? AppTheme.primaryGreen : Colors.redAccent,
                 progress: cpi.clamp(0.0, 2.0) / 2,
               ),
               const SizedBox(height: 12),
-              MonitoringSummaryCard(
+              KpiCard.dark(
                 title: 'SPI (SCHEDULE INDEX)', value: spi.toStringAsFixed(2),
                 subtitle: spi >= 1 ? 'Ahead of schedule' : 'Behind schedule',
                 icon: Icons.schedule, color: spi >= 0.9 ? AppTheme.primaryGreen : Colors.redAccent,
                 progress: spi.clamp(0.0, 2.0) / 2,
               ),
               const SizedBox(height: 12),
-              MonitoringSummaryCard(
+              KpiCard.dark(
                 title: 'ALERTS', value: '${_alerts.length}',
                 subtitle: '${_workerIrregularities?['irregular_count'] ?? 0} workers · ${_machineryIrregularities?['irregular_count'] ?? 0} machines',
                 icon: Icons.warning_amber_rounded, color: _alerts.isEmpty ? AppTheme.primaryGreen : Colors.redAccent,
@@ -261,7 +256,7 @@ currentPath: '/projects/${widget.projectId}/monitoring',
             Wrap(spacing: 16, runSpacing: 16, children: [
               SizedBox(
                 width: 240,
-                child: MonitoringSummaryCard(
+                child: KpiCard.dark(
                   title: 'PHYSICAL PROGRESS', value: '${overallProgress.toStringAsFixed(1)}%',
                   subtitle: '$servicesCount services · Day $elapsedDays/$totalDays',
                   icon: Icons.speed, color: overallProgress >= 50 ? AppTheme.primaryGreen : Colors.orange,
@@ -270,7 +265,7 @@ currentPath: '/projects/${widget.projectId}/monitoring',
               ),
               SizedBox(
                 width: 240,
-                child: MonitoringSummaryCard(
+                child: KpiCard.dark(
                   title: 'CPI (COST INDEX)', value: cpi.toStringAsFixed(2),
                   subtitle: cpi >= 1 ? 'Under budget' : 'Over budget',
                   icon: Icons.account_balance, color: cpi >= 0.95 ? AppTheme.primaryGreen : Colors.redAccent,
@@ -279,7 +274,7 @@ currentPath: '/projects/${widget.projectId}/monitoring',
               ),
               SizedBox(
                 width: 240,
-                child: MonitoringSummaryCard(
+                child: KpiCard.dark(
                   title: 'SPI (SCHEDULE INDEX)', value: spi.toStringAsFixed(2),
                   subtitle: spi >= 1 ? 'Ahead of schedule' : 'Behind schedule',
                   icon: Icons.schedule, color: spi >= 0.9 ? AppTheme.primaryGreen : Colors.redAccent,
@@ -288,7 +283,7 @@ currentPath: '/projects/${widget.projectId}/monitoring',
               ),
               SizedBox(
                 width: 240,
-                child: MonitoringSummaryCard(
+                child: KpiCard.dark(
                   title: 'ALERTS', value: '${_alerts.length}',
                   subtitle: '${_workerIrregularities?['irregular_count'] ?? 0} workers · ${_machineryIrregularities?['irregular_count'] ?? 0} machines',
                   icon: Icons.warning_amber_rounded, color: _alerts.isEmpty ? AppTheme.primaryGreen : Colors.redAccent,
