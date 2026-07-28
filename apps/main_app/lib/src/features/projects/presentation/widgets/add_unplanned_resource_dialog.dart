@@ -411,7 +411,7 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
     _fuelGphController.text = (item['gallons_per_hour'] ?? '0').toString();
     // For CY/SQFT: auto-fill trips and capacity
     if (!_isLinearBased && !_isAcresBased) {
-      _tripsController.text = (item['default_trips_per_day'] ?? item['trips_per_day'] ?? '60').toString();
+      _tripsController.text = (item['trips_per_day'] ?? item['default_trips_per_day'] ?? '60').toString();
       _capacityController.text = (item['capacity_yards'] ?? '30').toString();
     }
     if (_selectedServiceId != null) {

@@ -379,7 +379,13 @@ class ProductionMeasurementService {
           .eq('project_machinery_id', resourceId)
           .in_('daily_reports.status', ['submitted', 'approved'])
           .order('id', ascending: true);
-      return List<Map<String, dynamic>>.from(logs ?? []);
+      final result = List<Map<String, dynamic>>.from(logs ?? []);
+      result.sort((a, b) {
+        final da = a['daily_reports']?['report_date']?.toString() ?? '';
+        final db = b['daily_reports']?['report_date']?.toString() ?? '';
+        return da.compareTo(db);
+      });
+      return result;
     } else if (resourceType == 'labor') {
       final logs = await _supabase
           .from('report_labor_logs')
@@ -392,7 +398,13 @@ class ProductionMeasurementService {
           .eq('daily_reports.project_id', projectId)
           .in_('daily_reports.status', ['submitted', 'approved'])
           .order('id', ascending: true);
-      return List<Map<String, dynamic>>.from(logs ?? []);
+      final result = List<Map<String, dynamic>>.from(logs ?? []);
+      result.sort((a, b) {
+        final da = a['daily_reports']?['report_date']?.toString() ?? '';
+        final db = b['daily_reports']?['report_date']?.toString() ?? '';
+        return da.compareTo(db);
+      });
+      return result;
     }
     return [];
   }

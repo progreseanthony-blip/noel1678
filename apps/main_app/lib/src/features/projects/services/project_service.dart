@@ -44,7 +44,7 @@ class ProjectService {
     // 4. Fetch the expected machinery, materials, labor, and instruments from the quote
     final services = await _supabase
         .from('quote_services')
-        .select('id, name, quote_service_machineries(id, machine_name, quantity, is_primary_mover), quote_service_materials(id, material_name, unit_name, quantity), quote_service_labors(id, role_name, role_id, employees_quantity), quote_service_instruments(id, instrument_name, quantity)')
+        .select('id, name, quote_service_machineries(id, machine_name, quantity, is_primary_mover), quote_service_estimations(quote_service_estimation_resources(machine_id, machinery(description))), quote_service_materials(id, material_name, unit_name, quantity), quote_service_labors(id, role_name, role_id, employees_quantity), quote_service_instruments(id, instrument_name, quantity)')
         .eq('quote_id', quoteId);
 
     final List<Map<String, dynamic>> machineriesToInsert = [];
@@ -64,13 +64,29 @@ class ProjectService {
 
       // ... machinery logic ...
       final List machineries = service['quote_service_machineries'] ?? [];
+      // Build machine_id lookup from estimation resources
+      final Map<String, String> nameToMachineId = {};
+      final estimations = service['quote_service_estimations'];
+      final estResources = (estimations is List && estimations.isNotEmpty
+          ? (estimations[0] as Map)['quote_service_estimation_resources']
+          : (estimations is Map ? estimations['quote_service_estimation_resources'] : null)) as List?;
+      if (estResources != null) {
+        for (final r in estResources) {
+          final mid = r['machine_id']?.toString();
+          final mname = (r['machinery']?['description'] as String?)?.toLowerCase() ?? '';
+          if (mid != null && mname.isNotEmpty) nameToMachineId[mname] = mid;
+        }
+      }
       for (final mach in machineries) {
         final qty = (mach['quantity'] as num?)?.toInt() ?? 1;
+        final machName = (mach['machine_name'] as String?)?.toLowerCase() ?? '';
+        final machineId = nameToMachineId[machName];
         for (int i = 0; i < qty; i++) {
           machineriesToInsert.add({
             'project_id': projectId,
             'quote_service_machinery_id': mach['id'],
             'quote_service_id': service['id'],
+            if (machineId != null) 'machinery_id': machineId,
             'machinery_name': _nonEmpty(mach['machine_name'], 'Unknown Machine'),
             'expected_quantity': 1,
             'received_quantity': 0,
