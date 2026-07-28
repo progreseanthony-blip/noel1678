@@ -211,6 +211,7 @@ class DailyReportService {
     await _supabase.from('report_machinery_logs').insert(
       logs.map((log) {
         final clean = {for (final k in _machineryColumns) if (log.containsKey(k)) k: log[k]};
+        if (!clean.containsKey('is_standby')) clean['is_standby'] = false;
         clean.remove('id');
         clean['daily_report_id'] = reportId;
         return clean;

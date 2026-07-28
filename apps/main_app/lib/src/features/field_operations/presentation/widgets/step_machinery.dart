@@ -633,8 +633,110 @@ class _StepMachineryState extends State<StepMachinery> {
         child: Text(svcName, style: _t(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.slate700)),
       ),
       const SizedBox(height: 6),
+      _buildServiceAggregate(items),
+      const SizedBox(height: 6),
       ...items.map((pm) => _buildMachineryCard(pm)),
     ]);
+  }
+
+  Widget _buildServiceAggregate(List<Map<String, dynamic>> items) {
+    final principals = items.where((pm) => pm['is_principal'] == true).toList();
+    if (principals.isEmpty) return const SizedBox.shrink();
+
+    double totalCumTrips = 0;
+    double totalCumCY = 0;
+    double totalTargetTrips = 0;
+    double totalTargetCY = 0;
+    bool hasTripBased = false;
+    bool hasNonTripBased = false;
+
+    for (final pm in principals) {
+      final pmId = pm['id'] as String?;
+      if (pmId == null) continue;
+      final est = _findEst(pm);
+      if (est == null) continue;
+      final expectedQty = (pm['expected_quantity'] as int?) ?? 1;
+      final entryIndices = _entriesFor(pmId);
+      final tripBased = _isTripBased(pm);
+      final days = _daysElapsed(pm);
+
+      if (tripBased) {
+        hasTripBased = true;
+        final tripsPerDay = ((est['trips_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
+        final capPerTrip = (est['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+        if (tripsPerDay <= 0 && capPerTrip <= 0) continue;
+
+        double todayTrips = 0;
+        double todayCY = 0;
+        for (final idx in entryIndices) {
+          final entry = _entries[idx];
+          todayTrips += ((entry['production_value'] as num?)?.toDouble() ?? 0);
+          todayCY += ((entry['_calculated_cy'] as num?)?.toDouble() ?? 0);
+        }
+        totalCumTrips += (_rawProd[pmId] ?? 0) + todayTrips;
+        totalCumCY += (_machineryProduction[pmId] ?? 0) + todayCY;
+        totalTargetTrips += tripsPerDay * days;
+        totalTargetCY += capPerTrip * tripsPerDay * days;
+      } else {
+        hasNonTripBased = true;
+        final perfPerDay = ((est['performance_per_day'] as num?)?.toDouble() ?? 0) * expectedQty;
+        if (perfPerDay <= 0) continue;
+
+        double todayProd = 0;
+        for (final idx in entryIndices) {
+          final entry = _entries[idx];
+          todayProd += ((entry['production_value'] as num?)?.toDouble() ?? 0);
+        }
+        totalCumTrips += (_rawProd[pmId] ?? 0) + todayProd;
+        totalTargetTrips += perfPerDay * days;
+      }
+    }
+
+    if (hasTripBased && totalTargetTrips <= 0 && totalTargetCY <= 0) return const SizedBox.shrink();
+    if (!hasTripBased && totalTargetTrips <= 0) return const SizedBox.shrink();
+
+    final ratio = totalTargetTrips > 0 ? (totalCumTrips / totalTargetTrips).clamp(0.0, 1.0) : 0.0;
+    final pct = (ratio * 100).toInt();
+    final barColor = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryGreen.withAlpha(15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.primaryGreen.withAlpha(40)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.speed, size: 14, color: AppTheme.primaryGreen),
+          const SizedBox(width: 6),
+          if (hasTripBased)
+            Expanded(
+              child: Text(
+                'Service: ${totalCumTrips.toStringAsFixed(0)} / ${totalTargetTrips.toStringAsFixed(0)} trips ($pct%)   CY: ${totalCumCY.toStringAsFixed(0)} / ${totalTargetCY.toStringAsFixed(0)}',
+                style: _t(fontSize: 12, fontWeight: FontWeight.w700, color: barColor),
+              ),
+            )
+          else
+            Expanded(
+              child: Text(
+                'Service: ${totalCumTrips.toStringAsFixed(0)} / ${totalTargetTrips.toStringAsFixed(0)} ($pct%)',
+                style: _t(fontSize: 12, fontWeight: FontWeight.w700, color: barColor),
+              ),
+            ),
+        ]),
+        const SizedBox(height: 4),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(
+            value: ratio,
+            backgroundColor: AppTheme.slate200,
+            valueColor: AlwaysStoppedAnimation<Color>(barColor),
+            minHeight: 6,
+          ),
+        ),
+      ]),
+    );
   }
 
   Widget _buildMachineryCard(Map<String, dynamic> pm) {
@@ -736,16 +838,16 @@ class _StepMachineryState extends State<StepMachinery> {
   Map<String, dynamic>? _findEst(Map<String, dynamic> pm) {
     final qsId = pm['quote_service_id']?.toString();
     final machId = pm['machinery_id']?.toString();
-    if (qsId == null) return null;
+    if (qsId == null) return _estFromCalcMeta(pm);
     final byService = _estimationTargets[qsId];
-    if (byService == null) return null;
+    if (byService == null) return _estFromCalcMeta(pm);
     if (machId != null && byService.containsKey(machId)) return byService[machId];
 
     final names = <String>{
       (pm['machinery']?['description'] as String?)?.toLowerCase().replaceAll(RegExp(r'\s+'), ' ') ?? '',
       (pm['machinery_name'] as String?)?.toLowerCase().replaceAll(RegExp(r'\s+'), ' ') ?? '',
     }..remove('');
-    if (names.isEmpty) return null;
+    if (names.isEmpty) return _estFromCalcMeta(pm);
 
     for (final entry in byService.values) {
       final estName = (entry['_machine_name'] as String? ?? '').toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
@@ -753,7 +855,24 @@ class _StepMachineryState extends State<StepMachinery> {
         return entry;
       }
     }
-    return null;
+    return _estFromCalcMeta(pm);
+  }
+
+  /// Fallback: extract estimation data from calculation_metadata (baseline/unplanned machinery)
+  Map<String, dynamic>? _estFromCalcMeta(Map<String, dynamic> pm) {
+    final meta = pm['calculation_metadata'];
+    if (meta is! Map) return null;
+    final tripsPerDay = (meta['trips_per_day'] as num?)?.toDouble() ?? 0;
+    final capPerTrip = (meta['capacity'] as num?)?.toDouble() ?? 0;
+    final perfPerDay = (meta['performance_per_day'] as num?)?.toDouble() ?? 0;
+    final machName = (pm['machinery_name'] as String? ?? '').toLowerCase();
+    if (tripsPerDay == 0 && capPerTrip == 0 && perfPerDay == 0) return null;
+    return {
+      'capacity_per_trip': capPerTrip,
+      'trips_per_day': tripsPerDay,
+      'performance_per_day': perfPerDay,
+      '_machine_name': machName,
+    };
   }
 
   bool _isTripBased(Map<String, dynamic> pm) {
@@ -821,38 +940,7 @@ class _StepMachineryState extends State<StepMachinery> {
       final unit = pm['quote_services']?['unit_of_measure']?.toString().toLowerCase() ?? '';
       final isVolumeUnit = unit == 'cy' || unit == 'ft2' || unit == 'sqft' || unit == 'sf';
       if (!isVolumeUnit) continue;
-      final qsId = pm['quote_service_id']?.toString();
-      final machId = pm['machinery_id']?.toString();
-      bool isTripBased = true;
-      if (qsId != null) {
-        final byService = est[qsId];
-        if (byService != null) {
-          Map<String, dynamic>? pmEst;
-          if (machId != null && byService.containsKey(machId)) {
-            pmEst = byService[machId];
-          } else {
-            final names = <String>{
-              (pm['machinery']?['description'] as String?)?.toLowerCase().replaceAll(RegExp(r'\s+'), ' ') ?? '',
-              (pm['machinery_name'] as String?)?.toLowerCase().replaceAll(RegExp(r'\s+'), ' ') ?? '',
-            }..remove('');
-            if (names.isNotEmpty) {
-              for (final entry in byService.values) {
-                final estName = (entry['_machine_name'] as String? ?? '').toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
-                if (names.any((n) => n == estName || estName.contains(n) || n.contains(estName))) {
-                  pmEst = entry;
-                  break;
-                }
-              }
-            }
-          }
-          if (pmEst != null) {
-            final capPerTrip = (pmEst['capacity_per_trip'] as num?)?.toDouble() ?? 0;
-            final tripsPerDay = (pmEst['trips_per_day'] as num?)?.toDouble() ?? 0;
-            isTripBased = capPerTrip > 0 && tripsPerDay > 0;
-          }
-        }
-      }
-      if (isTripBased) {
+      if (_isTripBased(pm)) {
         adjusted[pmId] = raw * _getEstimationCapacity(pm);
       }
     }
@@ -1230,8 +1318,6 @@ class _StepMachineryState extends State<StepMachinery> {
                   Text('#${entry['_unit_number']}', style: _t(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.slate500)),
               ]),
             ),
-          if (pm != null)
-            _buildEntryProgress(index, entry, totalCount, pm),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Expanded(flex: 3, child: Container(
               padding: const EdgeInsets.all(10),
@@ -1244,9 +1330,10 @@ class _StepMachineryState extends State<StepMachinery> {
                   SizedBox(
                     width: double.infinity,
                     child: DropdownButtonFormField<String>(
+                      isExpanded: true,
                       value: entry['operator_id'],
                       decoration: const InputDecoration(labelText: 'Operator', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6)),
-                      style: _t(fontSize: 14),
+                      style: _t(fontSize: 13),
                       items: _buildOperatorItems(operators, pm),
                       onChanged: (v) {
                         _updateEntry(index, 'operator_id', v);

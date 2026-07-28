@@ -65,16 +65,19 @@ class ProjectService {
       // ... machinery logic ...
       final List machineries = service['quote_service_machineries'] ?? [];
       for (final mach in machineries) {
-        machineriesToInsert.add({
-          'project_id': projectId,
-          'quote_service_machinery_id': mach['id'],
-          'quote_service_id': service['id'],
-          'machinery_name': _nonEmpty(mach['machine_name'], 'Unknown Machine'),
-          'expected_quantity': mach['quantity'] ?? 1,
-          'received_quantity': 0,
-          'is_principal': mach['is_primary_mover'] ?? false,
-          'is_unplanned': false,
-        });
+        final qty = (mach['quantity'] as num?)?.toInt() ?? 1;
+        for (int i = 0; i < qty; i++) {
+          machineriesToInsert.add({
+            'project_id': projectId,
+            'quote_service_machinery_id': mach['id'],
+            'quote_service_id': service['id'],
+            'machinery_name': _nonEmpty(mach['machine_name'], 'Unknown Machine'),
+            'expected_quantity': 1,
+            'received_quantity': 0,
+            'is_principal': mach['is_primary_mover'] ?? false,
+            'is_unplanned': false,
+          });
+        }
       }
 
       // ... existing materials logic ...
