@@ -1501,7 +1501,20 @@ String _nonEmptyStr(dynamic value) {
         )).toList();
 
         final est = svcData['estimation'] as Map<String, dynamic>?;
-        final estResources = svcData['estimation_resources'] as List? ?? [];
+        final estResourcesRaw = svcData['estimation_resources'] as List? ?? [];
+        final estResources = estResourcesRaw.map((r) => {
+          'id': r['id'],
+          'is_primary_mover': r['is_primary_mover'] ?? true,
+          'parent_resource_id': r['parent_resource_id'],
+          'machine_id': r['machine_id'],
+          'machine_name': r['machinery']?['description'] ?? 'Unknown',
+          'photo_url': r['machinery']?['photo_url'],
+          'machinery_type': r['machinery']?['machinery_type'] ?? 'hauling',
+          'quantity': (r['quantity'] as num).toDouble(),
+          'trips_per_day': (r['trips_per_day'] as num).toDouble(),
+          'capacity_per_trip': (r['capacity_per_trip'] as num).toDouble(),
+          'performance_per_day': (r['performance_per_day'] as num?)?.toDouble() ?? 0.0,
+        }).toList();
         Map<String, dynamic>? estimationData;
         if (est != null) {
           estimationData = {
