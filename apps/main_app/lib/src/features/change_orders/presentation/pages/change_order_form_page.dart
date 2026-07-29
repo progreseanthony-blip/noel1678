@@ -30,6 +30,7 @@ class ChangeOrderFormPage extends ConsumerStatefulWidget {
 
 class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
   bool _isCompleted = false;
+  String _projectTitle = '';
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   final _schedDaysCtrl = TextEditingController();
@@ -51,7 +52,21 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
   @override
   void initState() {
     super.initState();
+    _loadProjectName();
     if (widget.isEditing) _loadData();
+  }
+
+  Future<void> _loadProjectName() async {
+    try {
+      final data = await Supabase.instance.client
+          .from('projects')
+          .select('title')
+          .eq('id', widget.projectId)
+          .maybeSingle();
+      if (mounted && data != null) {
+        setState(() => _projectTitle = data['title']?.toString() ?? '');
+      }
+    } catch (_) {}
   }
 
   @override
@@ -201,14 +216,15 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     );
 
     if (selected != null && mounted) {
-      final targetPrice =
-          (selected['target_price'] as num?)?.toDouble() ?? 0;
+      final directCost = (selected['direct_cost'] as num?)?.toDouble() ?? 0;
+      final svcQty = (selected['quantity'] as num?)?.toDouble() ?? 1;
+      final unitPrice = svcQty > 0 ? (directCost / svcQty).toDouble() : 0.0;
       _showLineEditor(
         serviceName: selected['name'] ?? '',
         unitOfMeasure: selected['unit_of_measure'] ?? 'und',
         quoteServiceId: selected['id'] as String?,
         lineType: 'existing_service',
-        initialUnitPrice: targetPrice,
+        initialUnitPrice: unitPrice,
       );
     }
   }
@@ -655,11 +671,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
                 items: const [
                   DropdownMenuItem(
                     value: 'existing_service',
-                    child: Text('Increase/Decrease Existing'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'new_service',
-                    child: Text('Add New Service'),
+                    child: Text('Modify Existing Service'),
                   ),
                   DropdownMenuItem(
                     value: 'deduction',
@@ -943,10 +955,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
               children: [
                 _buildTopHeader(userName, isMobile),
                 Expanded(
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.all(isMobile ? 16 : 24),
-                    child: _buildForm(isMobile),
-                  ),
+                  child: _buildForm(isMobile),
                 ),
               ],
             ),
@@ -987,6 +996,21 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
           ),
           if (!isMobile) ...[
             const SizedBox(width: 8),
+            Text(
+              _projectTitle.isNotEmpty ? _projectTitle : 'Change Orders',
+              style: GoogleFonts.manrope(
+                fontSize: 13,
+                color: AppTheme.slate500,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Icon(
+                Icons.chevron_right,
+                size: 16,
+                color: AppTheme.slate400,
+              ),
+            ),
             Text(
               'Change Orders',
               style: GoogleFonts.manrope(
@@ -1051,7 +1075,9 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
       isCompletedCallback: (completed) {
         if (completed != _isCompleted) setState(() => _isCompleted = completed);
       },
-      child: Column(
+      child: SingleChildScrollView(
+        padding: EdgeInsets.all(isMobile ? 16 : 24),
+        child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
@@ -1294,7 +1320,8 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
         ],
       ],
       ),
-    );
+    ),
+  );
   }
 
   List<String>? get _selectedQuoteServiceIds {

@@ -31,7 +31,27 @@ class ChangeOrderDetailPage extends ConsumerStatefulWidget {
 
 class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
   final _fmt = NumberFormat('#,##0.00', 'en_US');
+  String _projectTitle = '';
   String? _rejectionReason;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProjectName();
+  }
+
+  Future<void> _loadProjectName() async {
+    try {
+      final data = await Supabase.instance.client
+          .from('projects')
+          .select('title')
+          .eq('id', widget.projectId)
+          .maybeSingle();
+      if (mounted && data != null) {
+        setState(() => _projectTitle = data['title']?.toString() ?? '');
+      }
+    } catch (_) {}
+  }
   Map<String, dynamic>? _cachedCo;
   List<Map<String, dynamic>> _cachedDetails = [];
   List<Map<String, dynamic>> _cachedDisruptions = [];
@@ -274,6 +294,21 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
           ),
           if (!isMobile) ...[
             const SizedBox(width: 8),
+            Text(
+              _projectTitle.isNotEmpty ? _projectTitle : 'Project',
+              style: GoogleFonts.manrope(
+                fontSize: 13,
+                color: AppTheme.slate500,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Icon(
+                Icons.chevron_right,
+                size: 16,
+                color: AppTheme.slate400,
+              ),
+            ),
             Text(
               'Change Orders',
               style: GoogleFonts.manrope(

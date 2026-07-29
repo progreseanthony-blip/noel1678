@@ -88,7 +88,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
       // 2. Load Machinery
       final mResult = await supabase
           .from('project_machinery')
-          .select('*, quote_services(name, quote_service_estimations(total_working_days)), project_machinery_assignments(*), quote_service_machineries(quote_services(name, quote_service_estimations(total_working_days))), machinery_inspections(*)')
+          .select('*, quote_services(name, unit_of_measure, quote_service_estimations(total_working_days)), project_machinery_assignments(*), quote_service_machineries(quote_services(name, unit_of_measure, quote_service_estimations(total_working_days))), machinery_inspections(*)')
           .eq('project_id', widget.projectId)
           .order('machinery_name');
 
@@ -1186,7 +1186,7 @@ currentPath: '/projects/${widget.projectId}',
                             Padding(
                               padding: const EdgeInsets.only(top: 2),
                               child: Text(
-                                'Production: ${_machineryProduction[m['id']]!.toStringAsFixed(0)} CY total',
+                                'Production: ${_machineryProduction[m['id']]!.toStringAsFixed(0)} ${m['quote_services']?['unit_of_measure'] ?? ''} total',
                                 style: GoogleFonts.manrope(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,

@@ -550,7 +550,7 @@ class BillingService {
   Future<void> applyBaselineImpact(String changeOrderId) async {
     final co = await _supabase
         .from('change_orders')
-        .select('project_id, quote_id')
+        .select('project_id')
         .eq('id', changeOrderId)
         .single();
 
@@ -560,7 +560,12 @@ class BillingService {
         .eq('change_order_id', changeOrderId);
 
     final projectId = co['project_id'] as String;
-    final quoteId = co['quote_id'] as String?;
+    final project = await _supabase
+        .from('projects')
+        .select('quote_id')
+        .eq('id', projectId)
+        .maybeSingle();
+    final quoteId = project?['quote_id'] as String?;
 
     for (final detail in (details as List<dynamic>).cast<Map<String, dynamic>>()) {
       final lineType = detail['line_type'] as String? ?? '';

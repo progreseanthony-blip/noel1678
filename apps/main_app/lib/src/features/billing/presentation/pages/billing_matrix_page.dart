@@ -65,6 +65,20 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
       if (widget.invoiceId != null) {
         final svc = ref.read(billingServiceProvider);
         final inv = await svc.getInvoice(widget.invoiceId!);
+
+        // Refresh approved_cos_total from RPC for draft invoices
+        if (inv['status'] == 'draft') {
+          try {
+            final freshData = await svc.getPayApplicationData(
+              projectId: widget.projectId,
+              periodStart: (inv['period_start'] as String?) ?? '',
+              periodEnd: (inv['period_end'] as String?) ?? '',
+            );
+            inv['approved_cos_total'] = freshData['approved_cos_total'] ?? inv['approved_cos_total'];
+            inv['current_contract'] = freshData['current_contract'] ?? inv['current_contract'];
+          } catch (_) {}
+        }
+
         final details = await svc.getInvoiceDetails(widget.invoiceId!);
 
         // Load linked Change Orders

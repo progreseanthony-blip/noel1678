@@ -19,6 +19,26 @@ class ChangeOrdersListPage extends ConsumerStatefulWidget {
 
 class _ChangeOrdersListPageState extends ConsumerState<ChangeOrdersListPage> {
   final _fmt = NumberFormat('#,##0.00', 'en_US');
+  String _projectTitle = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProjectName();
+  }
+
+  Future<void> _loadProjectName() async {
+    try {
+      final data = await Supabase.instance.client
+          .from('projects')
+          .select('title')
+          .eq('id', widget.projectId)
+          .maybeSingle();
+      if (mounted && data != null) {
+        setState(() => _projectTitle = data['title']?.toString() ?? '');
+      }
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -77,7 +97,9 @@ class _ChangeOrdersListPageState extends ConsumerState<ChangeOrdersListPage> {
           ),
           if (!isMobile) ...[
             const SizedBox(width: 8),
-            Text('Project', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500, fontWeight: FontWeight.w500)),
+            Flexible(
+              child: Text(_projectTitle.isNotEmpty ? _projectTitle : 'Project', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500, fontWeight: FontWeight.w500)),
+            ),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Icon(Icons.chevron_right, size: 16, color: AppTheme.slate400),

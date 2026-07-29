@@ -311,7 +311,7 @@ class _BaselineImpactSectionState
                     _plans[key] = [
                       {
                         'resource_type': 'labor',
-                        'proportional_factor': v.roundToDouble(),
+                        'proportional_factor': v,
                       }
                     ];
                   });
