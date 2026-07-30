@@ -90,18 +90,8 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         _linkedCoIds.addAll(links.map<String>((l) => l['change_order_id'].toString()));
 
         if (mounted) {
-          // Ensure correct order: services → CO headers → CO details
-          details.sort((a, b) {
-            const typeOrder = {
-              'service': 0, 'equipment': 1, 'co_adjustment': 2,
-              'change_order_header': 3, 'change_order_detail': 4
-            };
-            final aType = typeOrder[a['line_type']?.toString() ?? ''] ?? 99;
-            final bType = typeOrder[b['line_type']?.toString() ?? ''] ?? 99;
-            if (aType != bType) return aType.compareTo(bType);
-            return ((a['sort_order'] as num?)?.toInt() ?? 0)
-                .compareTo((b['sort_order'] as num?)?.toInt() ?? 0);
-          });
+          // Sort: services → equipment → CO blocks chronologically
+          details.sort(_lineComparator);
           setState(() {
             _invoice = inv;
             _lines = details;
@@ -127,17 +117,8 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         }
 
         if (mounted) {
-          // Ensure correct order: services → CO headers → CO details
-          loadedLines.sort((a, b) {
-            const typeOrder = {
-              'service': 0, 'equipment': 1, 'co_adjustment': 2,
-              'change_order_header': 3, 'change_order_detail': 4
-            };
-            final aType = typeOrder[a['line_type']?.toString() ?? ''] ?? 99;
-            final bType = typeOrder[b['line_type']?.toString() ?? ''] ?? 99;
-            if (aType != bType) return aType.compareTo(bType);
-            return 0;
-          });
+          // Sort: services → equipment → CO blocks chronologically
+          loadedLines.sort(_lineComparator);
           setState(() {
             _lines = loadedLines;
             _invoice = {
@@ -330,6 +311,8 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         final l = e.value;
         return {
           'quote_service_id': l['quote_service_id'],
+          'change_order_id': l['change_order_id'],
+          'co_number': l['co_number'],
           'line_type': l['line_type'] ?? 'service',
           'sort_order': e.key,
           'service_name': l['service_name'] ?? '',
@@ -473,10 +456,56 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
     }
   }
 
+  int _parseCoNumber(String? coNumber) {
+    // Extract numeric portion from "CO-2026-0009" → 20260009 for sorting
+    if (coNumber == null || coNumber.isEmpty) return 0;
+    final digits = coNumber.replaceAll(RegExp(r'[^0-9]'), '');
+    return int.tryParse(digits) ?? 0;
+  }
+
+  void _sortLines() {
+    _lines.sort(_lineComparator);
+  }
+
+  int _lineComparator(Map<String, dynamic> a, Map<String, dynamic> b) {
+    const typeOrder = {
+      'service': 0, 'equipment': 1, 'co_adjustment': 2,
+      'change_order_header': 3, 'change_order_detail': 4
+    };
+    final aType = typeOrder[a['line_type']?.toString() ?? ''] ?? 99;
+    final bType = typeOrder[b['line_type']?.toString() ?? ''] ?? 99;
+
+    final aIsCO = aType >= 3;
+    final bIsCO = bType >= 3;
+
+    // CO lines: group by co_number first (each CO with its sub-lines)
+    if (aIsCO && bIsCO) {
+      final aNum = _parseCoNumber(a['co_number']?.toString());
+      final bNum = _parseCoNumber(b['co_number']?.toString());
+      if (aNum != bNum) return aNum.compareTo(bNum);
+      return aType.compareTo(bType); // header (3) before detail (4)
+    }
+
+    // Mixed: non-CO always before CO
+    if (aIsCO) return 1;
+    if (bIsCO) return -1;
+
+    // Non-CO lines: sort by type group then sort_order
+    if (aType != bType) return aType.compareTo(bType);
+    return ((a['sort_order'] as num?)?.toInt() ?? 0)
+        .compareTo((b['sort_order'] as num?)?.toInt() ?? 0);
+  }
+
   Future<void> _linkChangeOrders() async {
     final svc = ref.read(billingServiceProvider);
     final allCOs = await svc.getChangeOrders(widget.projectId);
     final approved = allCOs.where((co) => co['status'] == 'approved').toList();
+    // Sort chronologically (oldest first) so CO blocks appear in order
+    approved.sort((a, b) {
+      final aDate = a['created_at'] ?? '';
+      final bDate = b['created_at'] ?? '';
+      return aDate.toString().compareTo(bDate.toString());
+    });
 
     if (approved.isEmpty) {
       if (mounted) {
@@ -553,6 +582,8 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
               'quote_service_id': null,
               'line_type': 'change_order_header',
               'co_id': coId,
+              'change_order_id': coId,
+              'co_number': co['co_number']?.toString() ?? '',
               'service_name': 'CO: ${co['co_number'] ?? coId} — ${co['title'] ?? ''}',
               'unit_of_measure': '',
               'scheduled_value': adjAmount,
@@ -573,6 +604,8 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
                 'quote_service_id': null,
                 'line_type': 'change_order_detail',
                 'co_id': coId,
+                'change_order_id': coId,
+                'co_number': co['co_number']?.toString() ?? '',
                 'service_name': '  ${typeLabel.isNotEmpty ? '$typeLabel: ' : ''}${d['service_name'] ?? ''} ($qtySign ${d['unit_of_measure'] ?? ''} × \$${_fmt.format(up)})',
                 'unit_of_measure': d['unit_of_measure'] ?? '',
                 'scheduled_value': total,
@@ -590,6 +623,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         _linkedCoIds
           ..clear()
           ..addAll(result);
+        _sortLines();
         _isDirty = true;
       });
     }

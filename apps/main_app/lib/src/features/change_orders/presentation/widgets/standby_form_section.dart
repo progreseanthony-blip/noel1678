@@ -109,6 +109,31 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
     if (picked != null) onPicked(picked);
   }
 
+  int _calculateDefaultStandbyHours() {
+    final start = widget.disruptionStart;
+    final end = widget.disruptionEnd;
+    if (start == null || end == null) return 8;
+
+    int totalHours = 0;
+    var current = start;
+    while (!current.isAfter(end)) {
+      switch (current.weekday) {
+        case DateTime.monday:
+        case DateTime.tuesday:
+        case DateTime.wednesday:
+        case DateTime.thursday:
+        case DateTime.friday:
+          totalHours += 8;
+          break;
+        case DateTime.saturday:
+          totalHours += 5;
+          break;
+      }
+      current = current.add(const Duration(days: 1));
+    }
+    return totalHours;
+  }
+
   @override
   Widget build(BuildContext context) {
     final reasonsAsync = ref.watch(disruptionReasonListProvider);
@@ -494,9 +519,9 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
                 padding: const EdgeInsets.symmetric(vertical: 24),
                 child: Center(
                   child: Text(
-                    materials.isEmpty
-                        ? 'No hay materiales registrados en el proyecto o servicio'
-                        : 'Todos los materiales ya fueron agregados',
+                        materials.isEmpty
+                            ? 'No materials registered in the project or service'
+                            : 'All materials have already been added',
                     style: GoogleFonts.manrope(
                       fontSize: 13,
                       color: AppTheme.slate500,
@@ -767,196 +792,374 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
   Future<void> _showAddMachineryDialog(
     List<Map<String, dynamic>> machines,
   ) async {
-    final selected = await showSafeDialog<Map<String, dynamic>>(
+    final selectedIds = <String>{};
+    final defaultHours = _calculateDefaultStandbyHours();
+    final result = await showSafeDialog<bool>(
       context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text(
-          'Select Machinery',
-          style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
-        ),
-        children: machines.map((m) {
-          final name =
-              m['machinery_name'] ??
-              m['machinery']?['description'] ??
-              'Machine';
-          final svcName = m['quote_services']?['name'] as String? ?? '';
-          final rate =
-              (m['quote_service_machineries']?['monthly_rent_cost'] as num?)
-                  ?.toDouble() ??
-              0;
-          final suggestedRate = rate > 0
-              ? (rate / 30 / 8).toStringAsFixed(2)
-              : '0';
-          return SimpleDialogOption(
-            onPressed: () => Navigator.of(ctx).pop({
-              'id': m['id'],
-              'name': name,
-              'serviceName': svcName,
-              'suggestedRate': suggestedRate,
-            }),
-            child: ListTile(
-              dense: true,
-              title: Text(
-                name,
-                style: GoogleFonts.manrope(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Select Machinery',
+                  style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
                 ),
               ),
-              subtitle: Text(
-                '$svcName — Suggested rate: \$$suggestedRate/hr',
-                style: GoogleFonts.manrope(
-                  fontSize: 11,
-                  color: AppTheme.slate500,
+              TextButton(
+                onPressed: () {
+                  setDialogState(() {
+                    if (selectedIds.length == machines.length) {
+                      selectedIds.clear();
+                    } else {
+                      selectedIds.addAll(machines.map((m) => m['id'] as String));
+                    }
+                  });
+                },
+                child: Text(
+                  selectedIds.length == machines.length ? 'Deselect All' : 'Select All',
+                  style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
               ),
+            ],
+          ),
+          content: SizedBox(
+            width: 450,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: machines.map((m) {
+                final id = m['id'] as String;
+                final name =
+                    m['machinery_name'] ??
+                    m['machinery']?['description'] ??
+                    'Machine';
+                final svcName = m['quote_services']?['name'] as String? ?? '';
+                final rate =
+                    (m['quote_service_machineries']?['monthly_rent_cost'] as num?)
+                        ?.toDouble() ??
+                    0;
+                final suggestedRate = rate > 0
+                    ? (rate / 30 / 8).toStringAsFixed(2)
+                    : '0';
+                return CheckboxListTile(
+                  dense: true,
+                  title: Text(
+                    name,
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '$svcName — Suggested rate: \$$suggestedRate/hr',
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      color: AppTheme.slate500,
+                    ),
+                  ),
+                  value: selectedIds.contains(id),
+                  onChanged: (val) {
+                    setDialogState(() {
+                      if (val == true) {
+                        selectedIds.add(id);
+                      } else {
+                        selectedIds.remove(id);
+                      }
+                    });
+                  },
+                );
+              }).toList(),
             ),
-          );
-        }).toList(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: selectedIds.isEmpty
+                  ? null
+                  : () => Navigator.of(ctx).pop(true),
+              child: Text('Add Selected (${selectedIds.length})'),
+            ),
+          ],
+        ),
       ),
     );
 
-    if (selected != null && mounted) {
-      _addLine({
-        'project_machinery_id': selected['id'],
-        'service_name': '${selected['name']} (${selected['serviceName']})',
-        'unit_of_measure': 'hrs',
-        'line_type': 'standby_machinery',
-        'standby_hours': 0,
-        'standby_rate': double.tryParse(selected['suggestedRate'] ?? '0') ?? 0,
-        'quantity_change': 0,
-        'unit_price': double.tryParse(selected['suggestedRate'] ?? '0') ?? 0,
-        'disruption_reason_id': widget.selectedDisruptionReasonId,
-      });
+    if (result == true && mounted) {
+      for (final m in machines) {
+        final id = m['id'] as String;
+        if (!selectedIds.contains(id)) continue;
+        final name =
+            m['machinery_name'] ??
+            m['machinery']?['description'] ??
+            'Machine';
+        final svcName = m['quote_services']?['name'] as String? ?? '';
+        final rate =
+            (m['quote_service_machineries']?['monthly_rent_cost'] as num?)
+                ?.toDouble() ??
+            0;
+        final suggestedRate = rate > 0
+            ? (rate / 30 / 8).toStringAsFixed(2)
+            : '0';
+        _addLine({
+          'project_machinery_id': id,
+          'service_name': '$name ($svcName)',
+          'unit_of_measure': 'hrs',
+          'line_type': 'standby_machinery',
+          'standby_hours': defaultHours,
+          'standby_rate': double.tryParse(suggestedRate) ?? 0,
+          'quantity_change': 0,
+          'unit_price': double.tryParse(suggestedRate) ?? 0,
+          'disruption_reason_id': widget.selectedDisruptionReasonId,
+        });
+      }
     }
   }
 
   Future<void> _showAddLaborDialog(List<Map<String, dynamic>> labor) async {
-    final selected = await showSafeDialog<Map<String, dynamic>>(
+    final selectedIds = <String>{};
+    final defaultHours = _calculateDefaultStandbyHours();
+    final result = await showSafeDialog<bool>(
       context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text(
-          'Select Labor Role',
-          style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
-        ),
-        children: labor.map((l) {
-          final role =
-              l['role_name'] ?? l['labor_roles']?['description'] ?? 'Worker';
-          final svcName = l['quote_services']?['name'] as String? ?? '';
-          final qsRate = (l['quote_service_labors']?['hourly_rate'] as num?)
-              ?.toDouble();
-          final lrRate = (l['labor_roles']?['hourly_rate'] as num?)?.toDouble();
-          final rate = qsRate ?? lrRate ?? 0;
-          return SimpleDialogOption(
-            onPressed: () => Navigator.of(ctx).pop({
-              'id': l['id'],
-              'name': role,
-              'serviceName': svcName,
-              'suggestedRate': rate.toStringAsFixed(2),
-            }),
-            child: ListTile(
-              dense: true,
-              title: Text(
-                role,
-                style: GoogleFonts.manrope(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Select Labor Role',
+                  style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
                 ),
               ),
-              subtitle: Text(
-                '$svcName — Rate: \$${rate.toStringAsFixed(2)}/hr',
-                style: GoogleFonts.manrope(
-                  fontSize: 11,
-                  color: AppTheme.slate500,
+              TextButton(
+                onPressed: () {
+                  setDialogState(() {
+                    if (selectedIds.length == labor.length) {
+                      selectedIds.clear();
+                    } else {
+                      selectedIds.addAll(labor.map((m) => m['id'] as String));
+                    }
+                  });
+                },
+                child: Text(
+                  selectedIds.length == labor.length ? 'Deselect All' : 'Select All',
+                  style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
               ),
+            ],
+          ),
+          content: SizedBox(
+            width: 450,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: labor.map((l) {
+                final id = l['id'] as String;
+                final role =
+                    l['role_name'] ?? l['labor_roles']?['description'] ?? 'Worker';
+                final svcName = l['quote_services']?['name'] as String? ?? '';
+                final qsRate = (l['quote_service_labors']?['hourly_rate'] as num?)
+                    ?.toDouble();
+                final lrRate = (l['labor_roles']?['hourly_rate'] as num?)?.toDouble();
+                final rate = qsRate ?? lrRate ?? 0;
+                return CheckboxListTile(
+                  dense: true,
+                  title: Text(
+                    role,
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '$svcName — Rate: \$${rate.toStringAsFixed(2)}/hr',
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      color: AppTheme.slate500,
+                    ),
+                  ),
+                  value: selectedIds.contains(id),
+                  onChanged: (val) {
+                    setDialogState(() {
+                      if (val == true) {
+                        selectedIds.add(id);
+                      } else {
+                        selectedIds.remove(id);
+                      }
+                    });
+                  },
+                );
+              }).toList(),
             ),
-          );
-        }).toList(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: selectedIds.isEmpty
+                  ? null
+                  : () => Navigator.of(ctx).pop(true),
+              child: Text('Add Selected (${selectedIds.length})'),
+            ),
+          ],
+        ),
       ),
     );
 
-    if (selected != null && mounted) {
-      _addLine({
-        'project_labor_id': selected['id'],
-        'service_name': '${selected['name']} (${selected['serviceName']})',
-        'unit_of_measure': 'hrs',
-        'line_type': 'standby_labor',
-        'standby_hours': 0,
-        'standby_rate': double.tryParse(selected['suggestedRate'] ?? '0') ?? 0,
-        'quantity_change': 0,
-        'unit_price': double.tryParse(selected['suggestedRate'] ?? '0') ?? 0,
-        'disruption_reason_id': widget.selectedDisruptionReasonId,
-      });
+    if (result == true && mounted) {
+      for (final l in labor) {
+        final id = l['id'] as String;
+        if (!selectedIds.contains(id)) continue;
+        final role =
+            l['role_name'] ?? l['labor_roles']?['description'] ?? 'Worker';
+        final svcName = l['quote_services']?['name'] as String? ?? '';
+        final qsRate = (l['quote_service_labors']?['hourly_rate'] as num?)
+            ?.toDouble();
+        final lrRate = (l['labor_roles']?['hourly_rate'] as num?)?.toDouble();
+        final rate = qsRate ?? lrRate ?? 0;
+        _addLine({
+          'project_labor_id': id,
+          'service_name': '$role ($svcName)',
+          'unit_of_measure': 'hrs',
+          'line_type': 'standby_labor',
+          'standby_hours': defaultHours,
+          'standby_rate': double.tryParse(rate.toStringAsFixed(2)) ?? 0,
+          'quantity_change': 0,
+          'unit_price': double.tryParse(rate.toStringAsFixed(2)) ?? 0,
+          'disruption_reason_id': widget.selectedDisruptionReasonId,
+        });
+      }
     }
   }
 
   Future<void> _showAddMaterialDialog(
     List<Map<String, dynamic>> materials,
   ) async {
-    final selected = await showSafeDialog<Map<String, dynamic>>(
+    final selectedIds = <String>{};
+    final result = await showSafeDialog<bool>(
       context: context,
-      builder: (ctx) => SimpleDialog(
-        title: Text(
-          'Select Material',
-          style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
-        ),
-        children: materials.map((m) {
-          final name =
-              m['material_name'] ??
-              m['materials']?['description'] ??
-              'Material';
-          final svcName = m['quote_services']?['name'] as String? ?? '';
-          final price =
-              (m['quote_service_materials']?['unit_price'] as num?)
-                  ?.toDouble() ??
-              0;
-          final unit =
-              (m['materials']?['unit'] as String?) ?? m['unit_name'] ?? '';
-          return SimpleDialogOption(
-            onPressed: () => Navigator.of(ctx).pop({
-              'id': m['id'],
-              'name': name,
-              'serviceName': svcName,
-              'price': price.toStringAsFixed(2),
-              'unit': unit,
-            }),
-            child: ListTile(
-              dense: true,
-              title: Text(
-                name,
-                style: GoogleFonts.manrope(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Select Material',
+                  style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
                 ),
               ),
-              subtitle: Text(
-                '$svcName — \$${price.toStringAsFixed(2)}/$unit',
-                style: GoogleFonts.manrope(
-                  fontSize: 11,
-                  color: AppTheme.slate500,
+              TextButton(
+                onPressed: () {
+                  setDialogState(() {
+                    if (selectedIds.length == materials.length) {
+                      selectedIds.clear();
+                    } else {
+                      selectedIds.addAll(materials.map((m) => m['id'] as String));
+                    }
+                  });
+                },
+                child: Text(
+                  selectedIds.length == materials.length ? 'Deselect All' : 'Select All',
+                  style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
               ),
+            ],
+          ),
+          content: SizedBox(
+            width: 450,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: materials.map((m) {
+                final id = m['id'] as String;
+                final name =
+                    m['material_name'] ??
+                    m['materials']?['description'] ??
+                    'Material';
+                final svcName = m['quote_services']?['name'] as String? ?? '';
+                final price =
+                    (m['quote_service_materials']?['unit_price'] as num?)
+                        ?.toDouble() ??
+                    0;
+                final unit =
+                    (m['materials']?['unit'] as String?) ?? m['unit_name'] ?? '';
+                return CheckboxListTile(
+                  dense: true,
+                  title: Text(
+                    name,
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '$svcName — \$${price.toStringAsFixed(2)}/$unit',
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      color: AppTheme.slate500,
+                    ),
+                  ),
+                  value: selectedIds.contains(id),
+                  onChanged: (val) {
+                    setDialogState(() {
+                      if (val == true) {
+                        selectedIds.add(id);
+                      } else {
+                        selectedIds.remove(id);
+                      }
+                    });
+                  },
+                );
+              }).toList(),
             ),
-          );
-        }).toList(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: selectedIds.isEmpty
+                  ? null
+                  : () => Navigator.of(ctx).pop(true),
+              child: Text('Add Selected (${selectedIds.length})'),
+            ),
+          ],
+        ),
       ),
     );
 
-    if (selected != null && mounted) {
-      final unitPrice = double.tryParse(selected['price'] ?? '0') ?? 0;
-      _addLine({
-        'project_material_id': selected['id'],
-        'material_id': null,
-        'service_name': '${selected['name']} (${selected['serviceName']})',
-        'unit_of_measure': selected['unit'] ?? 'und',
-        'line_type': 'standby_material',
-        'quantity_lost': 0,
-        'replacement_unit_cost': unitPrice,
-        'quantity_change': 0,
-        'unit_price': unitPrice,
-        'disruption_reason_id': widget.selectedDisruptionReasonId,
-      });
+    if (result == true && mounted) {
+      for (final m in materials) {
+        final id = m['id'] as String;
+        if (!selectedIds.contains(id)) continue;
+        final name =
+            m['material_name'] ??
+            m['materials']?['description'] ??
+            'Material';
+        final svcName = m['quote_services']?['name'] as String? ?? '';
+        final price =
+            (m['quote_service_materials']?['unit_price'] as num?)
+                ?.toDouble() ??
+            0;
+        final unit =
+            (m['materials']?['unit'] as String?) ?? m['unit_name'] ?? '';
+        final unitPrice = double.tryParse(price.toStringAsFixed(2)) ?? 0;
+        _addLine({
+          'project_material_id': id,
+          'material_id': null,
+          'service_name': '$name ($svcName)',
+          'unit_of_measure': unit.isNotEmpty ? unit : 'und',
+          'line_type': 'standby_material',
+          'quantity_lost': 0,
+          'replacement_unit_cost': unitPrice,
+          'quantity_change': 0,
+          'unit_price': unitPrice,
+          'disruption_reason_id': widget.selectedDisruptionReasonId,
+        });
+      }
     }
   }
 }
