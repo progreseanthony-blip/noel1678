@@ -583,9 +583,12 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
             width: 400,
             child: available.isEmpty
                 ? Text('No approved Change Orders available', style: GoogleFonts.manrope(color: AppTheme.slate500))
-                : Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: available.map((co) => CheckboxListTile(
+                : ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 400),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: available.map((co) => CheckboxListTile(
                       dense: true,
                       title: Text(co['co_number'] ?? '', style: GoogleFonts.manrope(fontWeight: FontWeight.w600, fontSize: 13)),
                       subtitle: Text('\$${_fmt.format((co['adjustment_amount'] as num?)?.toDouble() ?? 0)} — ${co['title'] ?? ''}',
@@ -602,6 +605,8 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
                       },
                     )).toList(),
                   ),
+                ),
+              ),
           ),
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
@@ -644,19 +649,34 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
 
             // Detail sub-lines
             for (final d in coDetails) {
-              final qty = (d['quantity_change'] as num?)?.toDouble() ?? 0;
-              final up = (d['unit_price'] as num?)?.toDouble() ?? 0;
+              final lt = d['line_type']?.toString() ?? '';
+              final isStandbyLabor = lt == 'standby_labor';
+              final isStandbyMachinery = lt == 'standby_machinery';
+              final isStandbyMaterial = lt == 'standby_material';
+              final isStandbyLine = isStandbyLabor || isStandbyMachinery || isStandbyMaterial;
+
+              final qty = isStandbyMaterial
+                  ? ((d['quantity_lost'] as num?)?.toDouble() ?? 0)
+                  : (isStandbyLine
+                      ? ((d['standby_hours'] as num?)?.toDouble() ?? 0)
+                      : ((d['quantity_change'] as num?)?.toDouble() ?? 0));
+              final up = isStandbyLine
+                  ? ((d['standby_rate'] as num?)?.toDouble() ?? (d['replacement_unit_cost'] as num?)?.toDouble() ?? 0)
+                  : ((d['unit_price'] as num?)?.toDouble() ?? 0);
               final total = (d['total_change'] as num?)?.toDouble() ?? (qty * up);
-              final typeLabel = d['line_type'] == 'deduction' ? 'Deduct' : (d['line_type'] == 'new_service' ? 'New' : '');
-              final qtySign = qty >= 0 ? '+$qty' : '$qty';
+              final typeLabel = lt == 'deduction' ? 'Deduct' : (lt == 'new_service' ? 'New' : '');
+              final unitStr = isStandbyLine ? 'hrs' : (d['unit_of_measure']?.toString() ?? '');
+              final qtyStr = isStandbyLine
+                  ? qty.toStringAsFixed(0)
+                  : (qty >= 0 ? '+${qty.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), '')}' : qty.toStringAsFixed(1).replaceAll(RegExp(r'\.0$'), ''));
               _lines.add({
                 'quote_service_id': null,
                 'line_type': 'change_order_detail',
                 'co_id': coId,
                 'change_order_id': coId,
                 'co_number': co['co_number']?.toString() ?? '',
-                'service_name': '  ${typeLabel.isNotEmpty ? '$typeLabel: ' : ''}${d['service_name'] ?? ''} ($qtySign ${d['unit_of_measure'] ?? ''} × \$${_fmt.format(up)})',
-                'unit_of_measure': d['unit_of_measure'] ?? '',
+                'service_name': '  ${typeLabel.isNotEmpty ? '$typeLabel: ' : ''}${d['service_name'] ?? ''} ($qtyStr $unitStr × \$${_fmt.format(up)})',
+                'unit_of_measure': unitStr,
                 'scheduled_value': total,
                 'previous_completed': 0,
                 'this_period_qty': 0,

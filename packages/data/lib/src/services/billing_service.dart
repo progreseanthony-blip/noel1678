@@ -314,6 +314,46 @@ class BillingService {
   Future<List<Map<String, dynamic>>> getProjectTasksForDisruption(
     String projectId,
   ) async {
+    // 1. Ensure project_tasks exist for all CO-created services
+    try {
+      final projectData = await _supabase
+          .from('projects')
+          .select('quote_id')
+          .eq('id', projectId)
+          .maybeSingle();
+      final quoteId = projectData?['quote_id']?.toString();
+
+      if (quoteId != null) {
+        final coServices = await _supabase
+            .from('quote_services')
+            .select('id, name')
+            .eq('quote_id', quoteId)
+            .filter('source_co_id', 'not.is', 'null');
+
+        final existingTasks = await _supabase
+            .from('project_tasks')
+            .select('quote_service_id')
+            .eq('project_id', projectId);
+        final existingQsIds = (existingTasks ?? [])
+            .map((t) => t['quote_service_id']?.toString())
+            .where((id) => id != null)
+            .toSet();
+
+        for (final qs in coServices ?? []) {
+          final qsId = qs['id']?.toString();
+          if (qsId != null && !existingQsIds.contains(qsId)) {
+            await _supabase.from('project_tasks').insert({
+              'project_id': projectId,
+              'quote_service_id': qsId,
+              'name': qs['name'] ?? 'CO Service',
+              'status': 'pending',
+            });
+          }
+        }
+      }
+    } catch (_) {}
+
+    // 2. Return all project_tasks for this project
     final response = await _supabase
         .from('project_tasks')
         .select('id, name, status, quote_service_id')
@@ -419,8 +459,7 @@ class BillingService {
         .select('''
           id, machinery_name,
           machinery!left(id, description, capacity_yards),
-          quote_services!left(id, name),
-          quote_service_machineries!inner(monthly_rent_cost, gallons_per_hour, gallon_cost)
+          quote_services!left(id, name)
         ''')
         .eq('project_id', projectId);
     if (quoteServiceIds != null && quoteServiceIds.isNotEmpty) {

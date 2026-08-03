@@ -931,7 +931,10 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
           ),
           content: SizedBox(
             width: 450,
-            child: Column(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 350),
+              child: SingleChildScrollView(
+                child: Column(
               mainAxisSize: MainAxisSize.min,
               children: machines.map((m) {
                 final id = m['id'] as String;
@@ -940,13 +943,7 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
                     m['machinery']?['description'] ??
                     'Machine';
                 final svcName = m['quote_services']?['name'] as String? ?? '';
-                final rate =
-                    (m['quote_service_machineries']?['monthly_rent_cost'] as num?)
-                        ?.toDouble() ??
-                    0;
-                final suggestedRate = rate > 0
-                    ? (rate / 30 / 8).toStringAsFixed(2)
-                    : '0';
+                final subtitleText = svcName.isNotEmpty ? svcName : 'Standby compensation';
                 return CheckboxListTile(
                   dense: true,
                   title: Text(
@@ -957,7 +954,7 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
                     ),
                   ),
                   subtitle: Text(
-                    '$svcName — Suggested rate: \$$suggestedRate/hr',
+                    subtitleText,
                     style: GoogleFonts.manrope(
                       fontSize: 11,
                       color: AppTheme.slate500,
@@ -975,6 +972,8 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
                   },
                 );
               }).toList(),
+                ),
+              ),
             ),
           ),
           actions: [

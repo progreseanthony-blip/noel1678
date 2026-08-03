@@ -339,6 +339,19 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
                 ((endDate.difference(startDate).inDays + 1) / 30.44)
                     .toStringAsFixed(1))
             : 1.0;
+
+        // Auto-calculate schedule days from estimation for new service
+        if (_coType == 'scope_change' && startDate != null && endDate != null) {
+          int workingDays = 0;
+          var current = startDate;
+          while (!current.isAfter(endDate)) {
+            if (current.weekday != DateTime.sunday) workingDays++;
+            current = current.add(const Duration(days: 1));
+          }
+          _schedDays += workingDays;
+          _schedDaysCtrl.text = _schedDays == 0 ? '' : _schedDays.toString();
+        }
+
         final enrichedPlans = _enrichPlansWithMonths(plans, months);
         final qty = (line['quantity_change'] as num?)?.toDouble() ?? 1;
         if (enrichedPlans.isNotEmpty && qty > 0) {
@@ -1284,7 +1297,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
             lines: _lines,
             initialPlans: _resourcePlans,
             onPlansChanged: (plans) {
-              setState(() {
+        setState(() {
                 _resourcePlans
                   ..clear()
                   ..addAll(plans);
@@ -1377,9 +1390,13 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
         );
         final qsid = task['quote_service_id'] as String?;
         if (qsid != null) ids.add(qsid);
+      } else {
+        debugPrint('[_selectedQuoteServiceIds] taskId=$taskId NOT found in _availableTasks (${_availableTasks.length} tasks)');
       }
     }
-    return ids.isEmpty ? null : ids.toList();
+    final result = ids.isEmpty ? null : ids.toList();
+    debugPrint('[_selectedQuoteServiceIds] returning: $result from ${_disruptionServices.length} disruption services');
+    return result;
   }
 
   Widget _buildAffectedServices() {
