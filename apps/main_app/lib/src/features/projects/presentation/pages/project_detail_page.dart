@@ -3327,8 +3327,8 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                       ],
                     ),
                   )
-                : Row(
-                    clipBehavior: Clip.hardEdge,
+                : ClipRect(
+                    child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
@@ -3402,6 +3402,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                         ),
                       ),
                     ],
+                  ),
                   ),
           ),
         ],
