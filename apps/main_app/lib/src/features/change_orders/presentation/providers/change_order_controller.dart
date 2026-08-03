@@ -39,13 +39,24 @@ class ChangeOrderController extends _$ChangeOrderController {
     ref.invalidate(changeOrderDetailProvider(id));
   }
 
-  Future<void> approveChangeOrder(String id) async {
+  Future<Map<String, dynamic>?> approveChangeOrder(String id) async {
     final svc = ref.read(billingServiceProvider);
     final user = Supabase.instance.client.auth.currentUser;
+    final co = await svc.getChangeOrder(id);
     await svc.approveChangeOrder(id, user?.id ?? '');
     await svc.applyBaselineImpact(id);
+    if (co['co_type'] == 'disruption') {
+      final result = await svc.applyScheduleImpact(id);
+      final conflicts = (result['conflicts'] as List?) ?? [];
+      if (conflicts.isNotEmpty) return result;
+    } else if (co['co_type'] == 'scope_change') {
+      final result = await svc.applyScopeScheduleImpact(id);
+      final conflicts = (result['conflicts'] as List?) ?? [];
+      if (conflicts.isNotEmpty) return result;
+    }
     ref.invalidate(changeOrderListProvider);
     ref.invalidate(changeOrderDetailProvider(id));
+    return null;
   }
 
   Future<void> saveResourcePlans(

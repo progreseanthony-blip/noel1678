@@ -2051,12 +2051,14 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
   double _baselineOriginalTotalDays = 0;
   double _baselineTotalCompressionSavings = 0;
   bool _baselineMetricsLoaded = false;
+  List<Map<String, dynamic>> _disruptionBands = [];
 
   @override
   void initState() {
     super.initState();
     _selectedServiceFilter = widget.selectedServiceFilter;
     _loadNonWorkingDays();
+    _loadDisruptions();
 
     _leftScrollController.addListener(() {
       if (_isUpdatingRight) return;
@@ -2213,6 +2215,179 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
       }
       if (mounted) setState(() {});
     } catch (_) {}
+  }
+
+  Future<void> _loadDisruptions() async {
+    try {
+      debugPrint('[_loadDisruptions] loading for project ${widget.projectId}');
+      final supabase = Supabase.instance.client;
+
+      final approvedCOs = await supabase
+          .from('change_orders')
+          .select('id, co_number, status')
+          .eq('project_id', widget.projectId)
+          .eq('status', 'approved');
+
+      debugPrint('[_loadDisruptions] approvedCOs=${approvedCOs?.length ?? 0}');
+      if (approvedCOs == null || approvedCOs.isEmpty) return;
+
+      final approvedCOIds = approvedCOs.map((c) => c['id'].toString()).toList();
+      final coMap = {for (final c in approvedCOs) c['id'].toString(): c};
+
+      final rawDisruptions = await supabase
+          .from('change_order_disruptions')
+          .select('id, start_date, end_date, disruption_type, change_order_id')
+          .in_('change_order_id', approvedCOIds);
+
+      debugPrint('[_loadDisruptions] disruption rows=${rawDisruptions?.length ?? 0}');
+      if (rawDisruptions == null) return;
+
+      final disruptions = List<Map<String, dynamic>>.from(rawDisruptions);
+      _disruptionBands = disruptions.where((d) {
+        final coId = d['change_order_id']?.toString();
+        return coId != null && coMap.containsKey(coId);
+      }).map((d) {
+        final copy = Map<String, dynamic>.from(d);
+        final coId = copy['change_order_id'].toString();
+        copy['change_orders'] = Map<String, dynamic>.from(coMap[coId]!);
+        return copy;
+      }).toList();
+
+      debugPrint('Gantt disruptions loaded: ${_disruptionBands.length} bands for project ${widget.projectId}');
+      if (mounted) setState(() {});
+    } catch (e, st) {
+      debugPrint('[_loadDisruptions] ERROR: $e\n$st');
+    }
+  }
+
+  Color _disruptionColor(String? type) {
+    switch (type) {
+      case 'WEATHER_RAIN':
+      case 'WEATHER_OTHER':
+        return const Color(0xFFBBDEFB);
+      case 'OWNER_DELAY':
+        return const Color(0xFFFFE0B2);
+      case 'EXTERNAL_DEP':
+      case 'PENDING_PERMIT':
+        return const Color(0xFFE1BEE7);
+      case 'DESIGN_CHANGE':
+        return const Color(0xFFFFCDD2);
+      default:
+        return const Color(0xFFE0E0E0);
+    }
+  }
+
+  Widget _buildDisruptionBandRow(DateTime minVal, int totalDays, double dayWidth) {
+    return SizedBox(
+      width: totalDays * dayWidth,
+      height: 24,
+      child: Stack(
+        children: [
+          for (final d in _disruptionBands)
+            _buildDisruptionBand(d, minVal, dayWidth),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDisruptionBand(Map<String, dynamic> d, DateTime minVal, double dayWidth) {
+    final startStr = d['start_date']?.toString();
+    final endStr = d['end_date']?.toString();
+    if (startStr == null) return const SizedBox.shrink();
+
+    final startDate = DateTime.tryParse(startStr);
+    final endDate = endStr != null ? DateTime.tryParse(endStr) : startDate;
+    if (startDate == null) return const SizedBox.shrink();
+
+    final effectiveEnd = endDate ?? startDate;
+    final startOffset = startDate.difference(minVal).inDays;
+    final duration = effectiveEnd.difference(startDate).inDays + 1;
+
+    if (startOffset < 0) return const SizedBox.shrink();
+    if (duration <= 0) return const SizedBox.shrink();
+
+    final coNumber = d['change_orders']?['co_number']?.toString() ?? '';
+    final reason = (d['disruption_type'] as String? ?? '').replaceAll('_', ' ');
+    final color = _disruptionColor(d['disruption_type'] as String?);
+    final label = '$coNumber: $reason';
+
+    return Positioned(
+      left: startOffset * dayWidth,
+      width: duration * dayWidth,
+      top: 2,
+      bottom: 2,
+      child: Tooltip(
+        message: label,
+        child: Container(
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.2),
+            borderRadius: BorderRadius.circular(3),
+            border: Border.all(color: color.withOpacity(0.4), width: 0.5),
+          ),
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 6),
+          child: Row(
+            children: [
+              Icon(Icons.warning_amber, size: 10, color: color.withOpacity(0.7)),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  label,
+                  style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w600, color: color.withOpacity(0.8)),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Segments of a resource bar that fall inside disruption periods (positioned
+  // relative to the bar's own left edge). Used to visually mark disrupted days.
+  List<Widget> _buildBarDisruptionOverlays(DateTime barStart, DateTime barEnd, double dayWidth) {
+    if (_disruptionBands.isEmpty) return const [];
+
+    final barSpan = barEnd.difference(barStart).inDays + 1;
+    final overlays = <Widget>[];
+
+    for (final d in _disruptionBands) {
+      final startStr = d['start_date']?.toString();
+      final endStr = d['end_date']?.toString();
+      final dStart = startStr != null ? DateTime.tryParse(startStr) : null;
+      final dEnd = endStr != null ? DateTime.tryParse(endStr) : dStart;
+      if (dStart == null) continue;
+
+      final overlapStart = dStart.isAfter(barStart) ? dStart : barStart;
+      final overlapEnd = (dEnd != null && dEnd.isBefore(barEnd)) ? dEnd : barEnd;
+      if (overlapStart.isAfter(overlapEnd)) continue;
+
+      final color = _disruptionColor(d['disruption_type'] as String?);
+      final offsetInBar = overlapStart.difference(barStart).inDays;
+      final segmentDays = overlapEnd.difference(overlapStart).inDays + 1;
+
+      if (offsetInBar < 0 || segmentDays <= 0 || offsetInBar + segmentDays > barSpan) continue;
+
+      overlays.add(
+        Positioned(
+          left: offsetInBar * dayWidth,
+          width: segmentDays * dayWidth,
+          top: 0,
+          bottom: 0,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: CustomPaint(
+              painter: _DisruptionStripePainter(color: color, stripeSpacing: 5.0),
+            ),
+          ),
+        ),
+      );
+    }
+    if (overlays.isNotEmpty) {
+      debugPrint('  [_buildBarDisruptionOverlays] bar $barStart->$barEnd generated ${overlays.length} overlays');
+    }
+    return overlays;
   }
 
   Widget _buildRowBackground(int totalDays, double dayWidth, bool isService, DateTime minVal) {
@@ -2534,6 +2709,11 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
     final List<Widget> leftRows = [];
     final List<Widget> rightRows = [];
 
+    // Disruption bands overlay
+    if (_disruptionBands.isNotEmpty && !isFrozen) {
+      rightRows.add(_buildDisruptionBandRow(minVal, totalDays, dayWidth));
+    }
+
     for (var sName in serviceNames) {
       final serviceItems = groupedItems[sName]!;
       final isExpanded = _expandedServices[sName] ?? true;
@@ -2658,20 +2838,26 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                   width: sDuration * dayWidth,
                   top: 14,
                   height: 24,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF334155).withOpacity(0.9),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2)),
-                      ],
-                    ),
-                    alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    child: Text(
-                      '$sDuration d',
-                      style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
-                    ),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF334155).withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [
+                            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2)),
+                          ],
+                        ),
+                        alignment: Alignment.centerLeft,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        child: Text(
+                          '$sDuration d',
+                          style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
+                        ),
+                      ),
+                      ..._buildBarDisruptionOverlays(sMin, sMax, dayWidth),
+                    ],
                   ),
                 ),
             ],
@@ -2847,26 +3033,32 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                       width: itemDuration * dayWidth,
                       top: 10,
                       height: 24,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: isExtra ? extraColors : plannedColors,
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: isExtra ? extraColors : plannedColors,
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(6),
+                              border: item['changeType'] == 'change_order'
+                                  ? Border.all(color: const Color(0xFFF97316), width: 2)
+                                  : null,
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 3, offset: const Offset(0, 1)),
+                              ],
+                            ),
+                            alignment: Alignment.center,
+                            child: Text(
+                              '$itemDuration d',
+                              style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                            ),
                           ),
-                          borderRadius: BorderRadius.circular(6),
-                          border: item['changeType'] == 'change_order'
-                              ? Border.all(color: const Color(0xFFF97316), width: 2)
-                              : null,
-                          boxShadow: [
-                            BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 3, offset: const Offset(0, 1)),
-                          ],
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          '$itemDuration d',
-                          style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
-                        ),
+                          ..._buildBarDisruptionOverlays(start, end, dayWidth),
+                        ],
                       ),
                     ),
                 ],
@@ -3136,6 +3328,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                     ),
                   )
                 : Row(
+                    clipBehavior: Clip.hardEdge,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
@@ -3324,5 +3517,34 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         ),
       ],
     );
+  }
+}
+
+class _DisruptionStripePainter extends CustomPainter {
+  _DisruptionStripePainter({required this.color, this.stripeSpacing = 5.0});
+
+  final Color color;
+  final double stripeSpacing;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color.withOpacity(0.55)
+      ..strokeWidth = 3.0
+      ..strokeCap = StrokeCap.round;
+
+    final gap = stripeSpacing * 1.6;
+    for (double x = -size.height; x < size.width + size.height; x += stripeSpacing + gap) {
+      canvas.drawLine(
+        Offset(x, size.height),
+        Offset(x + size.height, 0),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DisruptionStripePainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.stripeSpacing != stripeSpacing;
   }
 }

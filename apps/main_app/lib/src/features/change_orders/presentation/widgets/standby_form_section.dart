@@ -11,6 +11,8 @@ class StandbyFormSection extends ConsumerStatefulWidget {
   final String? selectedDisruptionReasonId;
   final DateTime? disruptionStart;
   final DateTime? disruptionEnd;
+  final int delayDays;
+  final ValueChanged<int> onDelayDaysChanged;
   final List<Map<String, dynamic>> lines;
   final ValueChanged<String?> onDisruptionReasonChanged;
   final ValueChanged<DateTime?> onDisruptionStartChanged;
@@ -24,6 +26,8 @@ class StandbyFormSection extends ConsumerStatefulWidget {
     this.selectedDisruptionReasonId,
     this.disruptionStart,
     this.disruptionEnd,
+    this.delayDays = 0,
+    required this.onDelayDaysChanged,
     required this.lines,
     required this.onDisruptionReasonChanged,
     required this.onDisruptionStartChanged,
@@ -132,6 +136,106 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
       current = current.add(const Duration(days: 1));
     }
     return totalHours;
+  }
+
+  int _countWorkingDays(DateTime start, DateTime end) {
+    int days = 0;
+    var current = start;
+    while (!current.isAfter(end)) {
+      if (current.weekday != DateTime.sunday) days++;
+      current = current.add(const Duration(days: 1));
+    }
+    return days;
+  }
+
+  Widget _buildDelayDaysField() {
+    final start = widget.disruptionStart;
+    final end = widget.disruptionEnd;
+    final computed = (start != null && end != null) ? _countWorkingDays(start, end) : 0;
+    final current = widget.delayDays;
+    final hasComputed = start != null && end != null;
+    final ctrl = TextEditingController(
+      text: current > 0 ? current.toString() : '',
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 4),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: TextField(
+                controller: ctrl,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  labelText: 'Schedule Delay (working days)',
+                  helperText: hasComputed ? 'Auto: $computed working days from date range' : 'Set start/end dates for auto calculation',
+                  helperMaxLines: 2,
+                ),
+                onChanged: (v) {
+                  final parsed = int.tryParse(v) ?? 0;
+                  widget.onDelayDaysChanged(parsed);
+                },
+              ),
+            ),
+            if (hasComputed && computed != current) ...[
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  ctrl.text = computed.toString();
+                  widget.onDelayDaysChanged(computed);
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    'Use $computed days',
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.orange.shade800,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (hasComputed && computed > 0) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.orange.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.orange.withOpacity(0.15)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.schedule, size: 16, color: Colors.orange.shade700),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Schedule impact preview: project end date will be extended by ${current > 0 ? current : computed} working day(s). Resources assigned to affected services will be rescheduled automatically on approval.',
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.orange.shade800,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
   }
 
   @override
@@ -263,6 +367,8 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              _buildDelayDaysField(),
             ],
           ),
         ),

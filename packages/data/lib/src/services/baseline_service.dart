@@ -15,11 +15,12 @@ class BaselineService {
 
   /// Get all snapshots for a project, ordered by version DESC
   Future<List<Map<String, dynamic>>> getSnapshots(String projectId) async {
-    return await _supabase
+    final raw = await _supabase
         .from('project_baseline_snapshots')
         .select('*')
         .eq('project_id', projectId)
         .order('version', ascending: false);
+    return List<Map<String, dynamic>>.from(raw ?? []);
   }
 
   /// Get the latest active snapshot for a project

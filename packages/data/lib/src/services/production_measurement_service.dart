@@ -18,7 +18,7 @@ class ProductionMeasurementService {
   Future<Map<String, dynamic>> getProjectMeasurement(String projectId) async {
     final project = await _supabase
         .from('projects')
-        .select('id, title, quote_id, start_date, end_date, calculation_metadata')
+        .select('id, title, quote_id, start_date, end_date, baseline_end_date, calculation_metadata')
         .eq('id', projectId)
         .maybeSingle();
     if (project == null) return {'error': 'Project not found'};
@@ -29,7 +29,7 @@ class ProductionMeasurementService {
     if (quoteId != null) {
       final qsResult = await _supabase
           .from('quote_services')
-          .select('id, name, quantity, unit_of_measure, direct_cost')
+          .select('id, name, quantity, unit_of_measure, direct_cost, source_co_id')
           .eq('quote_id', quoteId);
       plannedServices = List<Map<String, dynamic>>.from(qsResult ?? []);
     }
@@ -110,6 +110,37 @@ class ProductionMeasurementService {
     final List<Map<String, dynamic>> services = [];
     final List<Map<String, dynamic>> alerts = [];
 
+    // Detect services extended by approved scope_change COs (existing_service)
+    final Set<String> extendedServiceIds = {};
+    if (serviceIds.isNotEmpty) {
+      try {
+        final coDetails = await _supabase
+            .from('change_order_details')
+            .select('quote_service_id, change_order_id')
+            .in_('quote_service_id', serviceIds)
+            .eq('line_type', 'existing_service');
+
+        if (coDetails != null && coDetails.isNotEmpty) {
+          final coIds = coDetails.map((r) => r['change_order_id']?.toString()).where((id) => id != null).toSet();
+          if (coIds.isNotEmpty) {
+            final approvedCOs = await _supabase
+                .from('change_orders')
+                .select('id')
+                .in_('id', coIds.toList())
+                .eq('status', 'approved');
+            final approvedIds = (approvedCOs ?? []).map((r) => r['id'].toString()).toSet();
+            for (final r in coDetails) {
+              final coId = r['change_order_id']?.toString();
+              final qsId = r['quote_service_id']?.toString();
+              if (coId != null && qsId != null && approvedIds.contains(coId)) {
+                extendedServiceIds.add(qsId);
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
     for (final ps in plannedServices) {
       final qsId = ps['id']?.toString() ?? '';
       final plannedQty = (ps['quantity'] as num?)?.toDouble() ?? 0;
@@ -131,6 +162,8 @@ class ProductionMeasurementService {
       totalPlannedCost += directCost;
       totalEarnedValue += ev;
 
+      final isCoService = ps['source_co_id'] != null;
+      final hasCoExtension = !isCoService && extendedServiceIds.contains(qsId);
       services.add({
         'quote_service_id': qsId,
         'name': ps['name'] ?? '',
@@ -144,6 +177,9 @@ class ProductionMeasurementService {
         'cpi': cpi,
         'performance': (machHrs + laborHrs) > 0 ? actualProd / (machHrs + laborHrs) : 0.0,
         'performance_unit': '${ps['unit_of_measure']}/hr',
+        'source_co_id': ps['source_co_id'],
+        'is_co_service': isCoService,
+        'has_co_extension': hasCoExtension,
       });
 
       alerts.addAll(generateServiceAlerts(
@@ -155,6 +191,125 @@ class ProductionMeasurementService {
         actualCost: actualCost,
         progress: progress,
       ));
+    }
+
+    // Split extended services into original + CO rows
+    if (extendedServiceIds.isNotEmpty) {
+      final extDetails = <String, List<Map<String, dynamic>>>{};
+      try {
+        final details = await _supabase
+            .from('change_order_details')
+            .select('quote_service_id, quantity_change, unit_price, total_change, change_order_id')
+            .in_('quote_service_id', extendedServiceIds.toList())
+            .eq('line_type', 'existing_service')
+            .gt('quantity_change', 0);
+
+        if (details != null && details.isNotEmpty) {
+          final coIds = details.map((d) => d['change_order_id']?.toString()).where((id) => id != null).toSet();
+          if (coIds.isNotEmpty) {
+            final approvedCOs = await _supabase
+                .from('change_orders')
+                .select('id, co_number')
+                .in_('id', coIds.toList())
+                .eq('status', 'approved');
+            final coNumberMap = {for (final c in approvedCOs ?? []) c['id'].toString(): c['co_number']?.toString() ?? ''};
+
+            for (final d in details) {
+              final coId = d['change_order_id']?.toString();
+              final qsId = d['quote_service_id']?.toString();
+              if (coId != null && qsId != null && coNumberMap.containsKey(coId)) {
+                d['co_number'] = coNumberMap[coId];
+                extDetails.putIfAbsent(qsId, () => []).add(Map<String, dynamic>.from(d));
+              }
+            }
+          }
+        }
+      } catch (_) {}
+
+      final newServices = <Map<String, dynamic>>[];
+      for (final svc in services) {
+        final qsId = svc['quote_service_id']?.toString() ?? '';
+        final coDetailsList = extDetails[qsId];
+        if (coDetailsList == null || coDetailsList.isEmpty) {
+          newServices.add(svc);
+          continue;
+        }
+
+        final plannedQty = (svc['planned_quantity'] as num?)?.toDouble() ?? 0;
+        final plannedCost = (svc['planned_cost'] as num?)?.toDouble() ?? 0;
+        final actualQty = (svc['actual_quantity'] as num?)?.toDouble() ?? 0;
+        final earnedValue = (svc['earned_value'] as num?)?.toDouble() ?? 0;
+
+        double totalCoQty = 0;
+        double totalCoCost = 0;
+        for (final d in coDetailsList) {
+          totalCoQty += (d['quantity_change'] as num?)?.toDouble() ?? 0;
+          totalCoCost += (d['total_change'] as num?)?.toDouble() ?? 0;
+        }
+
+        final originalQty = (plannedQty - totalCoQty).clamp(0, double.infinity);
+        final originalCost = (plannedCost - totalCoCost).clamp(0, double.infinity);
+
+        // Prorate actual production: first fill original, then CO
+        final originalActual = actualQty.clamp(0, originalQty);
+        final coActual = (actualQty - originalActual).clamp(0, double.infinity);
+        final originalEarned = originalQty > 0 ? (originalActual / originalQty) * originalCost : 0.0;
+        final coEarned = earnedValue - originalEarned;
+        final originalProgress = originalQty > 0 ? (originalActual / originalQty * 100).clamp(0, 100) : 0.0;
+        final coProgress = totalCoQty > 0 ? (coActual / totalCoQty * 100).clamp(0, 100) : 0.0;
+
+        // Original row
+        newServices.add({
+          ...svc,
+          'name': '${svc['name']} (Original)',
+          'planned_quantity': originalQty,
+          'actual_quantity': originalActual,
+          'progress': originalProgress,
+          'planned_cost': originalCost,
+          'earned_value': originalEarned,
+          'is_co_service': false,
+          'has_co_extension': true,
+        });
+
+        // CO row (combined from all COs for this service)
+        final coNames = coDetailsList.map((d) {
+          final cn = d['change_orders']?['co_number']?.toString() ?? '';
+          return cn;
+        }).join(', ');
+        final coUnit = svc['unit']?.toString() ?? '';
+        newServices.add({
+          'quote_service_id': qsId,
+          'name': 'CO: ${svc['name']} (+${totalCoQty.toStringAsFixed(0)} $coUnit) $coNames',
+          'unit': coUnit,
+          'planned_quantity': totalCoQty,
+          'actual_quantity': coActual,
+          'progress': coProgress,
+          'planned_cost': totalCoCost,
+          'actual_cost': 0.0,
+          'earned_value': coEarned,
+          'cpi': totalCoCost > 0 ? coEarned / totalCoCost : 1.0,
+          'performance': 0.0,
+          'performance_unit': '',
+          'source_co_id': null,
+          'is_co_service': true,
+          'has_co_extension': false,
+        });
+      }
+      services
+        ..clear()
+        ..addAll(newServices);
+
+      // Recalculate totals after split
+      totalPlannedUnits = 0;
+      totalActualUnits = 0;
+      totalPlannedCost = 0;
+      totalEarnedValue = 0;
+      for (final s in services) {
+        totalPlannedUnits += (s['planned_quantity'] as num?)?.toDouble() ?? 0;
+        totalActualUnits += (s['actual_quantity'] as num?)?.toDouble() ?? 0;
+        totalPlannedCost += (s['planned_cost'] as num?)?.toDouble() ?? 0;
+        totalEarnedValue += (s['earned_value'] as num?)?.toDouble() ?? 0;
+      }
     }
 
     double totalActualCost = 0;
@@ -169,9 +324,12 @@ class ProductionMeasurementService {
     final eac = cpi > 0 ? totalPlannedCost / cpi : totalPlannedCost;
 
     double spi = 1.0;
-    if (project['start_date'] != null && project['end_date'] != null) {
+    if (project['start_date'] != null) {
       final start = DateTime.tryParse(project['start_date']?.toString() ?? '');
-      final end = DateTime.tryParse(project['end_date']?.toString() ?? '');
+      final baselineEndStr = project['baseline_end_date']?.toString();
+      final currentEndStr = project['end_date']?.toString();
+      final endStr = baselineEndStr != null && baselineEndStr.isNotEmpty ? baselineEndStr : currentEndStr;
+      final end = endStr != null ? DateTime.tryParse(endStr) : null;
       if (start != null && end != null && end.isAfter(start)) {
         final reportService = DailyReportService(_supabase);
         final totalDays = await reportService.getEffectiveElapsedDays(projectId, start, end);

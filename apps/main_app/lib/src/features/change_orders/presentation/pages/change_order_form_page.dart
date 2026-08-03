@@ -42,6 +42,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
   String? _disruptionReasonId;
   DateTime? _disruptionStart;
   DateTime? _disruptionEnd;
+  int _delayDays = 0;
   final _disruptionServices = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _availableTasks = [];
 
@@ -166,11 +167,16 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
 
         final existingServices =
             await svc.getDisruptionServices(widget.coId!);
-        _disruptionServices.addAll(existingServices.map((s) => {
-          'project_task_id': s['project_task_id'],
-          'affectation_type': s['affectation_type'] ?? 'total_stop',
-          'notes': s['notes'],
-          'task_name': s['project_tasks']?['name'] ?? 'Unknown',
+        _disruptionServices.addAll(existingServices.map((s) {
+          if (_delayDays == 0) {
+            _delayDays = (s['delay_days'] as num?)?.toInt() ?? 0;
+          }
+          return {
+            'project_task_id': s['project_task_id'],
+            'affectation_type': s['affectation_type'] ?? 'total_stop',
+            'notes': s['notes'],
+            'task_name': s['project_tasks']?['name'] ?? 'Unknown',
+          };
         }));
       }
     } catch (_) {}
@@ -219,13 +225,40 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
       final directCost = (selected['direct_cost'] as num?)?.toDouble() ?? 0;
       final svcQty = (selected['quantity'] as num?)?.toDouble() ?? 1;
       final unitPrice = svcQty > 0 ? (directCost / svcQty).toDouble() : 0.0;
-      _showLineEditor(
+      final svcId = selected['id'] as String?;
+
+      // Fetch estimation for auto-calculating schedule days
+      double totalWorkingDays = 0;
+      if (svcId != null && _coType == 'scope_change') {
+        try {
+          final estData = await Supabase.instance.client
+              .from('quote_service_estimations')
+              .select('total_working_days')
+              .eq('quote_service_id', svcId)
+              .maybeSingle();
+          totalWorkingDays = (estData?['total_working_days'] as num?)?.toDouble() ?? 0;
+        } catch (_) {}
+      }
+
+      final result = await _showLineEditor(
         serviceName: selected['name'] ?? '',
         unitOfMeasure: selected['unit_of_measure'] ?? 'und',
-        quoteServiceId: selected['id'] as String?,
+        quoteServiceId: svcId,
         lineType: 'existing_service',
         initialUnitPrice: unitPrice,
       );
+
+      // Auto-calculate schedule days for scope_change
+      if (result != null && _coType == 'scope_change' && totalWorkingDays > 0 && svcQty > 0) {
+        final qtyChange = (result['quantity_change'] as num?)?.toDouble() ?? 0;
+        if (qtyChange > 0) {
+          final factor = qtyChange / svcQty;
+          final additionalDays = (totalWorkingDays * factor).ceil();
+          _schedDays += additionalDays;
+          _schedDaysCtrl.text = _schedDays == 0 ? '' : _schedDays.toString();
+          if (mounted) setState(() {});
+        }
+      }
     }
   }
 
@@ -634,7 +667,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     );
   }
 
-  Future<void> _showLineEditor({
+  Future<Map<String, dynamic>?> _showLineEditor({
     required String serviceName,
     required String unitOfMeasure,
     String? quoteServiceId,
@@ -732,6 +765,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
         }
       });
     }
+    return result;
   }
 
   Future<void> _loadTasks() async {
@@ -822,7 +856,10 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
 
           await controller.saveDisruptionServices(
             widget.coId!,
-            _disruptionServices,
+            _disruptionServices.map((s) => {
+              ...s,
+              'delay_days': _delayDays,
+            }).toList(),
           );
 
           if (_lines.isNotEmpty) {
@@ -873,7 +910,10 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
 
           await controller.saveDisruptionServices(
             co['id'],
-            _disruptionServices,
+            _disruptionServices.map((s) => {
+              ...s,
+              'delay_days': _delayDays,
+            }).toList(),
           );
 
           if (_lines.isNotEmpty) {
@@ -1304,6 +1344,8 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
             selectedDisruptionReasonId: _disruptionReasonId,
             disruptionStart: _disruptionStart,
             disruptionEnd: _disruptionEnd,
+            delayDays: _delayDays,
+            onDelayDaysChanged: (v) => setState(() => _delayDays = v),
             lines: _lines,
             allowedQuoteServiceIds: _selectedQuoteServiceIds,
             onDisruptionReasonChanged: (v) =>

@@ -20,6 +20,10 @@ class _ProductionMeasurementPageState extends State<ProductionMeasurementPage> {
   Map<String, dynamic>? _measurement;
   bool _isLoading = true;
   String? _error;
+  bool _includeCOServices = true;
+  double _baselineBudget = 0;
+  double _approvedCOsTotal = 0;
+  String? _baselineEndDate;
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
@@ -35,10 +39,26 @@ class _ProductionMeasurementPageState extends State<ProductionMeasurementPage> {
       final service = ProductionMeasurementService(Supabase.instance.client);
       final measurement = await service.getProjectMeasurement(widget.projectId);
       if (measurement['error'] != null) throw measurement['error']!.toString();
+
+      final supabase = Supabase.instance.client;
+      final pResult = await supabase.from('projects')
+          .select('baseline_budget, baseline_end_date')
+          .eq('id', widget.projectId).maybeSingle();
+      final coResult = await supabase.from('change_orders')
+          .select('adjustment_amount')
+          .eq('project_id', widget.projectId).eq('status', 'approved');
+      final approvedCOs = (coResult as List?)?.fold<double>(0, (s, r) =>
+          s + (((r as Map)['adjustment_amount'] as num?)?.toDouble() ?? 0)) ?? 0;
+      final dbBaseline = (pResult?['baseline_budget'] as num?)?.toDouble() ?? 0;
+      final baselineEnd = pResult?['baseline_end_date']?.toString();
+
       if (mounted) {
         setState(() {
           _measurement = measurement;
           _isLoading = false;
+          _baselineBudget = dbBaseline > 0 ? dbBaseline : (measurement['total_planned_cost'] as num?)?.toDouble() ?? 0;
+          _approvedCOsTotal = approvedCOs;
+          _baselineEndDate = baselineEnd;
         });
       }
     } catch (e) {
@@ -147,8 +167,10 @@ currentPath: '/projects/${widget.projectId}/production-measurement',
     final totalPlanned = (m['total_planned_cost'] as num?)?.toDouble() ?? 0;
     final totalActual = (m['total_actual_cost'] as num?)?.toDouble() ?? 0;
     final costDev = totalPlanned > 0 ? ((totalActual - totalPlanned) / totalPlanned * 100) : 0.0;
-    final services = List<Map<String, dynamic>>.from(m['services'] as List? ?? []);
+    final allServices = List<Map<String, dynamic>>.from(m['services'] as List? ?? []);
+    final services = _includeCOServices ? allServices : allServices.where((s) => s['is_co_service'] != true).toList();
     final alerts = List<Map<String, dynamic>>.from(m['alerts'] as List? ?? []);
+    final currentBudget = _baselineBudget + _approvedCOsTotal;
 
     return SingleChildScrollView(
       padding: EdgeInsets.all(isMobile ? 16 : 32),
@@ -231,21 +253,43 @@ currentPath: '/projects/${widget.projectId}/production-measurement',
                 const SizedBox(height: 16),
                 if (isMobile)
                   Column(children: [
-                    _buildBudgetMetric('Planned Budget', _fmtCurrency(totalPlanned), Colors.blue),
-                    const SizedBox(height: 8),
-                    _buildBudgetMetric('Actual Cost', _fmtCurrency(totalActual), Colors.orange),
-                    const SizedBox(height: 8),
-                    _buildBudgetMetric('Earned Value', _fmtCurrency(m['total_earned_value']), AppTheme.primaryGreen),
+                    _buildBudgetWaterfallMobile(currentBudget),
+                    const SizedBox(height: 10),
+                    Row(children: [
+                      Expanded(child: _buildBudgetMetric('Actual Cost', _fmtCurrency(totalActual), Colors.orange)),
+                      const SizedBox(width: 8),
+                      Expanded(child: _buildBudgetMetric('Earned Value', _fmtCurrency(m['total_earned_value']), AppTheme.primaryGreen)),
+                    ]),
                     const SizedBox(height: 8),
                     _buildBudgetMetric('EAC', _fmtCurrency(eac), Colors.cyan),
                   ])
                 else
                   Wrap(spacing: 12, runSpacing: 12, children: [
-                    SizedBox(width: 200, child: _buildBudgetMetric('Planned Budget', _fmtCurrency(totalPlanned), Colors.blue)),
-                    SizedBox(width: 200, child: _buildBudgetMetric('Actual Cost', _fmtCurrency(totalActual), Colors.orange)),
-                    SizedBox(width: 200, child: _buildBudgetMetric('Earned Value', _fmtCurrency(m['total_earned_value']), AppTheme.primaryGreen)),
-                    SizedBox(width: 200, child: _buildBudgetMetric('EAC', _fmtCurrency(eac), Colors.cyan)),
+                    SizedBox(width: 300, child: _buildBudgetWaterfall(currentBudget)),
+                    SizedBox(width: 180, child: _buildBudgetMetric('Actual Cost', _fmtCurrency(totalActual), Colors.orange)),
+                    SizedBox(width: 180, child: _buildBudgetMetric('Earned Value', _fmtCurrency(m['total_earned_value']), AppTheme.primaryGreen)),
+                    SizedBox(width: 180, child: _buildBudgetMetric('EAC', _fmtCurrency(eac), Colors.cyan)),
                   ]),
+                // Baseline schedule context
+                if (_baselineEndDate != null && _baselineEndDate!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.indigo.withOpacity(0.2)),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.info_outline, size: 14, color: Colors.indigo.shade300),
+                        const SizedBox(width: 8),
+                        Text('SPI calculated against baseline end date: $_baselineEndDate',
+                            style: GoogleFonts.manrope(fontSize: 11, color: Colors.indigo.shade200)),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -253,19 +297,91 @@ currentPath: '/projects/${widget.projectId}/production-measurement',
           const SizedBox(height: 24),
 
           // Service breakdown
-          Text(
-            'Service Breakdown',
-            style: GoogleFonts.manrope(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
+          Row(
+            children: [
+              Text(
+                'Service Breakdown',
+                style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              const Spacer(),
+              Row(mainAxisSize: MainAxisSize.min, children: [
+                Text('Include COs', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400)),
+                const SizedBox(width: 6),
+                SizedBox(
+                  height: 24,
+                  child: Switch(
+                    value: _includeCOServices,
+                    onChanged: (v) => setState(() => _includeCOServices = v),
+                    activeColor: AppTheme.primaryGreen,
+                  ),
+                ),
+              ]),
+            ],
           ),
           const SizedBox(height: 12),
-          ServiceProgressTable(services: services),
+          ServiceProgressTable(services: services, hideCoServices: !_includeCOServices),
         ],
       ),
     );
+  }
+
+  Widget _buildBudgetWaterfall(double currentBudget) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.blue.withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Budget', style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 11, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(child: _budgetItem('Original', _fmtCurrency(_baselineBudget), Colors.blue.shade300)),
+              if (_approvedCOsTotal > 0) ...[
+                Icon(Icons.add, size: 14, color: AppTheme.slate500),
+                Expanded(child: _budgetItem('COs', _fmtCurrency(_approvedCOsTotal), Colors.orange.shade300)),
+                Icon(Icons.drag_handle, size: 14, color: AppTheme.slate500),
+              ],
+              Expanded(child: _budgetItem('Current', _fmtCurrency(currentBudget), AppTheme.primaryGreen)),
+            ],
+          ),
+          if (_approvedCOsTotal > 0) ...[
+            const SizedBox(height: 6),
+            _buildWaterfallBar(_baselineBudget, _approvedCOsTotal),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWaterfallBar(double original, double coTotal) {
+    final total = original + coTotal;
+    if (total <= 0) return const SizedBox.shrink();
+    final oFrac = original / total;
+    final cFrac = coTotal / total;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(3),
+      child: SizedBox(height: 6, child: Row(children: [
+        if (oFrac > 0) Expanded(flex: (oFrac * 1000).round(), child: Container(color: Colors.blue)),
+        if (cFrac > 0) Expanded(flex: (cFrac * 1000).round(), child: Container(color: Colors.orange)),
+      ])),
+    );
+  }
+
+  Widget _buildBudgetWaterfallMobile(double currentBudget) {
+    return _buildBudgetWaterfall(currentBudget);
+  }
+
+  Widget _budgetItem(String label, String value, Color color) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.center, children: [
+      Text(value, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: color)),
+      const SizedBox(height: 2),
+      Text(label, style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
+    ]);
   }
 
   Widget _buildBudgetMetric(String label, String value, Color color) {

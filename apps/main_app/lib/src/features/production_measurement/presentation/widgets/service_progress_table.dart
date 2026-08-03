@@ -4,8 +4,9 @@ import 'package:noel_core/noel_core.dart';
 
 class ServiceProgressTable extends StatelessWidget {
   final List<Map<String, dynamic>> services;
+  final bool hideCoServices;
 
-  const ServiceProgressTable({super.key, required this.services});
+  const ServiceProgressTable({super.key, required this.services, this.hideCoServices = false});
 
   String _fmt(dynamic val, {int decimals = 1}) {
     if (val == null) return '-';
@@ -67,6 +68,7 @@ class ServiceProgressTable extends StatelessWidget {
             columnSpacing: 24,
             columns: [
               _col('Service'),
+              _col('Scope'),
               _col('Unit'),
               _col('Plan'),
               _col('Real'),
@@ -83,12 +85,32 @@ class ServiceProgressTable extends StatelessWidget {
               final ac = (s['actual_cost'] as num?)?.toDouble() ?? 0;
               final ev = (s['earned_value'] as num?)?.toDouble() ?? 0;
               final cpi = ac > 0 ? ev / ac : 1.0;
+              final isCo = s['is_co_service'] == true;
+              final isExtended = s['has_co_extension'] == true;
+
+              Widget scopeBadge;
+              if (isCo) {
+                scopeBadge = Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: Colors.orange.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+                  child: Text('CO', style: GoogleFonts.manrope(color: Colors.orange.shade300, fontSize: 10, fontWeight: FontWeight.w700)),
+                );
+              } else if (isExtended) {
+                scopeBadge = Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(color: Colors.amber.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+                  child: Text('Extended', style: GoogleFonts.manrope(color: Colors.amber.shade300, fontSize: 10, fontWeight: FontWeight.w700)),
+                );
+              } else {
+                scopeBadge = Text('Original', style: GoogleFonts.manrope(color: Colors.blue.shade300, fontSize: 10, fontWeight: FontWeight.w600));
+              }
 
               return DataRow(cells: [
                 DataCell(Text(
                   s['name'] ?? '',
                   style: GoogleFonts.manrope(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600),
                 )),
+                DataCell(scopeBadge),
                 DataCell(Text(
                   s['unit'] ?? '',
                   style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 12),

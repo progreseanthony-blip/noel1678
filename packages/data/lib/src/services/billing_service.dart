@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import '../remote/supabase_client.dart';
@@ -226,6 +227,9 @@ class BillingService {
     final knownColumns = {
       'change_order_id',
       'line_type',
+      'quote_service_id',
+      'catalog_service_id',
+      'effective_date',
       'service_name',
       'unit_of_measure',
       'quantity_change',
@@ -335,6 +339,7 @@ class BillingService {
         'project_task_id': s['project_task_id'],
         'affectation_type': s['affectation_type'] ?? 'total_stop',
         'notes': s['notes'],
+        'delay_days': s['delay_days'] ?? 0,
       };
     }).toList();
 
@@ -775,6 +780,835 @@ class BillingService {
         }
       }
     }
+  }
+
+  // ── Schedule Impact (Disruption COs) ──
+
+  Future<Map<String, dynamic>> applyScheduleImpact(String changeOrderId) async {
+    final results = <String, dynamic>{
+      'conflicts': <Map<String, dynamic>>[],
+      'resolved_auto': 0,
+      'resolved_manual': 0,
+      'schedule_extended': false,
+    };
+
+    final disruptionResult = await _supabase
+        .from('change_order_disruptions')
+        .select('*, change_orders!inner(project_id)')
+        .eq('change_order_id', changeOrderId)
+        .maybeSingle();
+
+    if (disruptionResult == null) {
+      debugPrint('[applyScheduleImpact] NO disruption record found for CO $changeOrderId');
+      return results;
+    }
+    final projectId = disruptionResult['change_orders']?['project_id'] as String?;
+    if (projectId == null) {
+      debugPrint('[applyScheduleImpact] no project_id for CO $changeOrderId');
+      return results;
+    }
+
+    // Idempotency check
+    if (disruptionResult['schedule_impact_applied_at'] != null) {
+      debugPrint('[applyScheduleImpact] ALREADY APPLIED for CO $changeOrderId, skipping (schedule_impact_applied_at set)');
+      results['schedule_extended'] = true;
+      results['already_applied'] = true;
+      return results;
+    }
+
+    final startDateStr = disruptionResult['start_date']?.toString();
+    final endDateStr = disruptionResult['end_date']?.toString();
+    final DateTime? disruptionStartDate = disruptionResult['start_date'] is DateTime
+        ? disruptionResult['start_date'] as DateTime
+        : (startDateStr != null ? DateTime.tryParse(startDateStr) : null);
+
+    final affectedServices = await _supabase
+        .from('change_order_disruption_services')
+        .select('*, project_tasks!inner(quote_service_id)')
+        .eq('change_order_id', changeOrderId);
+
+    debugPrint('[applyScheduleImpact] disruption $changeOrderId start=$startDateStr end=$endDateStr affectedServices=${affectedServices?.length ?? 0}');
+
+    if (affectedServices == null || affectedServices.isEmpty) return results;
+
+    // 1. Sort affected services by planned_start_date
+    final ordered = List<Map<String, dynamic>>.from(affectedServices);
+    ordered.sort((a, b) {
+      final aStart = a['project_tasks']?['planned_start_date']?.toString() ?? '';
+      final bStart = b['project_tasks']?['planned_start_date']?.toString() ?? '';
+      return aStart.compareTo(bStart);
+    });
+
+    final allServiceIds = <String>{};
+    final Map<String, int> delayByServiceId = {};
+
+    for (final svc in ordered) {
+      final taskId = svc['project_task_id'] as String;
+      final quoteServiceId = svc['project_tasks']?['quote_service_id'] as String?;
+      if (quoteServiceId == null) continue;
+
+      final delayDays = (svc['delay_days'] as num?)?.toInt() ?? 0;
+      final affectationType = svc['affectation_type'] as String? ?? 'total_stop';
+      final partialRatio = affectationType == 'partial' ? 0.5 : 1.0;
+
+      debugPrint('[applyScheduleImpact] svc task=$taskId qs=$quoteServiceId affectation=$affectationType delayDays=$delayDays');
+
+      if (delayDays <= 0) {
+        debugPrint('[applyScheduleImpact]   -> SKIP (delayDays<=0)');
+        continue;
+      }
+
+      allServiceIds.add(quoteServiceId);
+      delayByServiceId[quoteServiceId] = delayDays;
+
+      // a. Get task planned_end_date
+      final taskData = await _supabase
+          .from('project_tasks')
+          .select('planned_end_date')
+          .eq('id', taskId)
+          .maybeSingle();
+
+      final originalEndStr = taskData?['planned_end_date']?.toString();
+      final originalEnd = originalEndStr != null ? DateTime.tryParse(originalEndStr) : null;
+      final newEnd = originalEnd?.add(Duration(days: delayDays));
+
+      // b. Update project_tasks
+      await _supabase
+          .from('project_tasks')
+          .update({'planned_end_date': newEnd?.toIso8601String().split('T')[0]})
+          .eq('id', taskId);
+
+      // c. Update disruption_services with original/extended dates
+      await _supabase
+          .from('change_order_disruption_services')
+          .update({
+            'original_end_date': originalEndStr?.substring(0, 10),
+            'extended_end_date': newEnd?.toIso8601String().split('T')[0],
+          })
+          .eq('id', svc['id'] as String);
+
+      // d. Shift resources for this service
+      await _shiftServiceResources(quoteServiceId, projectId, delayDays, disruptionStartDate: disruptionStartDate);
+    }
+
+    // 2. Cascade: shift downstream services that share resources
+    if (allServiceIds.isNotEmpty) {
+      await _cascadeDownstreamServices(projectId, allServiceIds, delayByServiceId, disruptionStartDate: disruptionStartDate);
+    }
+
+    // 3. Detect conflicts
+    final conflicts = await detectResourceConflicts(projectId, allServiceIds);
+
+    // 4. Auto-resolve simple conflicts
+    for (final conflict in conflicts) {
+      final resolved = await _autoResolveConflict(conflict);
+      if (resolved) {
+        results['resolved_auto'] = (results['resolved_auto'] as int) + 1;
+      } else {
+        (results['conflicts'] as List).add(conflict);
+        results['resolved_manual'] = (results['resolved_manual'] as int) + 1;
+      }
+    }
+
+    // 5. Update project dates
+    final projectData = await _supabase
+        .from('projects')
+        .select('baseline_end_date, end_date, schedule_extension_days')
+        .eq('id', projectId)
+        .maybeSingle();
+
+    final currentEndStr = projectData?['end_date']?.toString();
+    final currentEnd = currentEndStr != null ? DateTime.tryParse(currentEndStr) : null;
+    final baselineSet = projectData?['baseline_end_date'] != null;
+
+    // Find max extended end date across affected services
+    DateTime? maxNewEnd;
+    for (final svc in ordered) {
+      final extDate = svc['extended_end_date'] as String?;
+      if (extDate != null) {
+        final parsed = DateTime.tryParse(extDate);
+        if (parsed != null && (maxNewEnd == null || parsed.isAfter(maxNewEnd))) {
+          maxNewEnd = parsed;
+        }
+      }
+    }
+
+    final maxDelayDays = delayByServiceId.values.fold(0, (a, b) => a > b ? a : b);
+    final newProjectEnd = (maxNewEnd != null && currentEnd != null && maxNewEnd.isAfter(currentEnd))
+        ? maxNewEnd
+        : currentEnd?.add(Duration(days: maxDelayDays));
+
+    final existingExt = (projectData?['schedule_extension_days'] as num?)?.toInt() ?? 0;
+
+    await _supabase.from('projects').update({
+      if (!baselineSet) 'baseline_end_date': currentEndStr?.substring(0, 19),
+      'end_date': newProjectEnd?.toIso8601String().substring(0, 19),
+      'schedule_extension_days': existingExt + maxDelayDays,
+    }).eq('id', projectId);
+
+    results['schedule_extended'] = true;
+
+    // 6. Create non_working_days for the disruption period
+    if (startDateStr != null && endDateStr != null) {
+      await _createDisruptionNonWorkingDays(projectId, changeOrderId, startDateStr, endDateStr, ordered);
+    }
+
+    // 7. Mark schedule impact as applied (idempotency)
+    results['schedule_extended'] = true;
+    await _supabase.from('change_order_disruptions').update({
+      'schedule_impact_applied_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('change_order_id', changeOrderId);
+
+    return results;
+  }
+
+  Future<void> _shiftServiceResources(String quoteServiceId, String projectId, int delayDays, {DateTime? disruptionStartDate}) async {
+    final tables = [
+      'project_machinery',
+      'project_labor',
+      'project_instruments',
+    ];
+
+    for (final table in tables) {
+      final resources = await _supabase
+          .from(table)
+          .select('id, start_date, end_date')
+          .eq('quote_service_id', quoteServiceId)
+          .eq('project_id', projectId);
+
+      if (resources.isEmpty) continue;
+
+      debugPrint('[_shiftServiceResources] table=$table qs=$quoteServiceId delay=$delayDays disruptionStart=${disruptionStartDate?.toIso8601String()} found=${resources.length}');
+
+      final assignmentTable = table == 'project_machinery'
+          ? 'project_machinery_assignments'
+          : table == 'project_labor'
+              ? 'project_labor_assignments'
+              : 'project_instrument_assignments';
+
+      final parentIdCol = table == 'project_machinery'
+          ? 'project_machinery_id'
+          : table == 'project_labor'
+              ? 'project_labor_id'
+              : 'project_instrument_id';
+
+      // Collect all parent IDs for assignment lookup
+      final allParentIds = resources.map((r) => r['id'].toString()).toList();
+
+      // Load all assignments grouped by parent id
+      final assignments = await _supabase
+          .from(assignmentTable)
+          .select('id, $parentIdCol, start_date, end_date')
+          .in_(parentIdCol, allParentIds);
+
+      final Map<String, List<Map<String, dynamic>>> assignmentsByParent = {};
+      for (final a in assignments ?? <Map<String, dynamic>>[]) {
+        final pid = a[parentIdCol]?.toString();
+        if (pid == null) continue;
+        (assignmentsByParent[pid] ??= []).add(a);
+      }
+
+      // Derive effective start/end for a parent, falling back to its assignments
+      DateTime? effectiveStart(Map<String, dynamic> r, DateTime? currentStart) {
+        if (currentStart != null) return currentStart;
+        DateTime? minStart;
+        for (final a in assignmentsByParent[r['id'].toString()] ?? []) {
+          final s = a['start_date']?.toString();
+          final parsed = s != null ? DateTime.tryParse(s) : null;
+          if (parsed != null && (minStart == null || parsed.isBefore(minStart))) minStart = parsed;
+        }
+        return minStart;
+      }
+
+      DateTime? effectiveEnd(Map<String, dynamic> r, DateTime? currentEnd) {
+        if (currentEnd != null) return currentEnd;
+        DateTime? maxEnd;
+        for (final a in assignmentsByParent[r['id'].toString()] ?? []) {
+          final e = a['end_date']?.toString();
+          final parsed = e != null ? DateTime.tryParse(e) : null;
+          if (parsed != null && (maxEnd == null || parsed.isAfter(maxEnd))) maxEnd = parsed;
+        }
+        return maxEnd;
+      }
+
+      final shiftedIds = <String>[];
+
+      for (final r in resources) {
+        final startStr = r['start_date']?.toString();
+        final endStr = r['end_date']?.toString();
+
+        DateTime? currentStart = startStr != null ? DateTime.tryParse(startStr) : null;
+        DateTime? currentEnd = endStr != null ? DateTime.tryParse(endStr) : null;
+
+        // If parent has no dates, derive them from assignments so they can be shifted
+        final derivedStart = effectiveStart(r, currentStart);
+        final derivedEnd = effectiveEnd(r, currentEnd);
+        if (currentStart == null && currentEnd == null && derivedStart == null && derivedEnd == null) {
+          debugPrint('  [_shiftServiceResources] WARN id=${r['id']} has no dates AND no assignment dates — cannot shift');
+          continue;
+        }
+
+        String? newStart;
+        String? newEnd;
+
+        if (disruptionStartDate != null && derivedStart != null && derivedStart.isBefore(disruptionStartDate)) {
+          // Resource started before disruption — only shift end_date
+          newStart = derivedStart.toIso8601String().split('T')[0];
+          newEnd = derivedEnd != null
+              ? derivedEnd.add(Duration(days: delayDays)).toIso8601String().split('T')[0]
+              : null;
+        } else {
+          // Resource starts after/on disruption, no disruption date, or no start date — shift both
+          newStart = derivedStart != null
+              ? derivedStart.add(Duration(days: delayDays)).toIso8601String().split('T')[0]
+              : null;
+          newEnd = derivedEnd != null
+              ? derivedEnd.add(Duration(days: delayDays)).toIso8601String().split('T')[0]
+              : null;
+        }
+
+        debugPrint('  [_shiftServiceResources] id=${r['id']} start=$startStr (derived=$derivedStart) -> $newStart | end=$endStr (derived=$derivedEnd) -> $newEnd');
+
+        final updates = <String, dynamic>{};
+        if (newStart != null) updates['start_date'] = newStart;
+        if (newEnd != null) updates['end_date'] = newEnd;
+        if (updates.isNotEmpty) {
+          await _supabase.from(table).update(updates).eq('id', r['id']);
+          shiftedIds.add(r['id'].toString());
+        } else {
+          debugPrint('  [_shiftServiceResources] WARN no updates for id=${r['id']} (null start/end or delay<=0)');
+        }
+
+        // Shift unit-level assignments linked to this parent
+        for (final a in assignmentsByParent[r['id'].toString()] ?? []) {
+          final aStartStr = a['start_date']?.toString();
+          final aEndStr = a['end_date']?.toString();
+          DateTime? aCurrentStart = aStartStr != null ? DateTime.tryParse(aStartStr) : null;
+          DateTime? aCurrentEnd = aEndStr != null ? DateTime.tryParse(aEndStr) : null;
+
+          String? newAStart;
+          String? newAEnd;
+
+          if (disruptionStartDate != null && aCurrentStart != null && aCurrentStart.isBefore(disruptionStartDate)) {
+            // Assignment started before disruption — only shift end_date
+            newAStart = aStartStr;
+            newAEnd = aCurrentEnd != null
+                ? aCurrentEnd.add(Duration(days: delayDays)).toIso8601String().split('T')[0]
+                : null;
+          } else {
+            // Shift both (or no disruption date)
+            newAStart = aCurrentStart != null
+                ? aCurrentStart.add(Duration(days: delayDays)).toIso8601String().split('T')[0]
+                : null;
+            newAEnd = aCurrentEnd != null
+                ? aCurrentEnd.add(Duration(days: delayDays)).toIso8601String().split('T')[0]
+                : null;
+          }
+
+          final aUpdates = <String, dynamic>{};
+          if (newAStart != null) aUpdates['start_date'] = newAStart;
+          if (newAEnd != null) aUpdates['end_date'] = newAEnd;
+          if (aUpdates.isNotEmpty) {
+            await _supabase.from(assignmentTable).update(aUpdates).eq('id', a['id']);
+          }
+        }
+      }
+    }
+  }
+
+  Future<void> _cascadeDownstreamServices(
+    String projectId,
+    Set<String> affectedServiceIds,
+    Map<String, int> delayByServiceId, {
+    DateTime? disruptionStartDate,
+  }) async {
+    // Find all services that start after affected ones and share resources
+    for (final entry in delayByServiceId.entries) {
+      final svcId = entry.key;
+      final delayDays = entry.value;
+
+      // Get resources of the affected service
+      final resourceIds = <String, Map<String, String>>{}; // resource_id -> {type, table}
+
+      for (final table in ['project_labor', 'project_machinery', 'project_instruments']) {
+        final idField = table == 'project_labor'
+            ? 'role_id'
+            : table == 'project_machinery'
+                ? 'machinery_id'
+                : 'instrument_id';
+
+        final resources = await _supabase
+            .from(table)
+            .select('$idField, start_date, end_date')
+            .eq('quote_service_id', svcId)
+            .eq('project_id', projectId);
+
+        if (resources == null) continue;
+        for (final r in resources) {
+          final rid = r[idField]?.toString();
+          if (rid != null && r['end_date'] != null) {
+            resourceIds[rid] = {
+              'end_date': r['end_date'].toString(),
+              'table': table,
+            };
+          }
+        }
+      }
+
+      // Find other services using the same resources after affected service ends
+      for (final resEntry in resourceIds.entries) {
+        final resId = resEntry.key;
+        final resTable = resEntry.value['table'] as String;
+        final resEndDate = resEntry.value['end_date']!;
+        final idField = resTable == 'project_labor'
+            ? 'role_id'
+            : resTable == 'project_machinery'
+                ? 'machinery_id'
+                : 'instrument_id';
+
+        final downstream = await _supabase
+            .from(resTable)
+            .select('id, quote_service_id, start_date, end_date')
+            .eq(idField, resId)
+            .eq('project_id', projectId)
+            .neq('quote_service_id', svcId)
+            .gt('start_date', resEndDate);
+
+        if (downstream == null) continue;
+
+        for (final d in downstream) {
+          final dSvcId = d['quote_service_id']?.toString();
+          if (dSvcId == null || affectedServiceIds.contains(dSvcId)) continue;
+          if (delayByServiceId.containsKey(dSvcId)) continue;
+
+          final overlapDays = delayDays; // cascade full delay
+
+          await _shiftServiceResources(dSvcId, projectId, overlapDays, disruptionStartDate: disruptionStartDate);
+
+          // Update task dates
+          final taskData = await _supabase
+              .from('project_tasks')
+              .select('id, planned_end_date')
+              .eq('quote_service_id', dSvcId)
+              .eq('project_id', projectId)
+              .maybeSingle();
+
+          if (taskData != null) {
+            final taskEnd = taskData['planned_end_date']?.toString();
+            final newEnd = taskEnd != null
+                ? DateTime.tryParse(taskEnd)?.add(Duration(days: overlapDays))?.toIso8601String().split('T')[0]
+                : null;
+            if (newEnd != null) {
+              await _supabase
+                  .from('project_tasks')
+                  .update({'planned_end_date': newEnd})
+                  .eq('id', taskData['id']);
+            }
+          }
+
+          affectedServiceIds.add(dSvcId);
+          delayByServiceId[dSvcId] = overlapDays;
+        }
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> detectResourceConflicts(
+    String projectId,
+    Set<String> affectedServiceIds,
+  ) async {
+    final conflicts = <Map<String, dynamic>>[];
+    final configs = [
+      {
+        'table': 'project_labor_assignments',
+        'id_field': 'worker_id',
+        'name_field': 'workers!inner(name)',
+        'label': 'Worker',
+      },
+      {
+        'table': 'project_machinery_assignments',
+        'id_field': 'machinery_id',
+        'name_field': 'machinery!inner(internal_code, equipment_name)',
+        'label': 'Machinery',
+      },
+      {
+        'table': 'project_instrument_assignments',
+        'id_field': 'instrument_id',
+        'name_field': 'instruments!inner(name)',
+        'label': 'Instrument',
+      },
+    ];
+
+    for (final config in configs) {
+      final table = config['table'] as String;
+      final idField = config['id_field'] as String;
+      final nameField = config['name_field'] as String;
+      final label = config['label'] as String;
+
+      try {
+        final result = await _supabase
+            .from(table)
+            .select('id, $idField, quote_service_id, start_date, end_date')
+            .eq('project_id', projectId)
+            .in_('quote_service_id', affectedServiceIds.toList());
+
+        if (result == null || result.isEmpty) continue;
+
+        // For each affected service resource, check overlaps with non-affected services
+        for (final a1 in result) {
+          final resId = a1[idField]?.toString();
+          final svcA = a1['quote_service_id']?.toString();
+          final endA = a1['end_date']?.toString();
+
+          if (resId == null || svcA == null || endA == null) continue;
+
+          final others = await _supabase
+              .from(table)
+              .select('id, quote_service_id, start_date, end_date')
+              .eq(idField, resId)
+              .eq('project_id', projectId)
+              .neq('quote_service_id', svcA);
+
+          if (others == null) continue;
+
+          for (final a2 in others) {
+            final svcB = a2['quote_service_id']?.toString();
+            final startB = a2['start_date']?.toString();
+            final endB = a2['end_date']?.toString();
+
+            if (svcB == null || startB == null) continue;
+
+            final endADate = DateTime.tryParse(endA);
+            final startBDate = DateTime.tryParse(startB);
+
+            if (endADate == null || startBDate == null) continue;
+
+            if (endADate.isAfter(startBDate) || endADate == startBDate) {
+              final overlapDays = endADate.difference(startBDate).inDays + 1;
+              if (overlapDays > 0) {
+                conflicts.add({
+                  'resource_type': label,
+                  'resource_id': resId,
+                  'resource_name': '$label #$resId',
+                  'service_a_id': svcA,
+                  'service_b_id': svcB,
+                  'end_a': endA,
+                  'start_b': startB,
+                  'overlap_days': overlapDays,
+                  'table': table,
+                  'id_field': idField,
+                });
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    return conflicts;
+  }
+
+  Future<bool> _autoResolveConflict(Map<String, dynamic> conflict) async {
+    final overlapDays = (conflict['overlap_days'] as num?)?.toInt() ?? 0;
+    final resourceType = conflict['resource_type'] as String? ?? '';
+
+    if (overlapDays <= 2) {
+      // Cascade: shift service B
+      final svcBId = conflict['service_b_id'] as String;
+      await _shiftServiceResources(svcBId, conflict['project_id'] as String? ?? '', overlapDays);
+      return true;
+    }
+
+    if (resourceType == 'Instrument') {
+      // Try to find a replacement
+      final table = conflict['table'] as String;
+      final idField = conflict['id_field'] as String;
+      final resId = conflict['resource_id'] as String;
+      final svcAId = conflict['service_a_id'] as String;
+      final svcBId = conflict['service_b_id'] as String;
+      final projectId = conflict['project_id'] as String?;
+
+      if (projectId != null) {
+        final altInstruments = await _supabase
+            .from(table)
+            .select('id')
+            .eq('project_id', projectId)
+            .eq('quote_service_id', svcBId)
+            .eq(idField, resId);
+
+        // Check if there are other instruments available for service B
+        final allBInstruments = await _supabase
+            .from(table)
+            .select('$idField')
+            .eq('project_id', projectId)
+            .eq('quote_service_id', svcBId);
+
+        if (allBInstruments != null && allBInstruments.length > 1) {
+          // Service B has multiple instruments, keep resource in A
+          return true;
+        }
+      }
+    }
+
+    if (resourceType == 'Machinery') {
+      final table = conflict['table'] as String;
+      final idField = conflict['id_field'] as String;
+      final resId = conflict['resource_id'] as String;
+      final svcBId = conflict['service_b_id'] as String;
+      final projectId = conflict['project_id'] as String?;
+
+      if (projectId != null) {
+        // Check if there's another unit of the same machinery type available
+        final machData = await _supabase
+            .from('project_machinery')
+            .select('machinery_id')
+            .eq('id', resId)
+            .maybeSingle();
+
+        final machTypeId = machData?['machinery_id']?.toString();
+
+        if (machTypeId != null) {
+          final altUnits = await _supabase
+              .from('project_machinery')
+              .select('id')
+              .eq('project_id', projectId)
+              .eq('machinery_id', machTypeId)
+              .neq('id', resId);
+
+          if (altUnits != null && altUnits.isNotEmpty) {
+            // Register the alt unit for service B
+            final altId = altUnits.first['id']?.toString();
+            if (altId != null) {
+              await _supabase.from(table).update({
+                'machinery_id': altId,
+              }).eq('id', svcBId).eq(idField, resId);
+              return true;
+            }
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+  Future<void> resolveResourceConflict(
+    String projectId,
+    Map<String, dynamic> conflict,
+    String strategy, // 'keep_on_a', 'reassign_to_b', 'cascade'
+  ) async {
+    final overlapDays = (conflict['overlap_days'] as num?)?.toInt() ?? 0;
+    final svcAId = conflict['service_a_id'] as String;
+    final svcBId = conflict['service_b_id'] as String;
+    final table = conflict['table'] as String;
+    final idField = conflict['id_field'] as String;
+    final resId = conflict['resource_id'] as String;
+
+    switch (strategy) {
+      case 'keep_on_a':
+        // Resource stays on service A. Try to find replacement for B.
+        final altFound = await _autoResolveConflict(conflict);
+        if (!altFound) {
+          // Mark service B as needing resource
+          await _supabase.from('project_tasks').update({
+            'status': 'blocked',
+          }).eq('quote_service_id', svcBId).eq('project_id', projectId);
+        }
+        break;
+
+      case 'reassign_to_b':
+        // Resource goes to service B on its original date. Find replacement for the tail of A.
+        // Simply shift the resource from A's assignment to use the alt
+        await _supabase.from(table).delete().eq(idField, resId).eq('quote_service_id', svcAId);
+        // Mark service A as needing resource for remaining days
+        await _supabase.from('project_tasks').update({
+          'status': 'blocked',
+        }).eq('quote_service_id', svcAId).eq('project_id', projectId);
+        break;
+
+      case 'cascade':
+        await _shiftServiceResources(svcBId, projectId, overlapDays);
+        break;
+    }
+  }
+
+  Future<void> _createDisruptionNonWorkingDays(
+    String projectId,
+    String changeOrderId,
+    String startDateStr,
+    String endDateStr,
+    List<Map<String, dynamic>> affectedServices,
+  ) async {
+    final start = DateTime.tryParse(startDateStr);
+    final end = DateTime.tryParse(endDateStr);
+    if (start == null || end == null) return;
+
+    // Determine partial_ratio: if any service has total_stop → 0.0
+    bool hasTotalStop = false;
+    for (final svc in affectedServices) {
+      if (svc['affectation_type'] == 'total_stop') {
+        hasTotalStop = true;
+        break;
+      }
+    }
+    final partialRatio = hasTotalStop ? 0.0 : 0.5;
+
+    var current = start;
+    while (!current.isAfter(end)) {
+      try {
+        await _supabase.from('project_non_working_days').upsert({
+          'project_id': projectId,
+          'date': current.toIso8601String().split('T')[0],
+          'reason': 'Disruption CO — $changeOrderId',
+          'partial_ratio': partialRatio,
+          'source': 'disruption',
+          'source_id': changeOrderId,
+        }, onConflict: 'project_id,date');
+      } catch (_) {}
+
+      current = current.add(const Duration(days: 1));
+    }
+  }
+  // ── Scope Change Schedule Impact ──
+
+  Future<Map<String, dynamic>> applyScopeScheduleImpact(String changeOrderId) async {
+    final results = <String, dynamic>{
+      'conflicts': <Map<String, dynamic>>[],
+      'resolved_auto': 0,
+      'resolved_manual': 0,
+      'services_extended': 0,
+    };
+
+    final coData = await _supabase
+        .from('change_orders')
+        .select('project_id, schedule_days_change')
+        .eq('id', changeOrderId)
+        .maybeSingle();
+
+    if (coData == null) return results;
+    final projectId = coData['project_id'] as String?;
+    if (projectId == null) return results;
+
+    final detailsResult = await _supabase
+        .from('change_order_details')
+        .select('*, quote_services(quantity)')
+        .eq('change_order_id', changeOrderId)
+        .eq('line_type', 'existing_service')
+        .gt('quantity_change', 0);
+
+    if (detailsResult == null || detailsResult.isEmpty) return results;
+
+    final allServiceIds = <String>{};
+    final Map<String, int> delayByServiceId = {};
+
+    for (final detail in detailsResult) {
+      final qsId = detail['quote_service_id'] as String?;
+      if (qsId == null) continue;
+
+      final qtyChange = (detail['quantity_change'] as num?)?.toDouble() ?? 0;
+      if (qtyChange <= 0) continue;
+
+      final originalQty = (detail['quote_services']?['quantity'] as num?)?.toDouble() ?? 1;
+      final factor = qtyChange / originalQty;
+
+      final estData = await _supabase
+          .from('quote_service_estimations')
+          .select('total_working_days, end_date')
+          .eq('quote_service_id', qsId)
+          .maybeSingle();
+
+      final totalWorkingDays = (estData?['total_working_days'] as num?)?.toDouble() ?? 0;
+      final additionalDays = (totalWorkingDays * factor).ceil();
+
+      if (additionalDays <= 0) continue;
+
+      allServiceIds.add(qsId);
+      delayByServiceId[qsId] = additionalDays;
+
+      // Update estimation
+      final newTotalDays = totalWorkingDays + additionalDays;
+      final currentEnd = estData?['end_date']?.toString();
+      DateTime? newEnd;
+      if (currentEnd != null) {
+        final parsed = DateTime.tryParse(currentEnd);
+        if (parsed != null) newEnd = parsed.add(Duration(days: additionalDays));
+      }
+
+      await _supabase.from('quote_service_estimations').update({
+        'total_working_days': newTotalDays,
+        if (newEnd != null) 'end_date': newEnd.toIso8601String(),
+      }).eq('quote_service_id', qsId);
+
+      // Shift task dates
+      final taskData = await _supabase
+          .from('project_tasks')
+          .select('id, planned_end_date')
+          .eq('quote_service_id', qsId)
+          .eq('project_id', projectId)
+          .maybeSingle();
+
+      if (taskData != null) {
+        final taskEnd = taskData['planned_end_date']?.toString();
+        DateTime? newTaskEnd;
+        if (taskEnd != null) {
+          final parsed = DateTime.tryParse(taskEnd);
+          if (parsed != null) newTaskEnd = parsed.add(Duration(days: additionalDays));
+        }
+        await _supabase.from('project_tasks').update({
+          if (newTaskEnd != null) 'planned_end_date': newTaskEnd.toIso8601String().split('T')[0],
+        }).eq('id', taskData['id']);
+      }
+
+      // Shift resources
+      await _shiftServiceResources(qsId, projectId, additionalDays);
+
+      results['services_extended'] = (results['services_extended'] as int) + 1;
+    }
+
+    if (allServiceIds.isNotEmpty) {
+      await _cascadeDownstreamServices(projectId, allServiceIds, delayByServiceId);
+    }
+
+    final conflicts = await detectResourceConflicts(projectId, allServiceIds);
+
+    for (final conflict in conflicts) {
+      conflict['project_id'] = projectId;
+      final resolved = await _autoResolveConflict(conflict);
+      if (resolved) {
+        results['resolved_auto'] = (results['resolved_auto'] as int) + 1;
+      } else {
+        (results['conflicts'] as List).add(conflict);
+        results['resolved_manual'] = (results['resolved_manual'] as int) + 1;
+      }
+    }
+
+    // Update project end_date if needed
+    if (results['services_extended'] > 0) {
+      final projectData = await _supabase
+          .from('projects')
+          .select('baseline_end_date, end_date')
+          .eq('id', projectId)
+          .maybeSingle();
+
+      final currentEndStr = projectData?['end_date']?.toString();
+      final baselineSet = projectData?['baseline_end_date'] != null;
+      DateTime? currentEnd = currentEndStr != null ? DateTime.tryParse(currentEndStr) : null;
+
+      if (currentEnd != null) {
+        final maxDelay = delayByServiceId.values.fold(0, (a, b) => a > b ? a : b);
+        final newProjectEnd = currentEnd.add(Duration(days: maxDelay));
+
+        final updates = <String, dynamic>{
+          'end_date': newProjectEnd.toIso8601String().substring(0, 19),
+        };
+        if (!baselineSet) {
+          updates['baseline_end_date'] = currentEndStr?.substring(0, 19);
+        }
+        await _supabase.from('projects').update(updates).eq('id', projectId);
+      }
+    }
+
+    return results;
   }
 
   String _nonEmpty(dynamic value, String fallback) {

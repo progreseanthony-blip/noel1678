@@ -11,6 +11,7 @@ import 'package:pdf/pdf.dart';
 import '../providers/change_order_providers.dart';
 import '../providers/change_order_controller.dart';
 import '../utils/change_order_pdf_generator.dart';
+import '../widgets/resource_conflict_dialog.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 
@@ -57,6 +58,7 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
   List<Map<String, dynamic>> _cachedDisruptions = [];
   List<Map<String, dynamic>> _cachedDisruptionServices = [];
   final Map<String, String?> _reasonMap = {};
+  bool _reapplyingSchedule = false;
 
   Future<void> _printPdf(
     Map<String, dynamic> co,
@@ -101,9 +103,33 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
 
   Future<void> _approve() async {
     try {
-      await ref
+      final result = await ref
           .read(changeOrderControllerProvider.notifier)
           .approveChangeOrder(widget.coId);
+
+      if (result != null && mounted) {
+        final conflicts = List<Map<String, dynamic>>.from(result['conflicts'] as List? ?? []);
+        if (conflicts.isNotEmpty) {
+          final resolved = await showSafeDialog(
+            context: context,
+            barrierColor: Colors.black.withOpacity(0.5),
+            builder: (_) => ResourceConflictDialog(
+              projectId: widget.projectId,
+              conflicts: conflicts,
+              onResolve: (conflict, strategy) async {
+                try {
+                  final svc = ref.read(billingServiceProvider);
+                  await svc.resolveResourceConflict(widget.projectId, conflict, strategy);
+                  return null;
+                } catch (e) {
+                  return e.toString();
+                }
+              },
+            ),
+          );
+        }
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -186,6 +212,36 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
           );
         }
       }
+    }
+  }
+
+  Future<void> _reapplyScheduleImpact() async {
+    setState(() => _reapplyingSchedule = true);
+    try {
+      final svc = ref.read(billingServiceProvider);
+      // Reset applied_at flag so applyScheduleImpact can run again
+      await Supabase.instance.client
+          .from('change_order_disruptions')
+          .update({'schedule_impact_applied_at': null})
+          .eq('change_order_id', widget.coId);
+      await svc.applyScheduleImpact(widget.coId);
+      await _loadDisruptions();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Schedule impact re-applied', style: GoogleFonts.manrope(color: Colors.white)),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _reapplyingSchedule = false);
     }
   }
 
@@ -668,6 +724,11 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
                 ],
               ),
             ),
+            // Schedule Impact section
+            if (coType == 'disruption' && _hasScheduleImpact) ...[
+              const SizedBox(height: 24),
+              _buildScheduleImpact(),
+            ],
           ],
           if (status == 'draft') ...[
             const SizedBox(height: 24),
@@ -1332,6 +1393,206 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
               ),
             );
           }),
+        ],
+      ),
+    );
+  }
+
+  bool get _hasScheduleImpact {
+    if (_cachedDisruptions.isNotEmpty) return true;
+    for (final s in _cachedDisruptionServices) {
+      final delayDays = (s['delay_days'] as num?)?.toInt() ?? 0;
+      if (delayDays > 0) return true;
+    }
+    return false;
+  }
+
+  Widget _buildScheduleImpact() {
+    if (_cachedDisruptions.isEmpty) return const SizedBox.shrink();
+
+    final disruption = _cachedDisruptions.first;
+    final startDate = disruption['start_date']?.toString() ?? '';
+    final endDate = disruption['end_date']?.toString() ?? '';
+    int totalDelay = 0;
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.indigo.withOpacity(0.04),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.indigo.withOpacity(0.15)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.schedule, size: 20, color: Colors.indigo.shade700),
+              const SizedBox(width: 8),
+              Text(
+                'Schedule Impact',
+                style: GoogleFonts.manrope(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.indigo.shade900,
+                ),
+              ),
+              const Spacer(),
+              if (_cachedCo?['status'] == 'approved')
+                Row(mainAxisSize: MainAxisSize.min, children: [
+                  if (totalDelay > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryGreen.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.check_circle, size: 12, color: AppTheme.primaryGreen),
+                          const SizedBox(width: 4),
+                          Text('Applied', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
+                        ],
+                      ),
+                    ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    height: 28,
+                    child: OutlinedButton.icon(
+                      onPressed: _reapplyingSchedule ? null : _reapplyScheduleImpact,
+                      icon: _reapplyingSchedule
+                          ? const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.indigo))
+                          : const Icon(Icons.refresh, size: 12),
+                      label: Text(_reapplyingSchedule ? 'Applying...' : 'Re-apply', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.indigo.shade700)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                        side: BorderSide(color: Colors.indigo.withOpacity(0.3)),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                      ),
+                    ),
+                  ),
+                ]),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _impactMetric('Disruption Period', '$startDate — $endDate', Colors.indigo),
+              const SizedBox(width: 24),
+              _impactMetric('Type', (disruption['disruption_type'] as String? ?? '').replaceAll('_', ' '), Colors.indigo),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Affected Services',
+            style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate500),
+          ),
+          const SizedBox(height: 8),
+          ..._cachedDisruptionServices.map((s) {
+            final delayDays = (s['delay_days'] as num?)?.toInt() ?? 0;
+            totalDelay += delayDays;
+            final originalEnd = s['original_end_date']?.toString() ?? '';
+            final extendedEnd = s['extended_end_date']?.toString() ?? '';
+            final task = s['project_tasks'] as Map<String, dynamic>?;
+            final taskName = task?['name'] as String? ?? 'Unknown';
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.indigo.withOpacity(0.1)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          taskName,
+                          style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900),
+                        ),
+                        if (originalEnd.isNotEmpty && extendedEnd.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Row(
+                              children: [
+                                Text(
+                                  originalEnd,
+                                  style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400, decoration: TextDecoration.lineThrough),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                                  child: Icon(Icons.arrow_forward, size: 12, color: Colors.indigo.shade400),
+                                ),
+                                Text(
+                                  extendedEnd,
+                                  style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.indigo.shade600),
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  if (delayDays > 0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.indigo.withOpacity(0.08),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '+$delayDays day(s)',
+                        style: GoogleFonts.manrope(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.indigo.shade700,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          }),
+          if (totalDelay > 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.indigo.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: Colors.indigo.shade600),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Total schedule extension: +$totalDelay working day(s). Project end date extended accordingly. SPI is calculated against the baseline end date.',
+                      style: GoogleFonts.manrope(fontSize: 11, color: Colors.indigo.shade700),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _impactMetric(String label, String value, Color color) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
+          const SizedBox(height: 2),
+          Text(value, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w600, color: color)),
         ],
       ),
     );

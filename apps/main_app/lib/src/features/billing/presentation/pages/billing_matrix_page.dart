@@ -45,11 +45,13 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
   String? _error;
   double _retainageRate = 5.0;
   final Set<String> _linkedCoIds = {};
+  final Map<String, String> _coTypeMap = {};
   final _fmt = NumberFormat('#,##0.00', 'en_US');
 
   Map<String, List<Map<String, dynamic>>> _machineryByService = {};
   Map<String, List<Map<String, dynamic>>> _machinerySelections = {};
   Set<String> _expandedServices = {};
+  Set<String> _expandedCOs = {};
   int _daysInPeriod = 0;
 
   @override
@@ -88,6 +90,22 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
             .eq('invoice_id', widget.invoiceId);
         _linkedCoIds.clear();
         _linkedCoIds.addAll(links.map<String>((l) => l['change_order_id'].toString()));
+
+        // Load co_type for each linked CO to distinguish disruption vs scope_change
+        _coTypeMap.clear();
+        if (_linkedCoIds.isNotEmpty) {
+          try {
+            final coTypes = await Supabase.instance.client
+                .from('change_orders')
+                .select('co_number, co_type')
+                .in_('id', _linkedCoIds.toList());
+            for (final ct in coTypes ?? []) {
+              final num = ct['co_number']?.toString();
+              final type = ct['co_type']?.toString();
+              if (num != null && type != null) _coTypeMap[num] = type;
+            }
+          } catch (_) {}
+        }
 
         if (mounted) {
           // Sort: services → equipment → CO blocks chronologically
@@ -219,6 +237,16 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         _expandedServices.remove(qsId);
       } else {
         _expandedServices.add(qsId);
+      }
+    });
+  }
+
+  void _toggleCOExpansion(String coNumber) {
+    setState(() {
+      if (_expandedCOs.contains(coNumber)) {
+        _expandedCOs.remove(coNumber);
+      } else {
+        _expandedCOs.add(coNumber);
       }
     });
   }
@@ -423,19 +451,16 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
       final rpcLines = (data['lines'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
 
       setState(() {
-        for (final rpcLine in rpcLines) {
-          final qsId = rpcLine['quote_service_id']?.toString();
-          final matchIndex = _lines.indexWhere((l) {
-            final lt = l['line_type']?.toString() ?? '';
-            if (lt == 'change_order_header' || lt == 'change_order_detail') return false;
-            return l['quote_service_id']?.toString() == qsId;
-          });
-          if (matchIndex >= 0) {
-            _lines[matchIndex]['this_period_amount'] = rpcLine['this_period_amount'];
-            _lines[matchIndex]['this_period_qty'] = rpcLine['this_period_qty'];
-            _lines[matchIndex]['previous_completed'] = rpcLine['previous_completed'];
-          }
-        }
+        // Keep CO linked lines (manually attached), replace service lines from RPC
+        final coLines = _lines.where((l) {
+          final lt = l['line_type']?.toString() ?? '';
+          return lt == 'change_order_header' || lt == 'change_order_detail';
+        }).toList();
+
+        _lines.clear();
+        _lines.addAll(rpcLines);
+        _lines.addAll(coLines);
+        _lines.sort(_lineComparator);
         _isDirty = true;
       });
 
@@ -475,6 +500,29 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
     final aType = typeOrder[a['line_type']?.toString() ?? ''] ?? 99;
     final bType = typeOrder[b['line_type']?.toString() ?? ''] ?? 99;
 
+    final aCoSegment = a['co_segment']?.toString();
+    final bCoSegment = b['co_segment']?.toString();
+    final aIsIncrement = aCoSegment == 'increment';
+    final bIsIncrement = bCoSegment == 'increment';
+
+    // RPC segmented increment lines: sort right after their parent original service
+    if (aIsIncrement && bIsIncrement) {
+      final aCoNum = _parseCoNumber(a['co_number']?.toString());
+      final bCoNum = _parseCoNumber(b['co_number']?.toString());
+      if (aCoNum != bCoNum) return aCoNum.compareTo(bCoNum);
+      return ((a['co_detail_id']?.toString() ?? '').compareTo(b['co_detail_id']?.toString() ?? ''));
+    }
+
+    // Increment next to its parent original (same quote_service_id)
+    if (aIsIncrement) {
+      if (b['line_type'] == 'service' && b['quote_service_id'] == a['quote_service_id']) return 1;
+      return -1; // increment before other items
+    }
+    if (bIsIncrement) {
+      if (a['line_type'] == 'service' && a['quote_service_id'] == b['quote_service_id']) return -1;
+      return 1;
+    }
+
     final aIsCO = aType >= 3;
     final bIsCO = bType >= 3;
 
@@ -486,7 +534,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
       return aType.compareTo(bType); // header (3) before detail (4)
     }
 
-    // Mixed: non-CO always before CO
+    // Mixed: non-CO always before CO (unless increment was handled above)
     if (aIsCO) return 1;
     if (bIsCO) return -1;
 
@@ -564,15 +612,16 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
     );
 
     if (result != null && mounted) {
-      // Remove lines for COs that were unselected (sync - safe in setState)
       setState(() {
         _lines.removeWhere((l) => (l['line_type'] == 'change_order_header' || l['line_type'] == 'change_order_detail') && !result.contains(l['co_id']));
+        _coTypeMap.removeWhere((k, v) => !_linkedCoIds.any((cid) => _coTypeMap[k] == cid));
       });
 
-      // Add header + detail lines for newly selected COs (async - load details first)
       for (final co in approved) {
         final coId = co['id'] as String;
+        final coNumber = co['co_number']?.toString() ?? '';
         if (result.contains(coId) && !_lines.any((l) => l['co_id'] == coId)) {
+          _coTypeMap[coNumber] = co['co_type']?.toString() ?? '';
           final coDetails = await svc.getChangeOrderDetails(coId);
           final adjAmount = (co['adjustment_amount'] as num?)?.toDouble() ?? 0;
 
@@ -1010,46 +1059,106 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
 
     int mainSeq = 0;
     int? coHeaderSeq;
-    int coSubSeq = 0;
 
     for (int i = 0; i < _lines.length; i++) {
       final l = _lines[i];
       final lt = l['line_type']?.toString() ?? '';
+      final coSeg = l['co_segment']?.toString();
 
-      // Hierarchical numbering for CO lines
+      bool isRpcIncrement = lt == 'change_order_detail' && coSeg == 'increment';
+      bool isLegacyHeader = lt == 'change_order_header';
+      bool isLegacyDetail = lt == 'change_order_detail' && !isRpcIncrement;
+
+      // Skip legacy detail rows — they're rendered as children of the header
+      if (isLegacyDetail) continue;
+
+      // Collect detail children for this CO header (if any)
+      List<Map<String, dynamic>> detailChildren = [];
+      String? coNumber;
+      if (isLegacyHeader) {
+        coNumber = l['co_number']?.toString() ?? '';
+        // Find all detail rows sharing this co_number until the next header or end
+        int j = i + 1;
+        while (j < _lines.length) {
+          final next = _lines[j];
+          final nextLt = next['line_type']?.toString() ?? '';
+          if (nextLt == 'change_order_header') break;
+          if (nextLt == 'change_order_detail' && (next['co_segment']?.toString() ?? '') != 'increment') {
+            final nextCoNum = next['co_number']?.toString() ?? '';
+            if (nextCoNum == coNumber || nextCoNum.isEmpty) {
+              detailChildren.add(Map<String, dynamic>.from(next));
+            }
+          }
+          j++;
+        }
+      }
+
+      // --- Render row ---
       String rowNumber;
-      if (lt == 'change_order_header') {
+      final coType = (coNumber != null) ? _coTypeMap[coNumber] : null;
+      final isDisruptionCO = coType == 'disruption';
+      bool isCOParent = isLegacyHeader && isDisruptionCO;
+      bool isScopeCO = isLegacyHeader && !isDisruptionCO;
+
+      // For scope_change COs: merge header with its first detail into single row
+      Map<String, dynamic> effectiveLine = l;
+      if (isScopeCO && detailChildren.isNotEmpty) {
+        final detail = detailChildren.first;
+        final qtyChange = detail['quantity_change']?.toString() ?? '';
+        final unitPrice = l['unit_price']?.toString() ?? (detail['unit_price']?.toString() ?? '');
+        effectiveLine = Map<String, dynamic>.from(l);
+        effectiveLine['service_name'] = 'CO: ${detail['service_name'] ?? ''} (+$qtyChange ${detail['unit_of_measure'] ?? ''}' +
+            (unitPrice.isNotEmpty ? ' × \$${unitPrice}' : '') + ') ' + (coNumber ?? '');
+        effectiveLine['scheduled_value'] = detail['scheduled_value'] ?? l['scheduled_value'];
+        effectiveLine['this_period_amount'] = detail['this_period_amount'] ?? l['this_period_amount'];
+        effectiveLine['previous_completed'] = detail['previous_completed'] ?? l['previous_completed'];
+        effectiveLine['line_type'] = 'change_order_detail';
+        isRpcIncrement = true;
+        isCOParent = false;
+        detailChildren.clear();
+      }
+
+      // Use isScopeCO to skip when already handled (only for non-disruption)
+      if (isScopeCO && !isRpcIncrement) {
         mainSeq++;
-        coHeaderSeq = mainSeq;
-        coSubSeq = 0;
+        continue; // already handled via merged effectiveLine or skip orphan
+      }
+
+      if (isCOParent) {
+        mainSeq++;
         rowNumber = '$mainSeq';
-      } else if (lt == 'change_order_detail') {
-        coSubSeq++;
-        rowNumber = '$coHeaderSeq.$coSubSeq';
+      } else if (isRpcIncrement) {
+        mainSeq++;
+        rowNumber = '$mainSeq';
       } else {
         mainSeq++;
-        coHeaderSeq = null;
-        coSubSeq = 0;
         rowNumber = '$mainSeq';
       }
-      final sv = (l['scheduled_value'] as num?)?.toDouble() ?? 0;
-      final tpAmt = (l['this_period_amount'] as num?)?.toDouble() ?? 0;
-      final prev = (l['previous_completed'] as num?)?.toDouble() ?? 0;
-      final eq = (l['equipment_present'] as num?)?.toDouble() ?? 0;
+
+      final sv = (effectiveLine['scheduled_value'] as num?)?.toDouble() ?? 0;
+      final tpAmt = (effectiveLine['this_period_amount'] as num?)?.toDouble() ?? 0;
+      final prev = (effectiveLine['previous_completed'] as num?)?.toDouble() ?? 0;
+      final eq = (effectiveLine['equipment_present'] as num?)?.toDouble() ?? 0;
       final tc = tpAmt + prev + eq;
       final bal = sv - tc;
-      final ret = l['line_type'] == 'equipment' ? 0.0 : (tpAmt + prev) * _retainageRate / 100;
-      final ttp = l['line_type'] == 'equipment' ? 0.0 : (tpAmt + prev) - ret;
+      final ret = effectiveLine['line_type'] == 'equipment' ? 0.0 : (tpAmt + prev) * _retainageRate / 100;
+      final ttp = effectiveLine['line_type'] == 'equipment' ? 0.0 : (tpAmt + prev) - ret;
 
       final qsId = l['quote_service_id']?.toString();
       final hasMachinery = lt == 'service' && qsId != null && (_machineryByService[qsId]?.isNotEmpty ?? false);
-      final isExpanded = hasMachinery && _expandedServices.contains(qsId);
+      final isMachExpanded = hasMachinery && _expandedServices.contains(qsId);
+      final isCOExpanded = isCOParent && _expandedCOs.contains(coNumber ?? '');
 
-      tSv += sv; tTp += tpAmt; tPrev += prev; tEq += eq;
-      tTc += tc; tBal += bal; tRet += ret; tThis += ttp;
+      // Only add to totals if NOT a collapsed CO parent (header sums include children)
+      // RPC increment rows DO add to totals (they're independent billable items)
+      bool addToTotals = !isCOParent || !isCOExpanded;
+      if (addToTotals) {
+        tSv += sv; tTp += tpAmt; tPrev += prev; tEq += eq;
+        tTc += tc; tBal += bal; tRet += ret; tThis += ttp;
+      }
 
       rows.add(DataRow(
-        color: lt == 'change_order_detail'
+        color: isRpcIncrement || lt == 'change_order_detail'
             ? MaterialStateProperty.all(AppTheme.primaryGreen.withOpacity(0.06))
             : null,
         cells: [
@@ -1058,18 +1167,37 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
               ? InkWell(
                   onTap: () => _toggleServiceExpansion(qsId!),
                   child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    Icon(isExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                    Icon(isMachExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
                         size: 16, color: AppTheme.primaryGreen),
                     const SizedBox(width: 2),
                     Text(rowNumber, style: GoogleFonts.manrope(fontSize: 11)),
                   ]),
                 )
-              : Text(rowNumber, style: GoogleFonts.manrope(fontSize: 11)),
+              : isCOParent && detailChildren.isNotEmpty
+                  ? InkWell(
+                      onTap: () => _toggleCOExpansion(coNumber!),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(isCOExpanded ? Icons.keyboard_arrow_down : Icons.keyboard_arrow_right,
+                            size: 16, color: Colors.orange.shade700),
+                        const SizedBox(width: 2),
+                        Text(rowNumber, style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700)),
+                      ]),
+                    )
+                  : Text(rowNumber, style: GoogleFonts.manrope(fontSize: 11)),
         ),
-        DataCell(Text(l['service_name'] ?? '', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w600))),
+        DataCell(
+          isRpcIncrement
+              ? Padding(
+                  padding: const EdgeInsets.only(left: 20),
+                  child: Text(effectiveLine['service_name'] ?? '',
+                      style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w500, fontStyle: FontStyle.italic)),
+                )
+              : Text(effectiveLine['service_name'] ?? '', style: GoogleFonts.manrope(fontSize: 11,
+                  fontWeight: isCOParent ? FontWeight.w700 : FontWeight.w600)),
+        ),
         DataCell(Text('\$${_fmt.format(sv)}', style: GoogleFonts.manrope(fontSize: 11))),
         DataCell(
-          isSubmitted || l['line_type'] == 'change_order_header' || l['line_type'] == 'change_order_detail'
+          isSubmitted || isCOParent || isRpcIncrement
               ? Text('\$${_fmt.format(tpAmt)}', style: GoogleFonts.manrope(fontSize: 11))
               : SizedBox(
                   width: 100,
@@ -1090,7 +1218,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         ),
         DataCell(Text('\$${_fmt.format(prev)}', style: GoogleFonts.manrope(fontSize: 11))),
         DataCell(
-          isSubmitted || l['line_type'] == 'change_order_header' || l['line_type'] == 'change_order_detail' || hasMachinery
+          isSubmitted || isCOParent || isRpcIncrement || hasMachinery
               ? Text(eq < 0 ? '-\$${_fmt.format(-eq)}' : '\$${_fmt.format(eq)}',
                   style: GoogleFonts.manrope(fontSize: 11,
                       fontWeight: eq < 0 ? FontWeight.w700 : FontWeight.w400,
@@ -1118,7 +1246,43 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         DataCell(Text('\$${_fmt.format(ttp)}', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen))),
       ]));
 
-      if (isExpanded && qsId != null) {
+      // --- CO detail children (expandable) ---
+      if (isCOParent && isCOExpanded && coNumber != null) {
+        int childSeq = 0;
+        for (final child in detailChildren) {
+          childSeq++;
+          final cSv = (child['scheduled_value'] as num?)?.toDouble() ?? 0;
+          final cTpAmt = (child['this_period_amount'] as num?)?.toDouble() ?? 0;
+          final cPrev = (child['previous_completed'] as num?)?.toDouble() ?? 0;
+          final cEq = (child['equipment_present'] as num?)?.toDouble() ?? 0;
+          final cTc = cTpAmt + cPrev + cEq;
+          final cBal = cSv - cTc;
+          final cRet = (cTpAmt + cPrev) * _retainageRate / 100;
+          final cTtp = (cTpAmt + cPrev) - cRet;
+
+          rows.add(DataRow(
+            color: MaterialStateProperty.all(Colors.orange.withOpacity(0.04)),
+            cells: [
+              DataCell(Text('$mainSeq.$childSeq', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate500))),
+              DataCell(Padding(
+                padding: const EdgeInsets.only(left: 20),
+                child: Text(child['service_name'] ?? '', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w500, color: AppTheme.slate600, fontStyle: FontStyle.italic)),
+              )),
+              DataCell(Text('\$${_fmt.format(cSv)}', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate500))),
+              DataCell(Text('\$${_fmt.format(cTpAmt)}', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate500))),
+              DataCell(Text('\$${_fmt.format(cPrev)}', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate500))),
+              DataCell(Text('\$${_fmt.format(cEq)}', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate500))),
+              DataCell(Text('\$${_fmt.format(cTc)}', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate500))),
+              DataCell(Text('\$${_fmt.format(cBal)}', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate500))),
+              DataCell(Text('\$${_fmt.format(cRet)}', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate500))),
+              DataCell(Text('\$${_fmt.format(cTtp)}', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate500))),
+            ],
+          ));
+        }
+      }
+
+      // --- Machinery expansion (unchanged) ---
+      if (isMachExpanded && qsId != null) {
         final machines = _machineryByService[qsId] ?? [];
         for (final m in machines) {
           final inspectionId = m['machinery_inspection_id']?.toString() ?? '';

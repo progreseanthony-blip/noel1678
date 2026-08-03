@@ -26,6 +26,10 @@ class _ProjectMonitoringPageState extends State<ProjectMonitoringPage> {
   Map<String, dynamic>? _machineryIrregularities;
   bool _isLoading = true;
   String? _error;
+  String? _baselineEndDate;
+  int _scheduleExtensionDays = 0;
+  double _baselineBudget = 0;
+  double _approvedCOsTotal = 0;
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
@@ -77,6 +81,16 @@ class _ProjectMonitoringPageState extends State<ProjectMonitoringPage> {
       });
 
       if (mounted) {
+        final supabase = Supabase.instance.client;
+        final pResult = await supabase.from('projects')
+            .select('baseline_end_date, schedule_extension_days, baseline_budget')
+            .eq('id', widget.projectId).maybeSingle();
+        final coResult = await supabase.from('change_orders')
+            .select('adjustment_amount')
+            .eq('project_id', widget.projectId).eq('status', 'approved');
+        final approvedCOs = (coResult as List?)?.fold<double>(0, (s, r) =>
+            s + (((r as Map)['adjustment_amount'] as num?)?.toDouble() ?? 0)) ?? 0;
+
         setState(() {
           _summary = summary;
           _measurement = measurement;
@@ -86,6 +100,10 @@ class _ProjectMonitoringPageState extends State<ProjectMonitoringPage> {
           _workerIrregularities = workerIrreg;
           _machineryIrregularities = machIrreg;
           _isLoading = false;
+          _baselineEndDate = pResult?['baseline_end_date']?.toString();
+          _scheduleExtensionDays = (pResult?['schedule_extension_days'] as num?)?.toInt() ?? 0;
+          _baselineBudget = (pResult?['baseline_budget'] as num?)?.toDouble() ?? (measurement['total_planned_cost'] as num?)?.toDouble() ?? 0;
+          _approvedCOsTotal = approvedCOs;
         });
       }
     } catch (e) {
@@ -188,6 +206,15 @@ currentPath: '/projects/${widget.projectId}/monitoring',
     final overallProgress = (m['overall_progress'] as num?)?.toDouble() ?? 0;
     final cpi = (m['cpi'] as num?)?.toDouble() ?? 1;
     final spi = (m['spi'] as num?)?.toDouble() ?? 1;
+    final spiSubtitle = _baselineEndDate != null && _baselineEndDate!.isNotEmpty
+        ? 'vs baseline ${_baselineEndDate!.substring(0, 10)}'
+        : (spi >= 1 ? 'Ahead of schedule' : 'Behind schedule');
+    final currentBudget = _baselineBudget + _approvedCOsTotal;
+    final coServices = _services.where((s) => s['is_co_service'] == true).toList();
+    final hasCOs = coServices.isNotEmpty;
+    final originalProgress = _baselineBudget > 0
+        ? ((m['total_earned_value'] as num?)?.toDouble() ?? 0) / currentBudget * 100
+        : overallProgress;
 
     return SingleChildScrollView(
       padding: EdgeInsets.all(isMobile ? 16 : 32),
@@ -241,7 +268,7 @@ currentPath: '/projects/${widget.projectId}/monitoring',
               const SizedBox(height: 12),
               KpiCard.dark(
                 title: 'SPI (SCHEDULE INDEX)', value: spi.toStringAsFixed(2),
-                subtitle: spi >= 1 ? 'Ahead of schedule' : 'Behind schedule',
+                subtitle: spiSubtitle,
                 icon: Icons.schedule, color: spi >= 0.9 ? AppTheme.primaryGreen : Colors.redAccent,
                 progress: spi.clamp(0.0, 2.0) / 2,
               ),
@@ -276,7 +303,7 @@ currentPath: '/projects/${widget.projectId}/monitoring',
                 width: 240,
                 child: KpiCard.dark(
                   title: 'SPI (SCHEDULE INDEX)', value: spi.toStringAsFixed(2),
-                  subtitle: spi >= 1 ? 'Ahead of schedule' : 'Behind schedule',
+                  subtitle: spiSubtitle,
                   icon: Icons.schedule, color: spi >= 0.9 ? AppTheme.primaryGreen : Colors.redAccent,
                   progress: spi.clamp(0.0, 2.0) / 2,
                 ),
@@ -292,6 +319,12 @@ currentPath: '/projects/${widget.projectId}/monitoring',
             ]),
 
           const SizedBox(height: 24),
+
+          // Budget card
+          if (_approvedCOsTotal > 0) ...[
+            _buildBudgetCard(isMobile, currentBudget),
+            const SizedBox(height: 20),
+          ],
 
           // Alerts
           if (_alerts.isNotEmpty) ...[
@@ -410,5 +443,46 @@ currentPath: '/projects/${widget.projectId}/monitoring',
         ],
       ),
     );
+  }
+
+  Widget _buildBudgetCard(bool isMobile, double currentBudget) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E293B),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFF334155)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('BUDGET', style: GoogleFonts.manrope(color: AppTheme.slate400, fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 1)),
+          const SizedBox(height: 12),
+          Row(children: [
+            _budgetM('Original', _baselineBudget, Colors.blue.shade300),
+            if (_approvedCOsTotal > 0) ...[
+              const SizedBox(width: 12),
+              _budgetM('+ COs', _approvedCOsTotal, Colors.orange.shade300),
+              const SizedBox(width: 12),
+              _budgetM('= Current', currentBudget, AppTheme.primaryGreen),
+            ],
+          ]),
+          if (_scheduleExtensionDays > 0) ...[
+            const SizedBox(height: 8),
+            Text('Schedule extended by $_scheduleExtensionDays day(s)', style: GoogleFonts.manrope(fontSize: 10, color: Colors.orange.shade300)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _budgetM(String label, double val, Color color) {
+    final v = val >= 1000000 ? '${(val/1000000).toStringAsFixed(1)}M' :
+        val >= 1000 ? '${(val/1000).toStringAsFixed(1)}K' : val.toStringAsFixed(0);
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('\$$v', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: color)),
+      const SizedBox(height: 2),
+      Text(label, style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
+    ]);
   }
 }

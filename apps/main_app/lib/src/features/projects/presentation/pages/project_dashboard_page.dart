@@ -28,6 +28,8 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
   List<Map<String, dynamic>> _recentReports = [];
   bool _isAdmin = false;
   bool _closingProject = false;
+  double _baselineBudget = 0;
+  double _approvedCOsTotal = 0;
 
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -42,7 +44,7 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
     try {
       final pResult = await supabase
           .from('projects')
-          .select('id, title, client_name, status, start_date, end_date, quote_id')
+          .select('id, title, client_name, status, start_date, end_date, quote_id, baseline_budget')
           .eq('id', widget.projectId)
           .maybeSingle();
 
@@ -52,6 +54,12 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
           .eq('project_id', widget.projectId)
           .order('report_date', ascending: false)
           .limit(5);
+
+      final coResult = await supabase
+          .from('change_orders')
+          .select('adjustment_amount')
+          .eq('project_id', widget.projectId)
+          .eq('status', 'approved');
 
       final service = ref.read(productionMeasurementServiceProvider);
       final measurement = await service.getProjectMeasurement(widget.projectId);
@@ -66,6 +74,10 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
       } catch (_) {}
 
       if (mounted) {
+        final dbBaseline = (pResult?['baseline_budget'] as num?)?.toDouble() ?? 0;
+        final approvedCOs = (coResult as List?)
+            ?.fold<double>(0, (sum, r) => sum + ((r as Map)['adjustment_amount'] as num?)!.toDouble()) ?? 0;
+
         setState(() {
           _project = Map<String, dynamic>.from(pResult ?? {});
           _measurement = measurement;
@@ -73,6 +85,8 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
           _isAdmin = admin;
           _isLoading = false;
           _error = (measurement is Map && measurement['error'] != null) ? measurement['error'] as String : null;
+          _baselineBudget = dbBaseline > 0 ? dbBaseline : (measurement['total_planned_cost'] as num?)?.toDouble() ?? 0;
+          _approvedCOsTotal = approvedCOs;
         });
       }
     } catch (e) {
@@ -160,6 +174,20 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
     final totalActualCost = (_measurement?['total_actual_cost'] as num?)?.toDouble() ?? 0;
     final totalEarnedValue = (_measurement?['total_earned_value'] as num?)?.toDouble() ?? 0;
 
+    final originalServices = services.where((s) => s['is_co_service'] != true).toList();
+    final coServices = services.where((s) => s['is_co_service'] == true).toList();
+    final originalPlannedCost = originalServices.fold<double>(0, (s, svc) => s + ((svc['planned_cost'] as num?)?.toDouble() ?? 0));
+    final originalEarned = originalServices.fold<double>(0, (s, svc) => s + ((svc['earned_value'] as num?)?.toDouble() ?? 0));
+    final originalPlannedQty = originalServices.fold<double>(0, (s, svc) => s + ((svc['planned_quantity'] as num?)?.toDouble() ?? 0));
+    final originalActualQty = originalServices.fold<double>(0, (s, svc) => s + ((svc['actual_quantity'] as num?)?.toDouble() ?? 0));
+    final coPlannedCost = coServices.fold<double>(0, (s, svc) => s + ((svc['planned_cost'] as num?)?.toDouble() ?? 0));
+    final coEarned = coServices.fold<double>(0, (s, svc) => s + ((svc['earned_value'] as num?)?.toDouble() ?? 0));
+    final coPlannedQty = coServices.fold<double>(0, (s, svc) => s + ((svc['planned_quantity'] as num?)?.toDouble() ?? 0));
+    final coActualQty = coServices.fold<double>(0, (s, svc) => s + ((svc['actual_quantity'] as num?)?.toDouble() ?? 0));
+    final originalProgress = originalPlannedCost > 0 ? (originalEarned / originalPlannedCost * 100) : 0.0;
+    final coProgress = coPlannedCost > 0 ? (coEarned / coPlannedCost * 100) : 0.0;
+    final currentBudget = _baselineBudget + _approvedCOsTotal;
+
     return SingleChildScrollView(
       padding: EdgeInsets.all(isMobile ? 16 : 32),
       child: Column(
@@ -194,6 +222,15 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
           // Overall Progress Card
           _buildProgressCard(overallProgress, cpi, spi, totalPlannedCost, totalActualCost, totalEarnedValue),
           const SizedBox(height: 20),
+
+          // Budget Waterfall
+          _buildBudgetCard(currentBudget),
+          const SizedBox(height: 20),
+
+          // Segmented Progress
+          if (coServices.isNotEmpty)
+            _buildSegmentedProgress(originalProgress, coProgress, originalPlannedCost, coPlannedCost, originalEarned, coEarned, originalPlannedQty, originalActualQty, coPlannedQty, coActualQty),
+          if (coServices.isNotEmpty) const SizedBox(height: 20),
 
           // Project Status
           _buildProjectStatus(),
@@ -267,6 +304,140 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
     if (v >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
     if (v >= 1000) return '${(v / 1000).toStringAsFixed(1)}K';
     return v.toStringAsFixed(0);
+  }
+
+  Widget _buildBudgetCard(double currentBudget) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.slate200),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Budget', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _buildBudgetItem('Original', '\$${_fmt(_baselineBudget)}', AppTheme.slate900),
+              ),
+              if (_approvedCOsTotal > 0) ...[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Icon(Icons.add, size: 16, color: AppTheme.slate400),
+                ),
+                Expanded(
+                  child: _buildBudgetItem('Change Orders', '\$${_fmt(_approvedCOsTotal)}', Colors.orange),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Icon(Icons.drag_handle, size: 16, color: AppTheme.slate400),
+                ),
+              ],
+              Expanded(
+                child: _buildBudgetItem('Current', '\$${_fmt(currentBudget)}', AppTheme.primaryGreen),
+              ),
+            ],
+          ),
+          if (_approvedCOsTotal > 0) ...[
+            const SizedBox(height: 10),
+            _buildBudgetBar(_baselineBudget, _approvedCOsTotal),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBudgetItem(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(value, style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w900, color: color)),
+        const SizedBox(height: 2),
+        Text(label, style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
+      ],
+    );
+  }
+
+  Widget _buildBudgetBar(double original, double coTotal) {
+    final total = original + coTotal;
+    if (total <= 0) return const SizedBox.shrink();
+    final originalFrac = original / total;
+    final coFrac = coTotal / total;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(4),
+      child: SizedBox(
+        height: 8,
+        child: Row(
+          children: [
+            if (originalFrac > 0) Expanded(flex: (originalFrac * 1000).round(), child: Container(color: AppTheme.slate500)),
+            if (coFrac > 0) Expanded(flex: (coFrac * 1000).round(), child: Container(color: Colors.orange)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSegmentedProgress(
+    double originalPct, double coPct,
+    double originalCost, double coCost,
+    double originalEarned, double coEarned,
+    double originalQty, double originalActual,
+    double coQty, double coActual,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.slate200),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 12, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Progress by Scope', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _buildScopeProgress('Original', originalPct, originalEarned, originalCost, AppTheme.slate700),
+              ),
+              const SizedBox(width: 24),
+              Expanded(
+                child: _buildScopeProgress('Change Orders', coPct, coEarned, coCost, Colors.orange),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScopeProgress(String label, double pct, double earned, double cost, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
+            Text('${pct.toStringAsFixed(1)}%', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w900, color: color)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: LinearProgressIndicator(value: (pct / 100).clamp(0, 1), backgroundColor: AppTheme.slate200, color: color, minHeight: 6),
+        ),
+        const SizedBox(height: 6),
+        Text('Earned: \$${_fmt(earned)} / \$${_fmt(cost)}', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w500, color: AppTheme.slate500)),
+      ],
+    );
   }
 
   Widget _buildMetric(String label, String value, Color color) {
