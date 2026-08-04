@@ -944,8 +944,25 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
                     'Machine';
                 final svcName = m['quote_services']?['name'] as String? ?? '';
                 final subtitleText = svcName.isNotEmpty ? svcName : 'Standby compensation';
+                final photoUrl = m['machinery']?['photo_url']?.toString();
                 return CheckboxListTile(
                   dense: true,
+                  secondary: Container(
+                    width: 50,
+                    height: 40,
+                    decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(4),
+                        color: AppTheme.slate50),
+                    clipBehavior: Clip.antiAlias,
+                    child: (photoUrl != null && photoUrl.isNotEmpty)
+                        ? Image.network(photoUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                const Icon(Icons.precision_manufacturing,
+                                    size: 20, color: AppTheme.slate400))
+                        : const Icon(Icons.precision_manufacturing,
+                            size: 20, color: AppTheme.slate400),
+                  ),
                   title: Text(
                     name,
                     style: GoogleFonts.manrope(

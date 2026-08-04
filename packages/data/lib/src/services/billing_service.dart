@@ -458,7 +458,7 @@ class BillingService {
         .from('project_machinery')
         .select('''
           id, machinery_name,
-          machinery!left(id, description, capacity_yards),
+          machinery!left(id, description, capacity_yards, photo_url),
           quote_services!left(id, name)
         ''')
         .eq('project_id', projectId);
