@@ -128,6 +128,7 @@ class QuotesService {
         .from('quote_services')
         .select()
         .eq('quote_id', quoteId)
+        .is_('source_co_id', null)
         .order('created_at');
 
     final List<Map<String, dynamic>> servicesWithData = [];
