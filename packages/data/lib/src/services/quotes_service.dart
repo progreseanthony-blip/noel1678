@@ -40,7 +40,7 @@ class QuotesService {
 
   // ── Quote Services ──
   Future<List<Map<String, dynamic>>> getServicesForQuote(String quoteId) async {
-    final response = await _supabase.from('quote_services').select().eq('quote_id', quoteId).order('created_at');
+    final response = await _supabase.from('quote_services').select().eq('quote_id', quoteId).is_('source_co_id', null).order('created_at');
     return List<Map<String, dynamic>>.from(response ?? []);
   }
 

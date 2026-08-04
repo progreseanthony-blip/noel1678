@@ -47,7 +47,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
       final sb = Supabase.instance.client;
 
       final quoteData = await sb.from('quotes').select().eq('id', widget.quoteId).single();
-      final servicesData = await sb.from('quote_services').select().eq('quote_id', widget.quoteId).order('created_at');
+      final servicesData = await sb.from('quote_services').select().eq('quote_id', widget.quoteId).is_('source_co_id', null).order('created_at');
 
       final machMap = <String, List<Map<String, dynamic>>>{};
       final laborMap = <String, List<Map<String, dynamic>>>{};
