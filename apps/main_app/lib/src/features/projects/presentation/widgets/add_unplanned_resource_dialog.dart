@@ -663,7 +663,7 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
         payload.addAll({
           'role_id': selectedItem['id'],
           'role_name': itemName,
-          'expected_employees': qty,
+          'expected_employees': 1,
         });
       } else if (_selectedType == 'Material') {
         table = 'project_materials';
@@ -691,6 +691,12 @@ class _AddUnplannedResourceDialogState extends ConsumerState<AddUnplannedResourc
 
       if (widget.initialData != null) {
         await supabase.from(table).update(payload).eq('id', widget.initialData!['id']);
+      } else if (_selectedType == 'Labor') {
+        for (int j = 0; j < qty; j++) {
+          final p = Map<String, dynamic>.from(payload);
+          if (j > 0) p['unplanned_cost'] = 0;
+          await supabase.from(table).insert(p);
+        }
       } else {
         await supabase.from(table).insert(payload);
       }

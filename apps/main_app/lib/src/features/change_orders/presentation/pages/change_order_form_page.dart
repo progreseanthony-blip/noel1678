@@ -39,6 +39,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
   bool _loadingData = false;
 
   String _coType = 'scope_change';
+  String? _originalStatus;
   String? _disruptionReasonId;
   DateTime? _disruptionStart;
   DateTime? _disruptionEnd;
@@ -108,6 +109,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
       _schedDays = (co['schedule_days_change'] as num?)?.toInt() ?? 0;
       _schedDaysCtrl.text = _schedDays == 0 ? '' : _schedDays.toString();
       _coType = co['co_type'] ?? 'scope_change';
+      _originalStatus = co['status']?.toString();
       _lines.clear();
       for (final d in details) {
         _lines.add(Map<String, dynamic>.from(d as Map));
@@ -226,10 +228,11 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
       final svcQty = (selected['quantity'] as num?)?.toDouble() ?? 1;
       final unitPrice = svcQty > 0 ? (directCost / svcQty).toDouble() : 0.0;
       final svcId = selected['id'] as String?;
+      final isProjectService = selected['is_project_service'] == true;
 
       // Fetch estimation for auto-calculating schedule days
       double totalWorkingDays = 0;
-      if (svcId != null && _coType == 'scope_change') {
+      if (svcId != null && _coType == 'scope_change' && !isProjectService) {
         try {
           final estData = await Supabase.instance.client
               .from('quote_service_estimations')
@@ -243,7 +246,8 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
       final result = await _showLineEditor(
         serviceName: selected['name'] ?? '',
         unitOfMeasure: selected['unit_of_measure'] ?? 'und',
-        quoteServiceId: svcId,
+        quoteServiceId: isProjectService ? null : svcId,
+        projectServiceId: isProjectService ? svcId : null,
         lineType: 'existing_service',
         initialUnitPrice: unitPrice,
       );
@@ -674,6 +678,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
       serviceName: line['service_name'] as String? ?? '',
       unitOfMeasure: line['unit_of_measure'] as String? ?? 'und',
       quoteServiceId: line['quote_service_id'] as String?,
+      projectServiceId: line['project_service_id'] as String?,
       catalogServiceId: line['catalog_service_id'] as String?,
       lineType: lineType,
       existing: line,
@@ -684,6 +689,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     required String serviceName,
     required String unitOfMeasure,
     String? quoteServiceId,
+    String? projectServiceId,
     String? catalogServiceId,
     String lineType = 'existing_service',
     Map<String, dynamic>? existing,
@@ -756,6 +762,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
                 'service_name': serviceName,
                 'unit_of_measure': unitOfMeasure,
                 'quote_service_id': quoteServiceId,
+                'project_service_id': projectServiceId,
                 'catalog_service_id': catalogServiceId,
                 'line_type': type,
                 'quantity_change': qty,
@@ -844,13 +851,17 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
         disruptionType = reason['code'] as String?;
       }
 
-      if (_isEditing) {
+        if (_isEditing) {
         await controller.updateChangeOrder(widget.coId!, {
           'title': _titleCtrl.text.trim(),
           'description': _descCtrl.text.trim(),
           'schedule_days_change': _schedDays,
           'co_type': _coType,
         });
+
+        if (_originalStatus == 'rejected') {
+          await controller.submitChangeOrder(widget.coId!);
+        }
 
         if (_coType == 'scope_change' && _lines.isNotEmpty) {
           final savedDetails =

@@ -730,7 +730,7 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
               _buildScheduleImpact(),
             ],
           ],
-          if (status == 'draft') ...[
+          if (status == 'draft' || status == 'rejected') ...[
             const SizedBox(height: 24),
             Row(
               children: [

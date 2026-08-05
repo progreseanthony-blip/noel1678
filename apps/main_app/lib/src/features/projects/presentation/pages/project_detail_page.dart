@@ -270,6 +270,42 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
     }
   }
 
+  List<Map<String, dynamic>> _aggregateLaborRows(List<Map<String, dynamic>> items) {
+    final Map<String, Map<String, dynamic>> merged = {};
+    final Map<String, List<Map<String, dynamic>>> groups = {};
+
+    for (final item in items) {
+      final qsId = item['quote_service_id']?.toString() ?? '_';
+      final role = item['role_name']?.toString() ?? 'General Worker';
+      final key = '${qsId}_$role';
+      (groups[key] ??= []).add(item);
+    }
+
+    for (final entry in groups.entries) {
+      final rows = entry.value;
+      final first = Map<String, dynamic>.from(rows.first);
+      final allAssignments = <Map<String, dynamic>>[];
+      int activeCount = 0;
+
+      for (final row in rows) {
+        final assignments = row['project_labor_assignments'];
+        if (assignments != null && assignments is List) {
+          allAssignments.addAll(assignments.cast<Map<String, dynamic>>());
+        }
+        if (((row['active_employees'] as num?)?.toInt() ?? 0) > 0) {
+          activeCount++;
+        }
+      }
+
+      first['expected_employees'] = rows.length;
+      first['active_employees'] = activeCount;
+      first['project_labor_assignments'] = allAssignments;
+      merged[entry.key] = first;
+    }
+
+    return merged.values.toList();
+  }
+
   Map<String, List<Map<String, dynamic>>> _groupByService(List<Map<String, dynamic>> items, String relationName) {
     final Map<String, List<Map<String, dynamic>>> groups = {};
     for (final item in items) {
@@ -1548,7 +1584,8 @@ currentPath: '/projects/${widget.projectId}',
       );
     }
 
-    final grouped = _groupByService(_labor, 'quote_service_labors');
+    final aggregatedLabor = _aggregateLaborRows(_labor);
+    final grouped = _groupByService(aggregatedLabor, 'quote_service_labors');
     
     final serviceNames = grouped.keys.toList()
         .where((s) => _selectedServiceFilter == 'All Services' || s == _selectedServiceFilter)

@@ -113,15 +113,18 @@ class ProjectService {
       // ... labor logic ...
       final List labors = service['quote_service_labors'] ?? [];
       for (final lab in labors) {
-        laborToInsert.add({
-          'project_id': projectId,
-          'quote_service_labor_id': lab['id'],
-          'quote_service_id': service['id'],
-          'role_name': lab['role_name'] ?? 'General Worker',
-          'expected_employees': (lab['employees_quantity'] as num?)?.toInt() ?? 1,
-          'active_employees': 0,
-          'is_unplanned': false,
-        });
+        final count = (lab['employees_quantity'] as num?)?.toInt() ?? 1;
+        for (int i = 0; i < count; i++) {
+          laborToInsert.add({
+            'project_id': projectId,
+            'quote_service_labor_id': lab['id'],
+            'quote_service_id': service['id'],
+            'role_name': lab['role_name'] ?? 'General Worker',
+            'expected_employees': 1,
+            'active_employees': 0,
+            'is_unplanned': false,
+          });
+        }
       }
 
       // ... instruments logic ...

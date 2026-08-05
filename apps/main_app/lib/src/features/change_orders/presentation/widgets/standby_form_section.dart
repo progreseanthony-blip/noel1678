@@ -943,7 +943,12 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
                     m['machinery']?['description'] ??
                     'Machine';
                 final svcName = m['quote_services']?['name'] as String? ?? '';
-                final subtitleText = svcName.isNotEmpty ? svcName : 'Standby compensation';
+                final monthlyRent = (m['quote_service_machineries']?['monthly_rent_cost'] as num?)?.toDouble() ?? 0;
+                final hourlyRate = monthlyRent > 0 ? monthlyRent / 30 / 8 : 0;
+                final subtitleParts = <String>[];
+                if (svcName.isNotEmpty) subtitleParts.add(svcName);
+                if (hourlyRate > 0) subtitleParts.add('\$${hourlyRate.toStringAsFixed(2)}/hr');
+                final subtitleText = subtitleParts.isNotEmpty ? subtitleParts.join(' — ') : 'Standby compensation';
                 final photoUrl = m['machinery']?['photo_url']?.toString();
                 return CheckboxListTile(
                   dense: true,

@@ -26,12 +26,32 @@ class ProductionMeasurementService {
     final quoteId = project['quote_id'];
 
     List<Map<String, dynamic>> plannedServices = [];
-    if (quoteId != null) {
-      final qsResult = await _supabase
-          .from('quote_services')
-          .select('id, name, quantity, unit_of_measure, direct_cost, source_co_id')
-          .eq('quote_id', quoteId);
-      plannedServices = List<Map<String, dynamic>>.from(qsResult ?? []);
+
+    if (projectId.isNotEmpty) {
+      final psResult = await _supabase
+          .from('project_services')
+          .select('id, name, quantity, unit_of_measure, direct_cost, source_co_id, quote_service_id')
+          .eq('project_id', projectId);
+      final allProjectServices = List<Map<String, dynamic>>.from(psResult ?? []);
+      final mirroredQsIds = allProjectServices
+          .where((ps) => ps['quote_service_id'] != null)
+          .map((ps) => ps['quote_service_id'].toString())
+          .toSet();
+
+      plannedServices.addAll(allProjectServices);
+
+      if (quoteId != null) {
+        final qsResult = await _supabase
+            .from('quote_services')
+            .select('id, name, quantity, unit_of_measure, direct_cost, source_co_id')
+            .eq('quote_id', quoteId);
+        for (final qs in qsResult ?? []) {
+          final qsId = qs['id'].toString();
+          if (!mirroredQsIds.contains(qsId)) {
+            plannedServices.add(Map<String, dynamic>.from(qs));
+          }
+        }
+      }
     }
 
     final serviceUnits = {for (final s in plannedServices) s['id'].toString(): (s['unit_of_measure'] as String?)?.toLowerCase() ?? ''};
@@ -44,11 +64,20 @@ class ProductionMeasurementService {
 
     final serviceIds = plannedServices.map((s) => s['id'].toString()).toList();
 
+    // Build list of quote_service_ids for joins (includes mirrored project_services)
+    final allServiceIdsForJoin = [
+      ...serviceIds,
+      ...plannedServices
+          .where((s) => s['quote_service_id'] != null)
+          .map((s) => s['quote_service_id'].toString()),
+    ];
+    final quoteServiceIds = allServiceIdsForJoin.where((id) => id.isNotEmpty).toSet().toList();
+
     final matPriceMap = await _fetchMaterialPriceMap(projectId);
 
     final elapsedDays = await _computeElapsedDays(project, projectId);
 
-    final equipCostByService = await _fetchEquipmentCosts(serviceIds, elapsedDays);
+    final equipCostByService = await _fetchEquipmentCosts(quoteServiceIds, elapsedDays);
 
     final Map<String, double> actualProduction = {};
     final Map<String, double> actualMachHours = {};
@@ -112,12 +141,12 @@ class ProductionMeasurementService {
 
     // Detect services extended by approved scope_change COs (existing_service)
     final Set<String> extendedServiceIds = {};
-    if (serviceIds.isNotEmpty) {
+    if (quoteServiceIds.isNotEmpty) {
       try {
         final coDetails = await _supabase
             .from('change_order_details')
             .select('quote_service_id, change_order_id')
-            .in_('quote_service_id', serviceIds)
+            .in_('quote_service_id', quoteServiceIds)
             .eq('line_type', 'existing_service');
 
         if (coDetails != null && coDetails.isNotEmpty) {
@@ -163,7 +192,10 @@ class ProductionMeasurementService {
       totalEarnedValue += ev;
 
       final isCoService = ps['source_co_id'] != null;
-      final hasCoExtension = !isCoService && extendedServiceIds.contains(qsId);
+      final originalQsId = ps['quote_service_id']?.toString();
+      final hasCoExtension = !isCoService &&
+          (extendedServiceIds.contains(qsId) ||
+           (originalQsId != null && extendedServiceIds.contains(originalQsId)));
       services.add({
         'quote_service_id': qsId,
         'name': ps['name'] ?? '',
@@ -368,15 +400,34 @@ class ProductionMeasurementService {
     final quoteId = project?['quote_id'];
     double totalPlannedCost = 0;
     int servicesCount = 0;
+
+    final psResult = await _supabase
+        .from('project_services')
+        .select('id, direct_cost, quote_service_id')
+        .eq('project_id', projectId);
+    final allProjectServices = List<Map<String, dynamic>>.from(psResult ?? []);
+    final mirroredQsIds = allProjectServices
+        .where((ps) => ps['quote_service_id'] != null)
+        .map((ps) => ps['quote_service_id'].toString())
+        .toSet();
+
+    for (final s in allProjectServices) {
+      servicesCount++;
+      totalPlannedCost += (s['direct_cost'] as num?)?.toDouble() ?? 0;
+    }
+
     if (quoteId != null) {
       final qs = await _supabase
           .from('quote_services')
           .select('id, direct_cost')
           .eq('quote_id', quoteId);
       final plannedServices = List<Map<String, dynamic>>.from(qs ?? []);
-      servicesCount = plannedServices.length;
       for (final s in plannedServices) {
-        totalPlannedCost += (s['direct_cost'] as num?)?.toDouble() ?? 0;
+        final qsId = s['id'].toString();
+        if (!mirroredQsIds.contains(qsId)) {
+          servicesCount++;
+          totalPlannedCost += (s['direct_cost'] as num?)?.toDouble() ?? 0;
+        }
       }
     }
 

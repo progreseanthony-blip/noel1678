@@ -228,6 +228,7 @@ class BillingService {
       'change_order_id',
       'line_type',
       'quote_service_id',
+      'project_service_id',
       'catalog_service_id',
       'effective_date',
       'service_name',
@@ -289,14 +290,29 @@ class BillingService {
         .single();
 
     final quoteId = project['quote_id'] as String?;
-    if (quoteId == null) return [];
 
-    final response = await _supabase
-        .from('quote_services')
-        .select()
-        .eq('quote_id', quoteId)
+    final List<Map<String, dynamic>> results = [];
+
+    if (quoteId != null) {
+      final qsResult = await _supabase
+          .from('quote_services')
+          .select()
+          .eq('quote_id', quoteId)
+          .order('created_at');
+      results.addAll(List<Map<String, dynamic>>.from(qsResult ?? []));
+    }
+
+    final psResult = await _supabase
+        .from('project_services')
+        .select('id, name, unit_of_measure, quantity, direct_cost, target_price, source_co_id, quote_service_id, created_at, project_id')
+        .eq('project_id', projectId)
         .order('created_at');
-    return List<Map<String, dynamic>>.from(response ?? []);
+    for (final ps in psResult ?? []) {
+      ps['is_project_service'] = true;
+      results.add(Map<String, dynamic>.from(ps));
+    }
+
+    return results;
   }
 
   // ── Disruption Services (CO ↔ Project Tasks) ──
@@ -314,49 +330,52 @@ class BillingService {
   Future<List<Map<String, dynamic>>> getProjectTasksForDisruption(
     String projectId,
   ) async {
-    // 1. Ensure project_tasks exist for all CO-created services
     try {
-      final projectData = await _supabase
-          .from('projects')
-          .select('quote_id')
-          .eq('id', projectId)
-          .maybeSingle();
-      final quoteId = projectData?['quote_id']?.toString();
+      final coServices = await _supabase
+          .from('project_services')
+          .select('id, name, quote_service_id')
+          .eq('project_id', projectId)
+          .filter('source_co_id', 'not.is', 'null');
 
-      if (quoteId != null) {
-        final coServices = await _supabase
-            .from('quote_services')
-            .select('id, name')
-            .eq('quote_id', quoteId)
-            .filter('source_co_id', 'not.is', 'null');
+      final existingTasks = await _supabase
+          .from('project_tasks')
+          .select('quote_service_id, project_service_id')
+          .eq('project_id', projectId);
+      final existingQsIds = (existingTasks ?? [])
+          .map((t) => t['quote_service_id']?.toString())
+          .where((id) => id != null)
+          .toSet();
+      final existingPsIds = (existingTasks ?? [])
+          .map((t) => t['project_service_id']?.toString())
+          .where((id) => id != null)
+          .toSet();
 
-        final existingTasks = await _supabase
-            .from('project_tasks')
-            .select('quote_service_id')
-            .eq('project_id', projectId);
-        final existingQsIds = (existingTasks ?? [])
-            .map((t) => t['quote_service_id']?.toString())
-            .where((id) => id != null)
-            .toSet();
+      for (final ps in coServices ?? []) {
+        final psId = ps['id']?.toString();
+        final qsId = ps['quote_service_id']?.toString();
 
-        for (final qs in coServices ?? []) {
-          final qsId = qs['id']?.toString();
-          if (qsId != null && !existingQsIds.contains(qsId)) {
-            await _supabase.from('project_tasks').insert({
-              'project_id': projectId,
-              'quote_service_id': qsId,
-              'name': qs['name'] ?? 'CO Service',
-              'status': 'pending',
-            });
-          }
+        if (psId != null && !existingPsIds.contains(psId)) {
+          await _supabase.from('project_tasks').insert({
+            'project_id': projectId,
+            'quote_service_id': qsId,
+            'project_service_id': psId,
+            'name': ps['name'] ?? 'CO Service',
+            'status': 'pending',
+          });
+        } else if (qsId != null && !existingQsIds.contains(qsId)) {
+          await _supabase.from('project_tasks').insert({
+            'project_id': projectId,
+            'quote_service_id': qsId,
+            'name': ps['name'] ?? 'CO Service',
+            'status': 'pending',
+          });
         }
       }
     } catch (_) {}
 
-    // 2. Return all project_tasks for this project
     final response = await _supabase
         .from('project_tasks')
-        .select('id, name, status, quote_service_id')
+        .select('id, name, status, quote_service_id, project_service_id')
         .eq('project_id', projectId)
         .order('name');
     return List<Map<String, dynamic>>.from(response ?? []);
@@ -459,7 +478,8 @@ class BillingService {
         .select('''
           id, machinery_name,
           machinery!left(id, description, capacity_yards, photo_url),
-          quote_services!left(id, name)
+          quote_services!left(id, name),
+          quote_service_machineries!left(id, monthly_rent_cost)
         ''')
         .eq('project_id', projectId);
     if (quoteServiceIds != null && quoteServiceIds.isNotEmpty) {
@@ -573,15 +593,20 @@ class BillingService {
     String changeOrderId,
     Map<String, dynamic> serviceData,
   ) async {
+    final co = await _supabase
+        .from('change_orders')
+        .select('project_id')
+        .eq('id', changeOrderId)
+        .maybeSingle();
+    final projectId = co?['project_id'] as String?;
+
     final response = await _supabase
-        .from('quote_services')
+        .from('project_services')
         .insert({
-          'quote_id': serviceData['quote_id'],
+          'project_id': projectId,
           'name': serviceData['name'],
           'unit_of_measure': serviceData['unit_of_measure'] ?? 'und',
           'quantity': serviceData['quantity'] ?? 1,
-          'overhead_percentage': serviceData['overhead_percentage'] ?? 0,
-          'profit_percentage': serviceData['profit_percentage'] ?? 0,
           'direct_cost': serviceData['direct_cost'] ?? 0,
           'target_price': serviceData['target_price'] ?? 0,
           'source_co_id': changeOrderId,
@@ -604,12 +629,6 @@ class BillingService {
         .eq('change_order_id', changeOrderId);
 
     final projectId = co['project_id'] as String;
-    final project = await _supabase
-        .from('projects')
-        .select('quote_id')
-        .eq('id', projectId)
-        .maybeSingle();
-    final quoteId = project?['quote_id'] as String?;
 
     for (final detail in (details as List<dynamic>).cast<Map<String, dynamic>>()) {
       final lineType = detail['line_type'] as String? ?? '';
@@ -633,19 +652,21 @@ class BillingService {
                   .eq('quote_service_id', quoteServiceId)
                   .eq('project_id', projectId);
               for (final e in (existing as List<dynamic>).cast<Map<String, dynamic>>()) {
-                final expected = ((e['expected_employees'] as num?)?.toDouble() ?? 0) * factor;
+                final expected = ((e['expected_employees'] as num?)?.toDouble() ?? 1) * factor;
                 if (expected <= 0) continue;
-                await _supabase.from('project_labor').insert({
-                  'project_id': projectId,
-                  'quote_service_id': quoteServiceId,
-                  'quote_service_labor_id': e['quote_service_labor_id'],
-                  'role_name': e['role_name'] ?? 'Additional Labor',
-                  'expected_employees': expected.ceil(),
-                  'active_employees': 0,
-                  'is_unplanned': true,
-                  'change_type': 'change_order',
-                  'source_co_id': changeOrderId,
-                });
+                for (int j = 0; j < expected.ceil(); j++) {
+                  await _supabase.from('project_labor').insert({
+                    'project_id': projectId,
+                    'quote_service_id': quoteServiceId,
+                    'quote_service_labor_id': e['quote_service_labor_id'],
+                    'role_name': e['role_name'] ?? 'Additional Labor',
+                    'expected_employees': 1,
+                    'active_employees': 0,
+                    'is_unplanned': true,
+                    'change_type': 'change_order',
+                    'source_co_id': changeOrderId,
+                  });
+                }
               }
               break;
             case 'machinery':
@@ -711,13 +732,12 @@ class BillingService {
           }
         }
       } else if (lineType == 'new_service' && plans.isNotEmpty) {
-        // Create quote_service for the new service if not yet exists
-        String? newQuoteServiceId = quoteServiceId;
-        if (newQuoteServiceId == null) {
+        String? newServiceId = quoteServiceId;
+        if (newServiceId == null) {
           final created = await _supabase
-              .from('quote_services')
+              .from('project_services')
               .insert({
-                'quote_id': quoteId,
+                'project_id': projectId,
                 'name': detail['service_name'] ?? 'New Service',
                 'unit_of_measure': detail['unit_of_measure'] ?? 'und',
                 'quantity': (detail['quantity_change'] as num?)?.toDouble() ?? 1,
@@ -727,31 +747,32 @@ class BillingService {
               })
               .select()
               .single();
-          newQuoteServiceId = created['id'] as String;
+          newServiceId = created['id'] as String;
         }
 
         for (final plan in plans) {
           final resourceType = plan['resource_type'] as String? ?? '';
           switch (resourceType) {
             case 'labor':
-              await _supabase.from('project_labor').insert({
-                'project_id': projectId,
-                'quote_service_id': newQuoteServiceId,
-                'role_name': plan['resource_name'] ?? 'Additional Labor',
-                'expected_employees':
-                    (plan['employees_quantity'] as num?)?.toInt() ??
-                        (plan['quantity'] as num?)?.toInt() ??
-                        1,
-                'active_employees': 0,
-                'is_unplanned': true,
-                'change_type': 'change_order',
-                'source_co_id': changeOrderId,
-              });
+              final empCount = (plan['employees_quantity'] as num?)?.toInt() ??
+                  (plan['quantity'] as num?)?.toInt() ?? 1;
+              for (int j = 0; j < empCount; j++) {
+                await _supabase.from('project_labor').insert({
+                  'project_id': projectId,
+                  'project_service_id': newServiceId,
+                  'role_name': plan['resource_name'] ?? 'Additional Labor',
+                  'expected_employees': 1,
+                  'active_employees': 0,
+                  'is_unplanned': true,
+                  'change_type': 'change_order',
+                  'source_co_id': changeOrderId,
+                });
+              }
               break;
             case 'machinery':
               await _supabase.from('project_machinery').insert({
                 'project_id': projectId,
-                'quote_service_id': newQuoteServiceId,
+                'project_service_id': newServiceId,
                 'machinery_name':
                     plan['resource_name'] ?? 'Additional Machinery',
                 'expected_quantity':
@@ -764,7 +785,7 @@ class BillingService {
             case 'material':
               await _supabase.from('project_materials').insert({
                 'project_id': projectId,
-                'quote_service_id': newQuoteServiceId,
+                'project_service_id': newServiceId,
                 'material_name':
                     plan['resource_name'] ?? 'Additional Material',
                 'expected_quantity':
@@ -777,7 +798,7 @@ class BillingService {
             case 'instrument':
               await _supabase.from('project_instruments').insert({
                 'project_id': projectId,
-                'quote_service_id': newQuoteServiceId,
+                'project_service_id': newServiceId,
                 'instrument_name':
                     plan['resource_name'] ?? 'Additional Equipment',
                 'expected_quantity':
@@ -847,9 +868,10 @@ class BillingService {
       return results;
     }
 
-    // Idempotency check
+    final nonWorkingDates = await _loadNonWorkingDates(projectId);
+
     if (disruptionResult['schedule_impact_applied_at'] != null) {
-      debugPrint('[applyScheduleImpact] ALREADY APPLIED for CO $changeOrderId, skipping (schedule_impact_applied_at set)');
+      debugPrint('[applyScheduleImpact] ALREADY APPLIED for CO $changeOrderId, skipping');
       results['schedule_extended'] = true;
       results['already_applied'] = true;
       return results;
@@ -900,16 +922,17 @@ class BillingService {
       allServiceIds.add(quoteServiceId);
       delayByServiceId[quoteServiceId] = delayDays;
 
-      // a. Get task planned_end_date
-      final taskData = await _supabase
-          .from('project_tasks')
-          .select('planned_end_date')
-          .eq('id', taskId)
-          .maybeSingle();
-
-      final originalEndStr = taskData?['planned_end_date']?.toString();
+      // a. Get the base end date to shift from
+      final bool isReapplication = svc['original_end_date'] != null;
+      final originalEndStr = isReapplication
+          ? svc['original_end_date']?.toString()
+          : (await _supabase
+              .from('project_tasks')
+              .select('planned_end_date')
+              .eq('id', taskId)
+              .maybeSingle())?['planned_end_date']?.toString();
       final originalEnd = originalEndStr != null ? DateTime.tryParse(originalEndStr) : null;
-      final newEnd = originalEnd?.add(Duration(days: delayDays));
+      final newEnd = _addWorkingDays(originalEnd, delayDays, nonWorkingDates: nonWorkingDates);
 
       // b. Update project_tasks
       await _supabase
@@ -926,13 +949,21 @@ class BillingService {
           })
           .eq('id', svc['id'] as String);
 
-      // d. Shift resources for this service
-      await _shiftServiceResources(quoteServiceId, projectId, delayDays, disruptionStartDate: disruptionStartDate);
+      // d. Shift resources: if re-applying, undo first then redo
+      if (isReapplication) {
+        await _shiftServiceResources(quoteServiceId, projectId, delayDays,
+            disruptionStartDate: disruptionStartDate,
+            nonWorkingDates: nonWorkingDates,
+            reverse: true);
+      }
+      await _shiftServiceResources(quoteServiceId, projectId, delayDays,
+          disruptionStartDate: disruptionStartDate,
+          nonWorkingDates: nonWorkingDates);
     }
 
     // 2. Cascade: shift downstream services that share resources
     if (allServiceIds.isNotEmpty) {
-      await _cascadeDownstreamServices(projectId, allServiceIds, delayByServiceId, disruptionStartDate: disruptionStartDate);
+      await _cascadeDownstreamServices(projectId, allServiceIds, delayByServiceId, disruptionStartDate: disruptionStartDate, nonWorkingDates: nonWorkingDates);
     }
 
     // 3. Detect conflicts
@@ -975,7 +1006,7 @@ class BillingService {
     final maxDelayDays = delayByServiceId.values.fold(0, (a, b) => a > b ? a : b);
     final newProjectEnd = (maxNewEnd != null && currentEnd != null && maxNewEnd.isAfter(currentEnd))
         ? maxNewEnd
-        : currentEnd?.add(Duration(days: maxDelayDays));
+        : _addWorkingDays(currentEnd, maxDelayDays, nonWorkingDates: nonWorkingDates);
 
     final existingExt = (projectData?['schedule_extension_days'] as num?)?.toInt() ?? 0;
 
@@ -1001,7 +1032,11 @@ class BillingService {
     return results;
   }
 
-  Future<void> _shiftServiceResources(String quoteServiceId, String projectId, int delayDays, {DateTime? disruptionStartDate}) async {
+  Future<void> _shiftServiceResources(String quoteServiceId, String projectId, int delayDays, {DateTime? disruptionStartDate, Set<DateTime>? nonWorkingDates, bool reverse = false}) async {
+    DateTime? _shift(DateTime? d) => reverse
+        ? _subtractWorkingDays(d, delayDays, nonWorkingDates: nonWorkingDates)
+        : _addWorkingDays(d, delayDays, nonWorkingDates: nonWorkingDates);
+
     final tables = [
       'project_machinery',
       'project_labor',
@@ -1093,17 +1128,11 @@ class BillingService {
         if (disruptionStartDate != null && derivedStart != null && derivedStart.isBefore(disruptionStartDate)) {
           // Resource started before disruption — only shift end_date
           newStart = derivedStart.toIso8601String().split('T')[0];
-          newEnd = derivedEnd != null
-              ? derivedEnd.add(Duration(days: delayDays)).toIso8601String().split('T')[0]
-              : null;
+          newEnd = _shift(derivedEnd)?.toIso8601String().split('T')[0];
         } else {
           // Resource starts after/on disruption, no disruption date, or no start date — shift both
-          newStart = derivedStart != null
-              ? derivedStart.add(Duration(days: delayDays)).toIso8601String().split('T')[0]
-              : null;
-          newEnd = derivedEnd != null
-              ? derivedEnd.add(Duration(days: delayDays)).toIso8601String().split('T')[0]
-              : null;
+          newStart = _shift(derivedStart)?.toIso8601String().split('T')[0];
+          newEnd = _shift(derivedEnd)?.toIso8601String().split('T')[0];
         }
 
         debugPrint('  [_shiftServiceResources] id=${r['id']} start=$startStr (derived=$derivedStart) -> $newStart | end=$endStr (derived=$derivedEnd) -> $newEnd');
@@ -1131,17 +1160,11 @@ class BillingService {
           if (disruptionStartDate != null && aCurrentStart != null && aCurrentStart.isBefore(disruptionStartDate)) {
             // Assignment started before disruption — only shift end_date
             newAStart = aStartStr;
-            newAEnd = aCurrentEnd != null
-                ? aCurrentEnd.add(Duration(days: delayDays)).toIso8601String().split('T')[0]
-                : null;
+            newAEnd = _shift(aCurrentEnd)?.toIso8601String().split('T')[0];
           } else {
             // Shift both (or no disruption date)
-            newAStart = aCurrentStart != null
-                ? aCurrentStart.add(Duration(days: delayDays)).toIso8601String().split('T')[0]
-                : null;
-            newAEnd = aCurrentEnd != null
-                ? aCurrentEnd.add(Duration(days: delayDays)).toIso8601String().split('T')[0]
-                : null;
+            newAStart = _shift(aCurrentStart)?.toIso8601String().split('T')[0];
+            newAEnd = _shift(aCurrentEnd)?.toIso8601String().split('T')[0];
           }
 
           final aUpdates = <String, dynamic>{};
@@ -1160,6 +1183,7 @@ class BillingService {
     Set<String> affectedServiceIds,
     Map<String, int> delayByServiceId, {
     DateTime? disruptionStartDate,
+    Set<DateTime>? nonWorkingDates,
   }) async {
     // Find all services that start after affected ones and share resources
     for (final entry in delayByServiceId.entries) {
@@ -1222,7 +1246,7 @@ class BillingService {
 
           final overlapDays = delayDays; // cascade full delay
 
-          await _shiftServiceResources(dSvcId, projectId, overlapDays, disruptionStartDate: disruptionStartDate);
+          await _shiftServiceResources(dSvcId, projectId, overlapDays, disruptionStartDate: disruptionStartDate, nonWorkingDates: nonWorkingDates);
 
           // Update task dates
           final taskData = await _supabase
@@ -1234,9 +1258,8 @@ class BillingService {
 
           if (taskData != null) {
             final taskEnd = taskData['planned_end_date']?.toString();
-            final newEnd = taskEnd != null
-                ? DateTime.tryParse(taskEnd)?.add(Duration(days: overlapDays))?.toIso8601String().split('T')[0]
-                : null;
+            final parsedTaskEnd = taskEnd != null ? DateTime.tryParse(taskEnd) : null;
+            final newEnd = _addWorkingDays(parsedTaskEnd, overlapDays, nonWorkingDates: nonWorkingDates)?.toIso8601String().split('T')[0];
             if (newEnd != null) {
               await _supabase
                   .from('project_tasks')
@@ -1528,6 +1551,8 @@ class BillingService {
     final projectId = coData['project_id'] as String?;
     if (projectId == null) return results;
 
+    final nonWorkingDates = await _loadNonWorkingDates(projectId);
+
     final detailsResult = await _supabase
         .from('change_order_details')
         .select('*, quote_services(quantity)')
@@ -1570,7 +1595,7 @@ class BillingService {
       DateTime? newEnd;
       if (currentEnd != null) {
         final parsed = DateTime.tryParse(currentEnd);
-        if (parsed != null) newEnd = parsed.add(Duration(days: additionalDays));
+        if (parsed != null) newEnd = _addWorkingDays(parsed, additionalDays, nonWorkingDates: nonWorkingDates);
       }
 
       await _supabase.from('quote_service_estimations').update({
@@ -1591,7 +1616,7 @@ class BillingService {
         DateTime? newTaskEnd;
         if (taskEnd != null) {
           final parsed = DateTime.tryParse(taskEnd);
-          if (parsed != null) newTaskEnd = parsed.add(Duration(days: additionalDays));
+          if (parsed != null) newTaskEnd = _addWorkingDays(parsed, additionalDays, nonWorkingDates: nonWorkingDates);
         }
         await _supabase.from('project_tasks').update({
           if (newTaskEnd != null) 'planned_end_date': newTaskEnd.toIso8601String().split('T')[0],
@@ -1599,13 +1624,13 @@ class BillingService {
       }
 
       // Shift resources
-      await _shiftServiceResources(qsId, projectId, additionalDays);
+      await _shiftServiceResources(qsId, projectId, additionalDays, nonWorkingDates: nonWorkingDates);
 
       results['services_extended'] = (results['services_extended'] as int) + 1;
     }
 
     if (allServiceIds.isNotEmpty) {
-      await _cascadeDownstreamServices(projectId, allServiceIds, delayByServiceId);
+      await _cascadeDownstreamServices(projectId, allServiceIds, delayByServiceId, nonWorkingDates: nonWorkingDates);
     }
 
     final conflicts = await detectResourceConflicts(projectId, allServiceIds);
@@ -1635,7 +1660,7 @@ class BillingService {
 
       if (currentEnd != null) {
         final maxDelay = delayByServiceId.values.fold(0, (a, b) => a > b ? a : b);
-        final newProjectEnd = currentEnd.add(Duration(days: maxDelay));
+        final newProjectEnd = _addWorkingDays(currentEnd!, maxDelay, nonWorkingDates: nonWorkingDates)!;
 
         final updates = <String, dynamic>{
           'end_date': newProjectEnd.toIso8601String().substring(0, 19),
@@ -1653,5 +1678,54 @@ class BillingService {
   String _nonEmpty(dynamic value, String fallback) {
     final s = value?.toString() ?? '';
     return s.isNotEmpty ? s : fallback;
+  }
+
+  Future<Set<DateTime>> _loadNonWorkingDates(String projectId) async {
+    try {
+      final result = await _supabase
+          .from('project_non_working_days')
+          .select('date, partial_ratio')
+          .eq('project_id', projectId);
+      return (result ?? [])
+          .where((r) => (r['partial_ratio'] as num?)?.toDouble() ?? 0 >= 1.0)
+          .map((r) {
+            final d = r['date'];
+            if (d is DateTime) return DateTime(d.year, d.month, d.day);
+            final parsed = DateTime.tryParse(d?.toString() ?? '');
+            return parsed != null ? DateTime(parsed.year, parsed.month, parsed.day) : null;
+          })
+          .whereType<DateTime>()
+          .toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  DateTime _stripTime(DateTime dt) => DateTime(dt.year, dt.month, dt.day);
+
+  DateTime? _addWorkingDays(DateTime? date, int days, {Set<DateTime>? nonWorkingDates}) {
+    if (date == null) return null;
+    var remaining = days;
+    var current = date;
+    while (remaining > 0) {
+      current = current.add(const Duration(days: 1));
+      if (current.weekday == DateTime.sunday) continue;
+      if (nonWorkingDates != null && nonWorkingDates.contains(_stripTime(current))) continue;
+      remaining--;
+    }
+    return current;
+  }
+
+  DateTime? _subtractWorkingDays(DateTime? date, int days, {Set<DateTime>? nonWorkingDates}) {
+    if (date == null) return null;
+    var remaining = days;
+    var current = date;
+    while (remaining > 0) {
+      current = current.subtract(const Duration(days: 1));
+      if (current.weekday == DateTime.sunday) continue;
+      if (nonWorkingDates != null && nonWorkingDates.contains(_stripTime(current))) continue;
+      remaining--;
+    }
+    return current;
   }
 }

@@ -182,7 +182,7 @@ class _ChangeOrdersListPageState extends ConsumerState<ChangeOrdersListPage> {
             Row(
               children: [
                 Expanded(child: Text(co['co_number'] ?? '', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.slate900))),
-                if (co['status'] == 'draft')
+                if (co['status'] == 'draft' || co['status'] == 'rejected')
                   IconButton(
                     icon: const Icon(Icons.edit_outlined, size: 18, color: AppTheme.slate500),
                     onPressed: () => context.go('/projects/${widget.projectId}/change-orders/${co['id']}/edit'),
@@ -244,7 +244,7 @@ class _ChangeOrdersListPageState extends ConsumerState<ChangeOrdersListPage> {
                   ))),
                   DataCell(Text(co['executed_date']?.toString() ?? '', style: GoogleFonts.manrope(fontSize: 11))),
                   DataCell(
-                    co['status'] == 'draft'
+                    co['status'] == 'draft' || co['status'] == 'rejected'
                         ? IconButton(
                             icon: const Icon(Icons.edit_outlined, size: 18, color: AppTheme.slate500),
                             onPressed: () => context.go('/projects/${widget.projectId}/change-orders/${co['id']}/edit'),
