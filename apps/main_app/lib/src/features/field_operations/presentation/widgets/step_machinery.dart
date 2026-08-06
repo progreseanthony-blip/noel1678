@@ -673,8 +673,8 @@ class _StepMachineryState extends State<StepMachinery> {
           todayTrips += ((entry['production_value'] as num?)?.toDouble() ?? 0);
           todayCY += ((entry['_calculated_cy'] as num?)?.toDouble() ?? 0);
         }
-        totalCumTrips += (_rawProd[pmId] ?? 0) + todayTrips;
-        totalCumCY += (_machineryProduction[pmId] ?? 0) + todayCY;
+        totalCumTrips += (_rawProd[pmId] ?? 0) + (widget.isReadOnly ? 0 : todayTrips);
+        totalCumCY += (_machineryProduction[pmId] ?? 0) + (widget.isReadOnly ? 0 : todayCY);
         totalTargetTrips += tripsPerDay * days;
         totalTargetCY += capPerTrip * tripsPerDay * days;
       } else {
@@ -687,7 +687,7 @@ class _StepMachineryState extends State<StepMachinery> {
           final entry = _entries[idx];
           todayProd += ((entry['production_value'] as num?)?.toDouble() ?? 0);
         }
-        totalCumTrips += (_rawProd[pmId] ?? 0) + todayProd;
+        totalCumTrips += (_rawProd[pmId] ?? 0) + (widget.isReadOnly ? 0 : todayProd);
         totalTargetTrips += perfPerDay * days;
       }
     }
@@ -986,8 +986,8 @@ class _StepMachineryState extends State<StepMachinery> {
 
       final histTrips = _rawProd[pmId] ?? 0.0;
       final histCY = _machineryProduction[pmId] ?? 0.0;
-      final cumTrips = histTrips + todayTrips;
-      final cumCY = histCY + todayCY;
+      final cumTrips = widget.isReadOnly ? histTrips : histTrips + todayTrips;
+      final cumCY = widget.isReadOnly ? histCY : histCY + todayCY;
       final cumTargetTrips = tripsPerDay * days;
       final cumTargetCY = dailyTargetCY * days;
 
@@ -1039,7 +1039,7 @@ class _StepMachineryState extends State<StepMachinery> {
       }
 
       final historicalProd = _rawProd[pmId] ?? 0.0;
-      final cumulativeProd = historicalProd + todayProd;
+      final cumulativeProd = widget.isReadOnly ? historicalProd : historicalProd + todayProd;
       final cumulativeTarget = dailyTarget * days;
 
       if (cumulativeTarget <= 0) return const SizedBox.shrink();

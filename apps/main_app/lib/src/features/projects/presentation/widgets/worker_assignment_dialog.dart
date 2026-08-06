@@ -26,6 +26,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
   Set<String> _assignedWorkerIds = {};
   Map<String, String> _globalBusyWorkers = {}; // workerId -> Reason/Project Name
   Map<String, Map<String, String>> _workerDates = {}; // workerId -> {start, end}
+  List<String> _siblingIds = [];
   
   double? _stipulatedDays;
   DateTime? _startDate;
@@ -84,18 +85,35 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
     try {
       final supabase = Supabase.instance.client;
 
-      // 1. Get role and stipulated duration
+      // 1. Get role, project, and siblings
       final laborData = await supabase
           .from('project_labor')
-          .select('project_id, role_id, role_name, quote_service_labors(role_id, quote_services(quote_service_estimations(total_working_days)))')
+          .select('project_id, role_id, role_name, quote_service_id, quote_service_labors(role_id, quote_services(quote_service_estimations(total_working_days)))')
           .eq('id', widget.projectLaborId)
           .maybeSingle();
       
       if (laborData == null) return;
 
-      final roleId = laborData['role_id'];
+      _siblingIds = [widget.projectLaborId];
+      final projectId = laborData['project_id'];
+      final qsId = laborData['quote_service_id'];
       final roleName = laborData['role_name'] as String?;
-      debugPrint('[WorkerDialog] roleId=$roleId roleName=$roleName');
+      if (projectId != null && roleName != null) {
+        try {
+          final siblings = await supabase
+              .from('project_labor')
+              .select('id')
+              .eq('project_id', projectId)
+              .eq('role_name', roleName)
+              .filter('quote_service_id', qsId == null ? 'is' : 'eq', qsId)
+              .neq('id', widget.projectLaborId);
+          if (siblings != null) {
+            _siblingIds.addAll(siblings.map((r) => r['id'].toString()));
+          }
+        } catch (_) {}
+      }
+
+      final roleId = laborData['role_id'];
 
       dynamic duration;
       try {
@@ -147,14 +165,15 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       });
       debugPrint('[WorkerDialog] Sorted ${allWorkers.length} workers; roleId=$roleId roleName=$roleName');
 
-      // 3. Load current assignments with dates
+      // 3. Load current assignments from ALL sibling rows
       final assignmentsResult = await supabase
           .from('project_labor_assignments')
-          .select('worker_id, start_date, end_date')
-          .eq('project_labor_id', widget.projectLaborId);
+          .select('worker_id, start_date, end_date, project_labor_id')
+          .in_('project_labor_id', _siblingIds);
 
       final Map<String, Map<String, String>> workerDatesMap = {};
       final Set<String> assignedIds = {};
+      final Map<String, String> workerSlots = {};
       if (assignmentsResult != null && assignmentsResult is List) {
         for (final a in assignmentsResult) {
           final id = a['worker_id'].toString();
@@ -163,6 +182,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
             'start': a['start_date'].toString(),
             'end': a['end_date'].toString(),
           };
+          workerSlots[id] = a['project_labor_id'].toString();
         }
       }
 
@@ -226,6 +246,8 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
           _stipulatedDays = durationValue;
           _allWorkers = allWorkers;
           _assignedWorkerIds = assignedIds;
+          _workerSlots.clear();
+          _workerSlots.addAll(workerSlots);
           _workerDates = workerDatesMap;
           _globalBusyWorkers = Map.fromIterable(busyWorkerIds, value: (id) => busyReasons[id] ?? 'Busy');
           _isLoading = false;
@@ -307,12 +329,13 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
         final startIso = picked.start.toIso8601String().split('T')[0];
         final endIso = picked.end.toIso8601String().split('T')[0];
 
-        // Check for conflicts
+        // Check for conflicts (exclude all sibling rows)
+        final siblingFilterStr = _siblingIds.map((id) => '"$id"').join(',');
         final conflict = await supabase
             .from('project_labor_assignments')
             .select('project_labor(project_id(title))')
             .eq('worker_id', workerId)
-            .neq('project_labor_id', widget.projectLaborId)
+            .filter('project_labor_id', 'not.in', '($siblingFilterStr)')
             .lte('start_date', endIso)
             .gte('end_date', startIso)
             .maybeSingle();
@@ -327,13 +350,14 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
           return;
         }
 
+        final slotId = _workerSlots[workerId] ?? widget.projectLaborId;
         await supabase
             .from('project_labor_assignments')
             .update({
               'start_date': startIso,
               'end_date': endIso,
             })
-            .eq('project_labor_id', widget.projectLaborId)
+            .eq('project_labor_id', slotId)
             .eq('worker_id', workerId);
 
         _loadData();
@@ -346,6 +370,33 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       }
     }
   }
+
+  String _pickSiblingId() {
+    if (_siblingIds.length == 1) return _siblingIds.first;
+    final Map<String, int> counts = {};
+    for (final id in _siblingIds) {
+      counts[id] = 0;
+    }
+    for (final wId in _assignedWorkerIds) {
+      for (final entry in _workerSlots.entries) {
+        if (entry.value == wId) {
+          counts[entry.key] = (counts[entry.key] ?? 0) + 1;
+        }
+      }
+    }
+    String best = _siblingIds.first;
+    int bestCount = counts[best] ?? 0;
+    for (final id in _siblingIds) {
+      if ((counts[id] ?? 0) < bestCount) {
+        best = id;
+        bestCount = counts[id] ?? 0;
+      }
+    }
+    return best;
+  }
+
+  // Maps workerId -> siblingRowId
+  final Map<String, String> _workerSlots = {};
 
   Future<void> _toggleAssignment(String workerId, bool assign) async {
     if (_processingWorkers.contains(workerId)) return;
@@ -375,8 +426,9 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
           return;
         }
 
+        final siblingId = _pickSiblingId();
         await supabase.from('project_labor_assignments').insert({
-          'project_labor_id': widget.projectLaborId,
+          'project_labor_id': siblingId,
           'worker_id': workerId,
           'start_date': _startDate!.toIso8601String().split('T')[0],
           'end_date': _endDate!.toIso8601String().split('T')[0],
@@ -384,6 +436,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
         
         setState(() {
           _assignedWorkerIds.add(workerId);
+          _workerSlots[workerId] = siblingId;
           _workerDates[workerId] = {
             'start': _startDate!.toIso8601String().split('T')[0],
             'end': _endDate!.toIso8601String().split('T')[0],
@@ -393,10 +446,11 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
         await supabase
             .from('project_labor_assignments')
             .delete()
-            .eq('project_labor_id', widget.projectLaborId)
+            .in_('project_labor_id', _siblingIds)
             .eq('worker_id', workerId);
         setState(() {
           _assignedWorkerIds.remove(workerId);
+          _workerSlots.remove(workerId);
           _workerDates.remove(workerId);
         });
       }
