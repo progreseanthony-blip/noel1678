@@ -621,7 +621,9 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  if (isMobile)
+                  if (coType == 'disruption')
+                    _buildGroupedStandbyDetails(details, isMobile)
+                  else if (isMobile)
                     Column(
                       children: details
                           .asMap()
@@ -1013,6 +1015,133 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
         ],
       ),
     );
+  }
+
+  Widget _buildGroupedStandbyDetails(
+    List<Map<String, dynamic>> details,
+    bool isMobile,
+  ) {
+    final groups = _groupStandbyDetails(details);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final group in groups) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: group.color!.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: group.color!.withOpacity(0.25)),
+            ),
+            child: Row(
+              children: [
+                Icon(group.icon, size: 16, color: group.color),
+                const SizedBox(width: 8),
+                Text(
+                  group.label,
+                  style: GoogleFonts.manrope(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.slate900,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 1,
+                  ),
+                  decoration: BoxDecoration(
+                    color: group.color!.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${group.items.length}',
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: group.color,
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '\$${_fmt.format(group.subtotal)}',
+                  style: GoogleFonts.manrope(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: group.color,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (isMobile)
+            Column(
+              children: group.items
+                  .asMap()
+                  .entries
+                  .map((e) => _detailCard(e.key, e.value))
+                  .toList(),
+            )
+          else
+            _detailsTable(group.items),
+          const SizedBox(height: 16),
+        ],
+      ],
+    );
+  }
+
+  List<_StandbyGroup> _groupStandbyDetails(
+    List<Map<String, dynamic>> details,
+  ) {
+    const order = ['standby_machinery', 'standby_labor', 'standby_material'];
+    const labels = {
+      'standby_machinery': 'Machinery',
+      'standby_labor': 'Labor',
+      'standby_material': 'Materials',
+    };
+    const icons = {
+      'standby_machinery': Icons.precision_manufacturing,
+      'standby_labor': Icons.engineering,
+      'standby_material': Icons.inventory,
+    };
+    final groups = <_StandbyGroup>[];
+    for (final lt in order) {
+      final items =
+          details.where((d) => d['line_type'] == lt).toList();
+      if (items.isEmpty) continue;
+      groups.add(
+        _StandbyGroup(
+          label: labels[lt] ?? lt,
+          icon: icons[lt] ?? Icons.category,
+          color: lt == 'standby_material'
+              ? AppTheme.errorRed
+              : Colors.deepOrange.shade400,
+          items: items,
+          subtotal: _standbySubtotal(items),
+        ),
+      );
+    }
+    return groups;
+  }
+
+  double _standbySubtotal(List<Map<String, dynamic>> items) {
+    double total = 0;
+    for (final d in items) {
+      final lt = d['line_type'] as String?;
+      if (lt == 'standby_machinery' || lt == 'standby_labor') {
+        total +=
+            ((d['standby_hours'] as num?)?.toDouble() ?? 0) *
+            ((d['standby_rate'] as num?)?.toDouble() ?? 0);
+      } else if (lt == 'standby_material') {
+        total +=
+            ((d['quantity_lost'] as num?)?.toDouble() ?? 0) *
+            ((d['replacement_unit_cost'] as num?)?.toDouble() ?? 0);
+      }
+    }
+    return total;
   }
 
   Widget _detailsTable(List<Map<String, dynamic>> details) {
@@ -1597,4 +1726,20 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
       ),
     );
   }
+}
+
+class _StandbyGroup {
+  final String label;
+  final IconData icon;
+  final Color? color;
+  final List<Map<String, dynamic>> items;
+  final double subtotal;
+
+  const _StandbyGroup({
+    required this.label,
+    required this.icon,
+    this.color,
+    required this.items,
+    required this.subtotal,
+  });
 }

@@ -243,64 +243,13 @@ class ChangeOrderPdfGenerator {
                       _hdr(fontBold, 'Total'),
                     ],
                   ),
-                  ...details.asMap().entries.map((e) {
-                    final i = e.key + 1;
-                    final d = e.value;
-                    final lt = d['line_type'] as String?;
-                    final qty = (d['quantity_change'] as num?)?.toDouble() ?? 0;
-                    final up = (d['unit_price'] as num?)?.toDouble() ?? 0;
-
-                    double qtyDisplay;
-                    double rate;
-                    double total;
-                    if (lt == 'standby_machinery' || lt == 'standby_labor') {
-                      qtyDisplay =
-                          (d['standby_hours'] as num?)?.toDouble() ?? 0;
-                      rate = (d['standby_rate'] as num?)?.toDouble() ?? 0;
-                      total = qtyDisplay * rate;
-                    } else if (lt == 'standby_material') {
-                      qtyDisplay =
-                          (d['quantity_lost'] as num?)?.toDouble() ?? 0;
-                      rate =
-                          (d['replacement_unit_cost'] as num?)?.toDouble() ?? 0;
-                      total = qtyDisplay * rate;
-                    } else {
-                      qtyDisplay = qty;
-                      rate = up;
-                      total = qty * up;
-                    }
-
-                    return pw.TableRow(
-                      decoration: const pw.BoxDecoration(
-                        border: pw.Border(
-                          bottom: pw.BorderSide(
-                            color: PdfColors.grey300,
-                            width: 0.5,
-                          ),
-                        ),
-                      ),
-                      children: [
-                        _cell(font, '$i'),
-                        _cell(font, d['service_name'] ?? ''),
-                        _cell(font, lt?.replaceAll('_', ' ') ?? ''),
-                        _cell(
-                          font,
-                          qtyDisplay.toString(),
-                          align: pw.TextAlign.right,
-                        ),
-                        _cell(
-                          font,
-                          '\$${fmt.format(rate)}',
-                          align: pw.TextAlign.right,
-                        ),
-                        _cell(
-                          font,
-                          '\$${fmt.format(total)}',
-                          align: pw.TextAlign.right,
-                        ),
-                      ],
-                    );
-                  }),
+                  ..._buildStandbyTableRows(
+                    details,
+                    font: font,
+                    fontBold: fontBold,
+                    fmt: fmt,
+                    isDisruption: isDisruption,
+                  ),
                 ],
               ),
               pw.SizedBox(height: 16),
@@ -439,6 +388,173 @@ class ChangeOrderPdfGenerator {
         style: pw.TextStyle(font: font, fontSize: 8),
         textAlign: pw.TextAlign.center,
       ),
+    );
+  }
+
+  static List<pw.TableRow> _buildStandbyTableRows(
+    List<Map<String, dynamic>> details, {
+    required pw.Font font,
+    required pw.Font fontBold,
+    required NumberFormat fmt,
+    required bool isDisruption,
+  }) {
+    if (!isDisruption) {
+      return details.asMap().entries.map((e) {
+        final i = e.key + 1;
+        final d = e.value;
+        return _standbyTableRow(
+          i,
+          d,
+          font: font,
+          fontBold: fontBold,
+          fmt: fmt,
+          isDisruption: isDisruption,
+        );
+      }).toList();
+    }
+
+    const order = ['standby_machinery', 'standby_labor', 'standby_material'];
+    const labels = {
+      'standby_machinery': 'MACHINERY',
+      'standby_labor': 'LABOR',
+      'standby_material': 'MATERIALS',
+    };
+
+    final rows = <pw.TableRow>[];
+    for (final lt in order) {
+      final groupId = details.indexed
+          .where((e) => e.$2['line_type'] == lt)
+          .map((e) => e.$1)
+          .toList();
+      if (groupId.isEmpty) continue;
+
+      rows.add(
+        pw.TableRow(
+          decoration: pw.BoxDecoration(
+            color: PdfColor.fromHex('#F1F5F9'),
+            border: pw.Border(
+              top: pw.BorderSide(color: PdfColors.grey500, width: 0.5),
+              bottom: pw.BorderSide(color: PdfColors.grey500, width: 0.5),
+            ),
+          ),
+          children: [
+            _cell(fontBold, ''),
+            _cell(fontBold, labels[lt] ?? lt),
+            _cell(fontBold, ''),
+            _cell(fontBold, ''),
+            _cell(fontBold, ''),
+            _cell(fontBold, ''),
+          ],
+        ),
+      );
+
+      var groupSubtotal = 0.0;
+      var i = 0;
+      for (final idx in groupId) {
+        i++;
+        final d = details[idx];
+        rows.add(
+          _standbyTableRow(
+            i,
+            d,
+            font: font,
+            fontBold: fontBold,
+            fmt: fmt,
+            isDisruption: true,
+          ),
+        );
+        final lt = d['line_type'] as String?;
+        if (lt == 'standby_machinery' || lt == 'standby_labor') {
+          groupSubtotal +=
+              ((d['standby_hours'] as num?)?.toDouble() ?? 0) *
+              ((d['standby_rate'] as num?)?.toDouble() ?? 0);
+        } else if (lt == 'standby_material') {
+          groupSubtotal +=
+              ((d['quantity_lost'] as num?)?.toDouble() ?? 0) *
+              ((d['replacement_unit_cost'] as num?)?.toDouble() ?? 0);
+        }
+      }
+
+      rows.add(
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(
+            border: pw.Border(
+              top: pw.BorderSide(color: PdfColors.grey600, width: 0.5),
+            ),
+          ),
+          children: [
+            _cell(fontBold, ''),
+            _cell(fontBold, 'Subtotal — ${labels[lt] ?? lt}'),
+            _cell(fontBold, ''),
+            _cell(fontBold, ''),
+            _cell(fontBold, ''),
+            _cell(
+              fontBold,
+              '\$${fmt.format(groupSubtotal)}',
+              align: pw.TextAlign.right,
+            ),
+          ],
+        ),
+      );
+    }
+    return rows;
+  }
+
+  static pw.TableRow _standbyTableRow(
+    int i,
+    Map<String, dynamic> d, {
+    required pw.Font font,
+    required pw.Font fontBold,
+    required NumberFormat fmt,
+    required bool isDisruption,
+  }) {
+    final lt = d['line_type'] as String?;
+    final qty = (d['quantity_change'] as num?)?.toDouble() ?? 0;
+    final up = (d['unit_price'] as num?)?.toDouble() ?? 0;
+
+    double qtyDisplay;
+    double rate;
+    double total;
+    if (lt == 'standby_machinery' || lt == 'standby_labor') {
+      qtyDisplay = (d['standby_hours'] as num?)?.toDouble() ?? 0;
+      rate = (d['standby_rate'] as num?)?.toDouble() ?? 0;
+      total = qtyDisplay * rate;
+    } else if (lt == 'standby_material') {
+      qtyDisplay = (d['quantity_lost'] as num?)?.toDouble() ?? 0;
+      rate = (d['replacement_unit_cost'] as num?)?.toDouble() ?? 0;
+      total = qtyDisplay * rate;
+    } else {
+      qtyDisplay = qty;
+      rate = up;
+      total = qty * up;
+    }
+
+    return pw.TableRow(
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(
+          bottom: pw.BorderSide(color: PdfColors.grey300, width: 0.5),
+        ),
+      ),
+      children: [
+        _cell(font, '$i'),
+        _cell(font, d['service_name'] ?? ''),
+        _cell(font, lt?.replaceAll('_', ' ') ?? ''),
+        _cell(
+          font,
+          qtyDisplay.toString(),
+          align: pw.TextAlign.right,
+        ),
+        _cell(
+          font,
+          '\$${fmt.format(rate)}',
+          align: pw.TextAlign.right,
+        ),
+        _cell(
+          font,
+          '\$${fmt.format(total)}',
+          align: pw.TextAlign.right,
+        ),
+      ],
     );
   }
 
