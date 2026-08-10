@@ -65,19 +65,23 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
       final machResult = await supabase.from('project_machinery')
           .select('*, quote_services(name)')
           .eq('project_id', widget.projectId)
-          .eq('is_unplanned', true);
+          .eq('is_unplanned', true)
+          .is_('project_service_id', null);
       final laborResult = await supabase.from('project_labor')
           .select('*, quote_services(name)')
           .eq('project_id', widget.projectId)
-          .eq('is_unplanned', true);
+          .eq('is_unplanned', true)
+          .is_('project_service_id', null);
       final matResult = await supabase.from('project_materials')
           .select('*, quote_services(name)')
           .eq('project_id', widget.projectId)
-          .eq('is_unplanned', true);
+          .eq('is_unplanned', true)
+          .is_('project_service_id', null);
       final instResult = await supabase.from('project_instruments')
           .select('*, quote_services(name)')
           .eq('project_id', widget.projectId)
-          .eq('is_unplanned', true);
+          .eq('is_unplanned', true)
+          .is_('project_service_id', null);
 
       double original = (pResult['quotes']?['total_amount'] as num?)?.toDouble() ?? 0.0;
       double deviation = 0.0;
@@ -86,6 +90,8 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
       // Helper to process results
       void processResult(List<dynamic> results, String type, String nameField) {
         for (var r in results) {
+          // Skip CO-created resources: they are scope, not extra acceleration
+          if (r['project_service_id'] != null) continue;
           double cost = (r['unplanned_cost'] as num?)?.toDouble() ?? 0.0;
           deviation += cost;
           unplanned.add({
@@ -275,6 +281,7 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
           .eq('project_id', widget.projectId)
           .eq('quote_service_id', serviceId)
           .eq('is_unplanned', true)
+          .is_('project_service_id', null)
           .order('created_at', ascending: true);
 
       double otherUnplannedProdSum = 0;

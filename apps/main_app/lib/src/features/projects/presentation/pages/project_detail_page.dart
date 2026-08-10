@@ -88,24 +88,24 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
       // 2. Load Machinery
       final mResult = await supabase
           .from('project_machinery')
-          .select('*, quote_services(name, unit_of_measure, quote_service_estimations(total_working_days)), project_machinery_assignments(*), quote_service_machineries(quote_services(name, unit_of_measure, quote_service_estimations(total_working_days))), machinery_inspections(*)')
+          .select('*, quote_services(name, unit_of_measure, quote_service_estimations(total_working_days)), project_services(name), project_machinery_assignments(*), quote_service_machineries(quote_services(name, unit_of_measure, quote_service_estimations(total_working_days))), machinery_inspections(*)')
           .eq('project_id', widget.projectId)
           .order('machinery_name');
 
       // 3. Materials
-      final matResult = await supabase.from('project_materials').select('*, quote_services(name, quote_service_estimations(total_working_days)), quote_service_materials(quote_services(name, quote_service_estimations(total_working_days)))').eq('project_id', widget.projectId).order('material_name');
+      final matResult = await supabase.from('project_materials').select('*, quote_services(name, quote_service_estimations(total_working_days)), project_services(name), quote_service_materials(quote_services(name, quote_service_estimations(total_working_days)))').eq('project_id', widget.projectId).order('material_name');
 
       // 4. Load Instruments
       final iResult = await supabase
           .from('project_instruments')
-          .select('*, quote_services(name, quote_service_estimations(total_working_days)), project_instrument_assignments(*), quote_service_instruments(quote_services(name, quote_service_estimations(total_working_days)))')
+          .select('*, quote_services(name, quote_service_estimations(total_working_days)), project_services(name), project_instrument_assignments(*), quote_service_instruments(quote_services(name, quote_service_estimations(total_working_days)))')
           .eq('project_id', widget.projectId)
           .order('instrument_name');
 
       // 5. Labor
       final labResult = await supabase
           .from('project_labor')
-          .select('*, quote_services(name, quote_service_estimations(total_working_days)), quote_service_labors(quote_services(name, quote_service_estimations(total_working_days))), project_labor_assignments(start_date, end_date, workers(full_name))')
+          .select('*, quote_services(name, quote_service_estimations(total_working_days)), project_services(name), quote_service_labors(quote_services(name, quote_service_estimations(total_working_days))), project_labor_assignments(start_date, end_date, workers(full_name))')
           .eq('project_id', widget.projectId)
           .order('role_name');
 
@@ -144,6 +144,11 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                 } else if (data is Map) {
                   service = data['quote_services'];
                 }
+              }
+
+              // Priority 3: CO-created service (project_services)
+              if (service == null) {
+                service = item['project_services'];
               }
               
               if (service != null) {
@@ -323,6 +328,11 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
             service = dData['quote_services'];
           }
         }
+      }
+
+      // Priority 3: CO-created service (project_services)
+      if (service == null) {
+        service = item['project_services'];
       }
 
       if (service != null) {
@@ -665,11 +675,14 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
         service = data['quote_services'];
       }
     }
+    if (service == null) {
+      service = item['project_services'];
+    }
     if (service != null) {
       final sData = (service is List && service.isNotEmpty) ? service[0] : (service is Map ? service : null);
-      return sData?['id']?.toString();
+      return sData?['id']?.toString() ?? item['project_service_id']?.toString();
     }
-    return null;
+    return item['project_service_id']?.toString();
   }
 
   Widget _buildServiceHeader(String name, {String? serviceId}) {
@@ -2129,6 +2142,8 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
 
       void processItems(List<dynamic> items) {
         for (var item in items) {
+          // Skip CO-created resources: they are scope, not extra acceleration
+          if (item['project_service_id'] != null) continue;
           final isUnplanned = item['is_unplanned'] == true;
           if (!isUnplanned) {
             final meta = _safeParseMetadata(item['calculation_metadata']);
@@ -2574,6 +2589,9 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
           }
         }
       }
+      if (service == null) {
+        service = item['project_services'];
+      }
       if (service is List && service.isNotEmpty) {
         service = service[0];
       }
@@ -2582,8 +2600,9 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
 
     for (var m in widget.machinery) {
       final evm = _localCalculateEVM(m);
-      final isPlanned = m['quote_service_machineries'] != null &&
-          (m['quote_service_machineries'] is! List || (m['quote_service_machineries'] as List).isNotEmpty);
+      final isPlanned = (m['quote_service_machineries'] != null &&
+              (m['quote_service_machineries'] is! List || (m['quote_service_machineries'] as List).isNotEmpty)) ||
+          m['project_service_id'] != null;
       items.add({
         'name': m['machinery_name'] ?? 'Unknown Machine',
         'type': 'Machinery',
@@ -2594,13 +2613,15 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         'isUnplanned': !isPlanned || m['calculation_metadata']?['is_unplanned'] == true,
         'calculationMetadata': m['calculation_metadata'] as Map<String, dynamic>?,
         'changeType': m['change_type'] ?? 'planning',
+        'isCo': m['project_service_id'] != null,
       });
     }
 
     for (var l in widget.labor) {
       final evm = _localCalculateLaborEVM(l);
-      final isPlanned = l['quote_service_labors'] != null &&
-          (l['quote_service_labors'] is! List || (l['quote_service_labors'] as List).isNotEmpty);
+      final isPlanned = (l['quote_service_labors'] != null &&
+              (l['quote_service_labors'] is! List || (l['quote_service_labors'] as List).isNotEmpty)) ||
+          l['project_service_id'] != null;
       items.add({
         'name': l['role_name'] ?? 'Unknown Crew',
         'type': 'Labor',
@@ -2611,6 +2632,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         'isUnplanned': !isPlanned || l['calculation_metadata']?['is_unplanned'] == true,
         'calculationMetadata': l['calculation_metadata'] as Map<String, dynamic>?,
         'changeType': l['change_type'] ?? 'planning',
+        'isCo': l['project_service_id'] != null,
       });
     }
 
@@ -2637,8 +2659,9 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         }
       }
 
-      final isPlanned = i['quote_service_instruments'] != null &&
-          (i['quote_service_instruments'] is! List || (i['quote_service_instruments'] as List).isNotEmpty);
+      final isPlanned = (i['quote_service_instruments'] != null &&
+              (i['quote_service_instruments'] is! List || (i['quote_service_instruments'] as List).isNotEmpty)) ||
+          i['project_service_id'] != null;
       items.add({
         'name': i['instrument_name'] ?? 'Unknown Tool',
         'type': 'Instrument',
@@ -2649,13 +2672,14 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         'isUnplanned': !isPlanned || i['calculation_metadata']?['is_unplanned'] == true,
         'calculationMetadata': i['calculation_metadata'] as Map<String, dynamic>?,
         'changeType': i['change_type'] ?? 'planning',
+        'isCo': i['project_service_id'] != null,
       });
     }
 
     // Dynamic timeline compression logic
     final Map<String, double> serviceDaysSaved = {};
     for (var item in items) {
-      if (item['isUnplanned'] == true && item['calculationMetadata'] != null) {
+      if (item['isUnplanned'] == true && item['isCo'] != true && item['calculationMetadata'] != null) {
         final serviceName = item['service'] as String;
         final saved = (item['calculationMetadata']?['days_saved'] as num?)?.toDouble() ?? 0.0;
         serviceDaysSaved[serviceName] = (serviceDaysSaved[serviceName] ?? 0.0) + saved;

@@ -732,7 +732,18 @@ class BillingService {
           }
         }
       } else if (lineType == 'new_service' && plans.isNotEmpty) {
-        String? newServiceId = quoteServiceId;
+        // Reuse an existing project_service created for this CO (by the DB trigger
+        // or a previous run) to avoid duplicates.
+        String? newServiceId = detail['project_service_id'] as String? ?? quoteServiceId;
+        if (newServiceId == null) {
+          final existing = await _supabase
+              .from('project_services')
+              .select('id')
+              .eq('project_id', projectId)
+              .eq('source_co_id', changeOrderId)
+              .maybeSingle();
+          newServiceId = existing?['id'] as String?;
+        }
         if (newServiceId == null) {
           final created = await _supabase
               .from('project_services')

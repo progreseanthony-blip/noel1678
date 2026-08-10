@@ -72,13 +72,13 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
       final pResult = await supabase.from('projects').select('title, project_type, client_name, status').eq('id', widget.projectId).maybeSingle();
       final mResult = await supabase
           .from('project_machinery')
-          .select('*, quote_services(name, quote_service_estimations(total_working_days)), quote_service_machineries(quote_services(name, quote_service_estimations(total_working_days)))')
+          .select('*, quote_services(name, quote_service_estimations(total_working_days)), project_services(name), quote_service_machineries(quote_services(name, quote_service_estimations(total_working_days)))')
           .eq('project_id', widget.projectId)
           .order('machinery_name');
-      final matResult = await supabase.from('project_materials').select('*, quote_services(name, quote_service_estimations(total_working_days)), quote_service_materials(quote_services(name, quote_service_estimations(total_working_days)))').eq('project_id', widget.projectId).order('material_name');
+      final matResult = await supabase.from('project_materials').select('*, quote_services(name, quote_service_estimations(total_working_days)), project_services(name), quote_service_materials(quote_services(name, quote_service_estimations(total_working_days)))').eq('project_id', widget.projectId).order('material_name');
       final iResult = await supabase
           .from('project_instruments')
-          .select('*, quote_services(name, quote_service_estimations(total_working_days)), quote_service_instruments(quote_services(name, quote_service_estimations(total_working_days)))')
+          .select('*, quote_services(name, quote_service_estimations(total_working_days)), project_services(name), quote_service_instruments(quote_services(name, quote_service_estimations(total_working_days)))')
           .eq('project_id', widget.projectId)
           .order('instrument_name');
 
@@ -111,6 +111,9 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                 } else if (data is Map) {
                   service = data['quote_services'];
                 }
+              }
+              if (service == null) {
+                service = item['project_services'];
               }
               if (service != null) {
                 final sData = (service is List && service.isNotEmpty) ? service[0] : (service is Map ? service : null);
@@ -229,6 +232,9 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
             service = dData['quote_services'];
           }
         }
+      }
+      if (service == null) {
+        service = item['project_services'];
       }
       if (service != null) {
         final sData = (service is List && service.isNotEmpty) ? service[0] : (service is Map ? service : null);
