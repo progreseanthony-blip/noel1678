@@ -45,11 +45,41 @@ class StandbyFormSection extends ConsumerStatefulWidget {
 class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
   final _fmt = NumberFormat('#,##0.00', 'en_US');
   String? _selectedTab;
+  late TextEditingController _delayCtrl;
+  bool _delayManuallyEdited = false;
 
   @override
   void initState() {
     super.initState();
     _selectedTab = 'machinery';
+    _delayCtrl = TextEditingController(
+      text: widget.delayDays > 0 ? widget.delayDays.toString() : '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _delayCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant StandbyFormSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final start = widget.disruptionStart;
+    final end = widget.disruptionEnd;
+    final computed = (start != null && end != null) ? _countWorkingDays(start, end) : 0;
+    final oldStart = oldWidget.disruptionStart;
+    final oldEnd = oldWidget.disruptionEnd;
+    final datesChanged = oldStart != start || oldEnd != end;
+    if (datesChanged && !_delayManuallyEdited) {
+      _delayCtrl.text = computed > 0 ? computed.toString() : '';
+      if (computed > 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) widget.onDelayDaysChanged(computed);
+        });
+      }
+    }
   }
 
   List<Map<String, dynamic>> get _machineryLines =>
@@ -154,11 +184,8 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
     final start = widget.disruptionStart;
     final end = widget.disruptionEnd;
     final computed = (start != null && end != null) ? _countWorkingDays(start, end) : 0;
-    final current = widget.delayDays;
+    final current = int.tryParse(_delayCtrl.text) ?? 0;
     final hasComputed = start != null && end != null;
-    final ctrl = TextEditingController(
-      text: current > 0 ? current.toString() : '',
-    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -169,7 +196,7 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
           children: [
             Expanded(
               child: TextField(
-                controller: ctrl,
+                controller: _delayCtrl,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
                   labelText: 'Schedule Delay (working days)',
@@ -177,36 +204,12 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
                   helperMaxLines: 2,
                 ),
                 onChanged: (v) {
+                  _delayManuallyEdited = true;
                   final parsed = int.tryParse(v) ?? 0;
                   widget.onDelayDaysChanged(parsed);
                 },
               ),
             ),
-            if (hasComputed && computed != current) ...[
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () {
-                  ctrl.text = computed.toString();
-                  widget.onDelayDaysChanged(computed);
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                  ),
-                  child: Text(
-                    'Use $computed days',
-                    style: GoogleFonts.manrope(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.orange.shade800,
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ],
         ),
         if (hasComputed && computed > 0) ...[

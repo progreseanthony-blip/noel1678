@@ -273,33 +273,89 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     final selected = await showSafeDialog<Map<String, dynamic>>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.2),
-      builder: (ctx) => SimpleDialog(
-        title: Text(
-          'Select from Catalog',
-          style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
-        ),
-        children: catalog
-            .map(
-              (s) => SimpleDialogOption(
-                onPressed: () => Navigator.of(ctx).pop(s),
-                child: ListTile(
-                  dense: true,
-                  title: Text(
-                    s['description'] ?? '',
-                    style: GoogleFonts.manrope(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+      builder: (ctx) {
+        String query = '';
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final matched = query.isEmpty
+                ? catalog
+                : catalog
+                    .where((s) =>
+                        (s['description'] ?? '')
+                            .toString()
+                            .toLowerCase()
+                            .contains(query.toLowerCase()) ||
+                        (s['unit'] ?? '')
+                            .toString()
+                            .toLowerCase()
+                            .contains(query.toLowerCase()))
+                    .toList();
+            return AlertDialog(
+              title: Text(
+                'Select from Catalog',
+                style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
+              ),
+              content: SizedBox(
+                width: 420,
+                height: 380,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      onChanged: (v) => setDialogState(() => query = v),
+                      decoration: InputDecoration(
+                        hintText: 'Search services...',
+                        prefixIcon: const Icon(Icons.search, size: 18),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        filled: true,
+                        fillColor: AppTheme.slate50,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
                     ),
-                  ),
-                  subtitle: Text(
-                    s['unit'] ?? '',
-                    style: GoogleFonts.manrope(fontSize: 11),
-                  ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: matched.length,
+                        itemBuilder: (_, i) {
+                          final s = matched[i];
+                          return ListTile(
+                            dense: true,
+                            title: Text(
+                              s['description'] ?? '',
+                              style: GoogleFonts.manrope(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Text(
+                              s['unit'] ?? '',
+                              style: GoogleFonts.manrope(fontSize: 11),
+                            ),
+                            onTap: () => Navigator.of(ctx).pop(s),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            )
-            .toList(),
-      ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
 
     if (selected != null && mounted) {
@@ -1523,49 +1579,88 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
 
     final selected = await showSafeDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          'Select Service',
-          style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
-        ),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView(
-            shrinkWrap: true,
-            children: available.map((t) {
-              final name = t['name'] as String? ?? '';
-              final status = t['status'] as String? ?? '';
-              return ListTile(
-                dense: true,
-                title: Text(
-                  name,
-                  style: GoogleFonts.manrope(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+      builder: (ctx) {
+        String query = '';
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final matched = query.isEmpty
+                ? available
+                : available
+                    .where((t) => (t['name'] as String? ?? '')
+                        .toLowerCase()
+                        .contains(query.toLowerCase()))
+                    .toList();
+            return AlertDialog(
+              title: Text(
+                'Select Service',
+                style: GoogleFonts.manrope(fontWeight: FontWeight.w800),
+              ),
+              content: SizedBox(
+                width: 420,
+                height: 380,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      onChanged: (v) => setDialogState(() => query = v),
+                      decoration: InputDecoration(
+                        hintText: 'Search services...',
+                        prefixIcon: const Icon(Icons.search, size: 18),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        filled: true,
+                        fillColor: AppTheme.slate50,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: ListView.builder(
+                        itemCount: matched.length,
+                        itemBuilder: (_, i) {
+                          final t = matched[i];
+                          final name = t['name'] as String? ?? '';
+                          final status = t['status'] as String? ?? '';
+                          return ListTile(
+                            dense: true,
+                            title: Text(
+                              name,
+                              style: GoogleFonts.manrope(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Text(
+                              'Status: $status',
+                              style: GoogleFonts.manrope(
+                                fontSize: 11,
+                                color: AppTheme.slate500,
+                              ),
+                            ),
+                            onTap: () => Navigator.of(ctx).pop(t),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
                   ),
                 ),
-                subtitle: Text(
-                  'Status: $status',
-                  style: GoogleFonts.manrope(
-                    fontSize: 11,
-                    color: AppTheme.slate500,
-                  ),
-                ),
-                onTap: () => Navigator.of(ctx).pop(t),
-              );
-            }).toList(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(
-              'Cancel',
-              style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
+              ],
+            );
+          },
+        );
+      },
     );
 
     if (selected != null && mounted) {
