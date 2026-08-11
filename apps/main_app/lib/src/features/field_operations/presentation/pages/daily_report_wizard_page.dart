@@ -34,6 +34,7 @@ class _DailyReportWizardPageState
   String? _reportId;
   String _projectName = '';
   Map<String, dynamic> _reportData = {};
+  Map<String, dynamic> _affectedServices = {};
 
   List<Map<String, dynamic>> _laborLogs = [];
   // ignore: unused_field - will be used in A4/A5
@@ -75,6 +76,14 @@ class _DailyReportWizardPageState
         reportDate = report['report_date'] as String? ?? DateTime.now().toIso8601String().split('T')[0];
       }
 
+      Map<String, dynamic> affectedServices = {};
+      if (reportDate.isNotEmpty) {
+        affectedServices = await service.getActiveDisruptedServices(
+          widget.projectId,
+          reportDate,
+        );
+      }
+
       final projectName = await Supabase.instance.client
           .from('projects')
           .select('title')
@@ -103,6 +112,8 @@ class _DailyReportWizardPageState
         _reportId = reportId;
         _projectName = projectName;
         _reportData = report ?? {'report_date': '', 'day_type': 'working'};
+        _reportData['disruption_active'] = affectedServices.isNotEmpty;
+        _affectedServices = affectedServices;
         _laborLogs = List<Map<String, dynamic>>.from(results[0] as List);
         _machineryLogs = List<Map<String, dynamic>>.from(results[1] as List);
         _materialUsage = List<Map<String, dynamic>>.from(results[2] as List);
@@ -206,6 +217,9 @@ class _DailyReportWizardPageState
 
   Future<void> _switchToDate(String date) async {
     final service = ref.read(dailyReportServiceProvider);
+    final affectedServices =
+        await service.getActiveDisruptedServices(widget.projectId, date);
+    if (!mounted) return;
     final existing = await service.getReportByDate(widget.projectId, date);
 
     if (existing != null && existing['status'] == 'draft') {
@@ -228,6 +242,8 @@ class _DailyReportWizardPageState
       setState(() {
         _reportId = reportId;
         _reportData = Map<String, dynamic>.from(existing)..['report_date'] = date;
+        _reportData['disruption_active'] = affectedServices.isNotEmpty;
+        _affectedServices = affectedServices;
         _laborLogs = List<Map<String, dynamic>>.from(results[0] as List);
         _machineryLogs = List<Map<String, dynamic>>.from(results[1] as List);
         _materialUsage = List<Map<String, dynamic>>.from(results[2] as List);
@@ -250,7 +266,11 @@ class _DailyReportWizardPageState
           ),
         );
       }
-      setState(() => _reportData['report_date'] = date);
+      setState(() {
+        _reportData['report_date'] = date;
+        _reportData['disruption_active'] = affectedServices.isNotEmpty;
+        _affectedServices = affectedServices;
+      });
     } else {
       final currentUserId = Supabase.instance.client.auth.currentUser?.id;
       final newReport = await service.createReport({
@@ -258,6 +278,7 @@ class _DailyReportWizardPageState
         'report_date': date,
         'supervisor_id': currentUserId,
         'status': 'draft',
+        'disruption_active': affectedServices.isNotEmpty,
       });
       final results = await Future.wait([
         service.getPlannedLaborForProject(widget.projectId, date),
@@ -274,6 +295,8 @@ class _DailyReportWizardPageState
       setState(() {
         _reportId = newReport['id'];
         _reportData = newReport;
+        _reportData['disruption_active'] = affectedServices.isNotEmpty;
+        _affectedServices = affectedServices;
         _laborLogs = [];
         _machineryLogs = [];
         _materialUsage = [];
@@ -476,6 +499,7 @@ class _DailyReportWizardPageState
               onLogsChanged: _onLaborLogsChanged,
               onNavigateToBaseline: _navigateToBaseline,
               stoppedAt: _reportData['stopped_at'] as String?,
+              affectedServices: _affectedServices,
             ),
           ),
           Step(
@@ -495,6 +519,7 @@ class _DailyReportWizardPageState
               onLogsChanged: _onMachineryLogsChanged,
               onNavigateToBaseline: _navigateToBaseline,
               reportDate: _reportData['report_date'] as String?,
+              affectedServices: _affectedServices,
             ),
           ),
           Step(
@@ -507,6 +532,7 @@ class _DailyReportWizardPageState
               materialUsage: _materialUsage,
               isReadOnly: _reportData['status'] == 'approved' || _reportData['status'] == 'submitted',
               onUsageChanged: _onMaterialUsageChanged,
+              affectedServices: _affectedServices,
             ),
           ),
           Step(
@@ -613,6 +639,78 @@ class _DailyReportWizardPageState
     }
   }
 
+  /// Services affected by an active disruption CO that also have logged
+  /// activity (labor, machinery or material) in this report.
+  List<Map<String, dynamic>> _loggedAffectedServices() {
+    if (_affectedServices.isEmpty) return [];
+    final laborQs = <String, String>{
+      for (final pl in _unfilteredPlannedLabor)
+        if (pl['id'] != null && pl['quote_service_id'] != null)
+          pl['id'] as String: pl['quote_service_id'] as String,
+    };
+    final machineryQs = <String, String>{
+      for (final pm in _plannedMachinery)
+        if (pm['id'] != null && pm['quote_service_id'] != null)
+          pm['id'] as String: pm['quote_service_id'] as String,
+    };
+    final materialQs = <String, String>{
+      for (final pm in _plannedMaterials)
+        if (pm['id'] != null && pm['quote_service_id'] != null)
+          pm['id'] as String: pm['quote_service_id'] as String,
+    };
+
+    final logged = <String>{};
+    for (final l in _laborLogs) {
+      final pid = l['project_labor_id'] as String?;
+      if (pid != null) {
+        final qs = laborQs[pid];
+        if (qs != null) logged.add(qs);
+      }
+    }
+    for (final m in _machineryLogs) {
+      final pid = m['project_machinery_id'] as String?;
+      if (pid != null) {
+        final qs = machineryQs[pid];
+        if (qs != null) logged.add(qs);
+      }
+    }
+    for (final u in _materialUsage) {
+      final pid = u['project_material_id'] as String?;
+      if (pid != null) {
+        final qs = materialQs[pid];
+        if (qs != null) logged.add(qs);
+      }
+    }
+
+    final result = <Map<String, dynamic>>[];
+    for (final qsId in logged) {
+      final svc = _affectedServices[qsId] as Map<String, dynamic>?;
+      if (svc == null) continue;
+      result.add({
+        'task_name': svc['task_name'],
+        'affectation_type': svc['affectation_type'],
+        'change_orders': {
+          'co_number': svc['co_number'],
+          'title': svc['co_title'],
+        },
+      });
+    }
+    return result;
+  }
+
+  String _affectationLabel(String? type) {
+    switch (type) {
+      case 'total_stop':
+        return 'TOTAL STOP';
+      case 'partial':
+        return 'PARTIAL';
+      case 'indirect':
+        return 'INDIRECT';
+      default:
+        return '';
+    }
+  }
+
   Future<void> _handleSubmit() async {
     if (_reportId == null) return;
     await _saveReportHeader();
@@ -621,17 +719,8 @@ class _DailyReportWizardPageState
     final matOk = await _saveMaterialUsage();
     if (!machOk || !matOk) return;
 
-    if (_reportData['disruption_active'] == true) {
-      final laborIds = _laborLogs
-          .map((l) => l['project_labor_id'] as String?)
-          .where((id) => id != null && id.isNotEmpty)
-          .cast<String>()
-          .toList();
-      if (laborIds.isNotEmpty) {
-        final conflicts = await ref
-            .read(dailyReportServiceProvider)
-            .getDisruptionResourceConflicts(laborIds);
-        if (conflicts.isNotEmpty && mounted) {
+    final conflicts = _loggedAffectedServices();
+    if (conflicts.isNotEmpty && mounted) {
           final proceed = await showSafeDialog<bool>(
             context: context,
             builder: (ctx) => BackdropFilter(
@@ -691,8 +780,8 @@ class _DailyReportWizardPageState
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                'This report logs hours for services that are marked as '
-                                'TOTAL STOP in an active disruption Change Order:',
+                                'This report logs activity for services affected by an '
+                                'active disruption Change Order:',
                                 style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700),
                               ),
                               const SizedBox(height: 16),
@@ -711,7 +800,7 @@ class _DailyReportWizardPageState
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(
-                                        c['project_tasks']?['name'] ?? 'Unknown task',
+                                        c['task_name'] ?? 'Unknown service',
                                         style: GoogleFonts.manrope(
                                           fontWeight: FontWeight.w700,
                                           fontSize: 13,
@@ -720,7 +809,8 @@ class _DailyReportWizardPageState
                                       ),
                                       Text(
                                         'CO #${c['change_orders']?['co_number'] ?? ''} — '
-                                        '${c['change_orders']?['title'] ?? ''}',
+                                        '${c['change_orders']?['title'] ?? ''}'
+                                        '${c['affectation_type'] != null ? ' · ${_affectationLabel(c['affectation_type'] as String?)}' : ''}',
                                         style: GoogleFonts.manrope(
                                           fontSize: 11,
                                           color: AppTheme.slate500,
@@ -777,8 +867,6 @@ class _DailyReportWizardPageState
             ),
           );
           if (proceed != true) return;
-        }
-      }
     }
 
     try {

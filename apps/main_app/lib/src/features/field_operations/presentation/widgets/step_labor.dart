@@ -13,8 +13,9 @@ class StepLabor extends StatefulWidget {
   final ValueChanged<List<Map<String, dynamic>>> onLogsChanged;
   final VoidCallback? onNavigateToBaseline;
   final String? stoppedAt;
+  final Map<String, dynamic> affectedServices;
 
-  const StepLabor({super.key, required this.plannedLabor, required this.laborLogs, required this.workers, required this.deviationReasons, required this.isReadOnly, required this.onLogsChanged, this.onNavigateToBaseline, this.stoppedAt});
+  const StepLabor({super.key, required this.plannedLabor, required this.laborLogs, required this.workers, required this.deviationReasons, required this.isReadOnly, required this.onLogsChanged, this.onNavigateToBaseline, this.stoppedAt, this.affectedServices = const {}});
 
   @override
   State<StepLabor> createState() => _StepLaborState();
@@ -538,7 +539,38 @@ class _StepLaborState extends State<StepLabor> {
 
   Widget _buildServiceFilter() { final svcs = _allServices(); if (svcs.isEmpty) return const SizedBox.shrink(); return Row(children: [Text('Service:', style: _t(fs: 14, w: FontWeight.w600, c: AppTheme.slate500)), const SizedBox(width: 12), SizedBox(width: 260, child: DropdownButtonFormField<String>(value: _serviceFilter, decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)), hint: Text('All Services', style: _t(fs: 15)), items: [DropdownMenuItem<String>(value: null, child: Text('All Services', style: _t(fs: 15))), ...svcs.map((s) => DropdownMenuItem(value: s, child: Text(s, style: _t(fs: 15))))], onChanged: (v) => setState(() => _serviceFilter = v)))]); }
 
-  Widget _buildServiceGroup(String svc, List<Map<String, dynamic>> roles) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [const SizedBox(height: 8), Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: AppTheme.slate200.withAlpha(120), borderRadius: BorderRadius.circular(6)), child: Text(svc, style: _t(fs: 14, w: FontWeight.w800, c: AppTheme.slate700))), const SizedBox(height: 6), ...roles.map((pl) => _buildRoleCard(pl))]);
+  Widget _buildServiceGroup(String svc, List<Map<String, dynamic>> roles) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const SizedBox(height: 8),
+    Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(color: AppTheme.slate200.withAlpha(120), borderRadius: BorderRadius.circular(6)),
+        child: Row(children: [
+          Flexible(child: Text(svc, style: _t(fs: 14, w: FontWeight.w800, c: AppTheme.slate700))),
+          if (_svcAffected(roles)) _disruptionBadge(),
+        ])),
+    const SizedBox(height: 6),
+    ...roles.map((pl) => _buildRoleCard(pl)),
+  ]);
+
+  bool _svcAffected(List<Map<String, dynamic>> items) =>
+      widget.affectedServices.isEmpty
+          ? false
+          : items.any((pl) => widget.affectedServices.containsKey(pl['quote_service_id']));
+
+  Widget _disruptionBadge() => Container(
+        margin: const EdgeInsets.only(left: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: Colors.orange.withAlpha(25),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.orange.withAlpha(150)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.warning_amber_rounded, size: 13, color: Colors.orange),
+          const SizedBox(width: 4),
+          Text('Disruption', style: _t(fs: 11, w: FontWeight.w700, c: Colors.orange.shade900)),
+        ]),
+      );
 
   Widget _buildRoleCard(Map<String, dynamic> pl) {
     final rn = pl['role_name'] ?? pl['labor_roles']?['description'] ?? 'Worker';
@@ -993,7 +1025,11 @@ class _StepLaborState extends State<StepLabor> {
       }
 
       if (svcItems.isNotEmpty) {
-        items.add({'type': 'header', 'name': svc});
+        items.add({
+          'type': 'header',
+          'name': svc,
+          'affected': _svcAffected(grouped[svc]!),
+        });
         items.addAll(svcItems);
       }
     }
@@ -1050,6 +1086,7 @@ class _StepLaborState extends State<StepLabor> {
         child: Row(children: [
           const SizedBox(width: 44),
           Text(item['name'] as String, style: _t(fs: 13, w: FontWeight.w800, c: AppTheme.slate700)),
+          if (item['affected'] == true) _disruptionBadge(),
         ]),
       );
     }

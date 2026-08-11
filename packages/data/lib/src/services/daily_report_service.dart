@@ -364,4 +364,58 @@ class DailyReportService {
         .eq('change_orders.status', 'approved');
     return List<Map<String, dynamic>>.from(response ?? []);
   }
+
+  /// Returns the quote services affected by approved/submitted disruption
+  /// change orders whose period (start_date–end_date) covers the given date.
+  /// Each entry carries the CO info and the affectation type of the link.
+  Future<Map<String, dynamic>> getActiveDisruptedServices(
+    String projectId,
+    String date,
+  ) async {
+    final disruptions = await _supabase
+        .from('change_order_disruptions')
+        .select('change_order_id, start_date, end_date')
+        .lte('start_date', date)
+        .or('end_date.is.null,end_date.gte.$date');
+    if (disruptions == null || disruptions.isEmpty) return {};
+
+    final disruptionIds = <String>{};
+    for (final d in disruptions) {
+      final coId = d['change_order_id'] as String?;
+      if (coId != null) disruptionIds.add(coId);
+    }
+    if (disruptionIds.isEmpty) return {};
+
+    final rows = await _supabase
+        .from('change_order_disruption_services')
+        .select('''
+          change_order_id,
+          affectation_type,
+          notes,
+          project_tasks!inner(id, name, quote_service_id),
+          change_orders!inner(id, co_number, title, status, co_type)
+        ''')
+        .in_('change_order_id', disruptionIds.toList())
+        .eq('change_orders.co_type', 'disruption')
+        .eq('change_orders.project_id', projectId)
+        .in_('change_orders.status', ['approved', 'submitted']);
+
+    final result = <String, dynamic>{};
+    for (final row in rows ?? []) {
+      final task = row['project_tasks'] as Map<String, dynamic>? ?? {};
+      final qsId = task['quote_service_id'] as String?;
+      if (qsId == null || qsId.isEmpty) continue;
+      final co = row['change_orders'] as Map<String, dynamic>? ?? {};
+      result.putIfAbsent(qsId, () => <String, dynamic>{
+        'quote_service_id': qsId,
+        'task_name': task['name'],
+        'affectation_type': row['affectation_type'],
+        'co_id': co['id'],
+        'co_number': co['co_number'],
+        'co_title': co['title'],
+        'status': co['status'],
+      });
+    }
+    return result;
+  }
 }

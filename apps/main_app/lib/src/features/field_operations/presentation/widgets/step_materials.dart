@@ -10,6 +10,7 @@ class StepMaterials extends StatefulWidget {
   final List<Map<String, dynamic>> materialUsage;
   final bool isReadOnly;
   final ValueChanged<List<Map<String, dynamic>>> onUsageChanged;
+  final Map<String, dynamic> affectedServices;
 
   const StepMaterials({
     super.key,
@@ -18,6 +19,7 @@ class StepMaterials extends StatefulWidget {
     required this.materialUsage,
     required this.isReadOnly,
     required this.onUsageChanged,
+    this.affectedServices = const {},
   });
 
   @override
@@ -162,12 +164,35 @@ class _StepMaterialsState extends State<StepMaterials> {
       Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(color: AppTheme.slate200.withAlpha(120), borderRadius: BorderRadius.circular(6)),
-        child: Text(svcName, style: _t(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.slate700)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Flexible(child: Text(svcName, style: _t(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.slate700))),
+          if (_svcAffected(items)) _disruptionBadge(),
+        ]),
       ),
       const SizedBox(height: 6),
       ...items.map((pm) => _buildMaterialCard(pm)),
     ]);
   }
+
+  bool _svcAffected(List<Map<String, dynamic>> items) =>
+      widget.affectedServices.isEmpty
+          ? false
+          : items.any((pm) => widget.affectedServices.containsKey(pm['quote_service_id']));
+
+  Widget _disruptionBadge() => Container(
+        margin: const EdgeInsets.only(left: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: Colors.orange.withAlpha(25),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: Colors.orange.withAlpha(150)),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          const Icon(Icons.warning_amber_rounded, size: 13, color: Colors.orange),
+          const SizedBox(width: 4),
+          Text('Disruption', style: _t(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.orange.shade900)),
+        ]),
+      );
 
   Widget _buildMaterialCard(Map<String, dynamic> pm) {
     final pmId = pm['id'] as String;
