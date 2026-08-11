@@ -416,7 +416,7 @@ currentPath: '/projects/${widget.projectId}/monitoring',
             Text('Machinery', style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate400, letterSpacing: 0.5)),
             const SizedBox(height: 6),
             for (final m in machines.take(5))
-              _irregularRow(m, Icons.precision_manufacturing, '${m['name']} — ${m['deviation_count']} deviations, ${(m['total_hours'] as num?)?.toDouble() ?? 0}${m['odometer_unit'] == 'miles' ? ' mi' : 'h'}'),
+              _irregularRow(m, Icons.precision_manufacturing, '${m['name']}${(m['internal_id']?.toString() ?? '').isNotEmpty ? ' (${m['internal_id']})' : ''} — ${m['deviation_count']} deviations, ${(m['total_hours'] as num?)?.toDouble() ?? 0}${m['odometer_unit'] == 'miles' ? ' mi' : 'h'}'),
           ],
         ],
       ),

@@ -508,17 +508,22 @@ class ProductionMeasurementService {
       final pmIds = machMap.keys.toList();
       final inspResult = await _supabase
           .from('machinery_inspections')
-          .select('project_machinery_id, odometer_unit')
+          .select('project_machinery_id, odometer_unit, internal_id')
           .in_('project_machinery_id', pmIds);
       final Map<String, String> odometerMap = {};
+      final Map<String, String> internalIdMap = {};
       for (final row in inspResult ?? []) {
         final pmId = row['project_machinery_id']?.toString();
-        if (pmId != null) {
-          odometerMap[pmId] = row['odometer_unit']?.toString() ?? 'hours';
+        if (pmId == null) continue;
+        odometerMap[pmId] = row['odometer_unit']?.toString() ?? 'hours';
+        final id = row['internal_id']?.toString() ?? '';
+        if (id.isNotEmpty && !internalIdMap.containsKey(pmId)) {
+          internalIdMap[pmId] = id;
         }
       }
       for (final entry in machMap.values) {
         entry['odometer_unit'] = odometerMap[entry['id'] as String] ?? 'hours';
+        entry['internal_id'] = internalIdMap[entry['id'] as String] ?? '';
       }
     }
 
@@ -723,17 +728,22 @@ class ProductionMeasurementService {
       final pmIds = machines.keys.toList();
       final inspResult = await _supabase
           .from('machinery_inspections')
-          .select('project_machinery_id, odometer_unit')
+          .select('project_machinery_id, odometer_unit, internal_id')
           .in_('project_machinery_id', pmIds);
       final Map<String, String> odometerMap = {};
+      final Map<String, String> internalIdMap = {};
       for (final row in inspResult ?? []) {
         final pmId = row['project_machinery_id']?.toString();
-        if (pmId != null) {
-          odometerMap[pmId] = row['odometer_unit']?.toString() ?? 'hours';
+        if (pmId == null) continue;
+        odometerMap[pmId] = row['odometer_unit']?.toString() ?? 'hours';
+        final id = row['internal_id']?.toString() ?? '';
+        if (id.isNotEmpty && !internalIdMap.containsKey(pmId)) {
+          internalIdMap[pmId] = id;
         }
       }
       for (final entry in machines.values) {
         entry['odometer_unit'] = odometerMap[entry['id'] as String] ?? 'hours';
+        entry['internal_id'] = internalIdMap[entry['id'] as String] ?? '';
       }
     }
 

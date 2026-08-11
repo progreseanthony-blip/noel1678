@@ -215,6 +215,7 @@ class _ServiceAccordionState extends State<ServiceAccordion> {
         projectId: widget.projectId, resourceType: type, resourceId: resource['id']?.toString() ?? '',
         resourceName: resource['name']?.toString() ?? '',
         odometerUnit: resource['odometer_unit']?.toString() ?? 'hours',
+        internalCode: resource['internal_id']?.toString() ?? '',
       ),
     );
   }

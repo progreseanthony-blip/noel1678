@@ -9,6 +9,7 @@ class DailyHistoryDialog extends StatefulWidget {
   final String resourceId;
   final String resourceName;
   final String odometerUnit;
+  final String internalCode;
 
   const DailyHistoryDialog({
     super.key,
@@ -17,6 +18,7 @@ class DailyHistoryDialog extends StatefulWidget {
     required this.resourceId,
     required this.resourceName,
     this.odometerUnit = 'hours',
+    this.internalCode = '',
   });
 
   @override
@@ -85,6 +87,18 @@ class _DailyHistoryDialogState extends State<DailyHistoryDialog> {
                             color: Colors.white,
                           ),
                         ),
+                        if (widget.internalCode.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Text(
+                              'Code: ${widget.internalCode}',
+                              style: GoogleFonts.manrope(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.primaryGreen,
+                              ),
+                            ),
+                          ),
                       ],
                     ),
                   ),

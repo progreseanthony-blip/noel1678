@@ -16,6 +16,7 @@ class ResourceRow extends StatelessWidget {
     Color indicatorColor;
     String statusLabel;
     String metricLine;
+    var nameWithCode = name;
 
     if (type == 'machinery') {
       final prod = (resource['total_production'] as num?)?.toDouble() ?? 0;
@@ -24,6 +25,8 @@ class ResourceRow extends StatelessWidget {
       indicatorColor = devCount >= 2 ? Colors.redAccent : (prod > 0 ? AppTheme.primaryGreen : AppTheme.slate400);
       statusLabel = devCount >= 2 ? 'IRREGULAR' : (prod > 0 ? 'ACTIVE' : 'NO DATA');
       final odometerUnit = resource['odometer_unit']?.toString() == 'miles' ? 'mi' : 'hrs';
+      final internalCode = resource['internal_id']?.toString() ?? '';
+      if (internalCode.isNotEmpty) nameWithCode = '$name  ·  ID: $internalCode';
       metricLine = '${prod.toStringAsFixed(0)} prod · ${hrs.toStringAsFixed(1)} $odometerUnit · ${devCount} deviations';
     } else {
       final totalHrs = (resource['total_hours'] as num?)?.toDouble() ?? 0;
@@ -76,7 +79,7 @@ class ResourceRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    name,
+                    nameWithCode,
                     style: GoogleFonts.manrope(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
