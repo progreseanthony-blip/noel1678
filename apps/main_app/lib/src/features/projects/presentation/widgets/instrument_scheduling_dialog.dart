@@ -8,12 +8,14 @@ class InstrumentSchedulingDialog extends StatefulWidget {
   final String projectInstrumentId;
   final String instrumentName;
   final int expectedQuantity;
+  final String serviceName;
 
   const InstrumentSchedulingDialog({
     super.key,
     required this.projectInstrumentId,
     required this.instrumentName,
     required this.expectedQuantity,
+    this.serviceName = '',
   });
 
   @override
@@ -319,6 +321,20 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
                             Text('Instrument Planning', style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
                             const SizedBox(height: 4),
                             Text('${widget.instrumentName} (${widget.expectedQuantity} Units)', style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate500, height: 1.0)),
+                            if (widget.serviceName.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.primaryGreen.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  'Service: ${widget.serviceName}',
+                                  style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ],

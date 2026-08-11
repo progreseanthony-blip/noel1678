@@ -38,6 +38,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
   String? _error;
   late TabController _tabController;
   String _selectedServiceFilter = 'All Services';
+  bool _machineryTableView = false;
   List<String> _projectServices = [];
   double _dailyBurnRate = 1500.0;
   final Map<String, bool> _expandedServices = {};
@@ -1166,129 +1167,360 @@ currentPath: '/projects/${widget.projectId}',
       );
     }
 
-    return ListView.builder(
-      padding: EdgeInsets.all(isMobile ? 16 : 32),
-      itemCount: serviceNames.length,
-      itemBuilder: (context, sIndex) {
-        final sName = serviceNames[sIndex];
-        final groupItems = grouped[sName]!;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(isMobile ? 16 : 32, 16, isMobile ? 16 : 32, 0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${serviceNames.length} service(s) · ${_machinery.length} machine(s)',
+                style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate500),
+              ),
+              Row(
+                children: [
+                  _viewToggleOpt(Icons.view_list, 'Normal', !_machineryTableView, () => setState(() => _machineryTableView = false)),
+                  const SizedBox(width: 4),
+                  _viewToggleOpt(Icons.table_chart, 'Table', _machineryTableView, () => setState(() => _machineryTableView = true)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: _machineryTableView
+              ? _buildMachineryTable(grouped, serviceNames, isMobile)
+              : ListView.builder(
+                  padding: EdgeInsets.all(isMobile ? 16 : 32),
+                  itemCount: serviceNames.length,
+                  itemBuilder: (context, sIndex) {
+                    final sName = serviceNames[sIndex];
+                    final groupItems = grouped[sName]!;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildServiceHeader(sName, serviceId: _extractServiceId(groupItems.first, 'quote_service_machineries')),
-            ...groupItems.map((m) {
-              final mName = m['machinery_name'] ?? 'Unknown Machine';
-              final expected = (m['expected_quantity'] as num?)?.toInt() ?? 0;
-              final received = (m['received_quantity'] as num?)?.toInt() ?? 0;
-              final isComplete = received >= expected;
-              final photoUrl = _machineryPhotos[mName];
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildServiceHeader(sName, serviceId: _extractServiceId(groupItems.first, 'quote_service_machineries')),
+                        ...groupItems.map((m) {
+                          final mName = m['machinery_name'] ?? 'Unknown Machine';
+                          final expected = (m['expected_quantity'] as num?)?.toInt() ?? 0;
+                          final received = (m['received_quantity'] as num?)?.toInt() ?? 0;
+                          final isComplete = received >= expected;
+                          final photoUrl = _machineryPhotos[mName];
 
-              return Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.slate200),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 60, height: 60,
-                      decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                        image: photoUrl != null && photoUrl.isNotEmpty
-                            ? DecorationImage(image: NetworkImage(photoUrl), fit: BoxFit.cover)
-                            : null,
-                      ),
-                      child: (photoUrl == null || photoUrl.isEmpty) 
-                        ? const Icon(
-                            Icons.precision_manufacturing, 
-                            color: Colors.orange,
-                          )
-                        : null,
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            m['machinery_name'] ?? 'Unknown Machine',
-                            style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Received: $received / $expected unidades',
-                            style: GoogleFonts.manrope(
-                              fontSize: 13, 
-                              fontWeight: FontWeight.w600,
-                              color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
+                          return Container(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppTheme.slate200),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
+                              ],
                             ),
-                          ),
-                          if (m['is_principal'] == true && _machineryProduction.containsKey(m['id']))
-                            Padding(
-                              padding: const EdgeInsets.only(top: 2),
-                              child: Text(
-                                'Production: ${_machineryProduction[m['id']]!.toStringAsFixed(0)} ${m['quote_services']?['unit_of_measure'] ?? ''} total',
-                                style: GoogleFonts.manrope(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.slate600,
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 60, height: 60,
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(10),
+                                    image: photoUrl != null && photoUrl.isNotEmpty
+                                        ? DecorationImage(image: NetworkImage(photoUrl), fit: BoxFit.cover)
+                                        : null,
+                                  ),
+                                  child: (photoUrl == null || photoUrl.isEmpty) 
+                                    ? const Icon(
+                                        Icons.precision_manufacturing, 
+                                        color: Colors.orange,
+                                      )
+                                    : null,
                                 ),
-                              ),
+                                const SizedBox(width: 16),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        m['machinery_name'] ?? 'Unknown Machine',
+                                        style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Received: $received / $expected unidades',
+                                        style: GoogleFonts.manrope(
+                                          fontSize: 13, 
+                                          fontWeight: FontWeight.w600,
+                                          color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
+                                        ),
+                                      ),
+                                      if (m['is_principal'] == true && _machineryProduction.containsKey(m['id']))
+                                        Padding(
+                                          padding: const EdgeInsets.only(top: 2),
+                                          child: Text(
+                                            'Production: ${_machineryProduction[m['id']]!.toStringAsFixed(0)} ${m['quote_services']?['unit_of_measure'] ?? ''} total',
+                                            style: GoogleFonts.manrope(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppTheme.slate600,
+                                            ),
+                                          ),
+                                        ),
+                                      if (!isComplete && expected > 0)
+                                        Container(
+                                          margin: const EdgeInsets.only(top: 8),
+                                          height: 6,
+                                          width: double.infinity,
+                                          decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(3)),
+                                          child: FractionallySizedBox(
+                                            alignment: Alignment.centerLeft,
+                                            widthFactor: (received / expected).clamp(0.0, 1.0),
+                                            child: Container(decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(3))),
+                                          ),
+                                        ),
+                                        _buildEVMDisplay(m),
+                                    ],
+                                  ),
+                                ),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    showSafeDialog(
+                                      context: context,
+                                      builder: (_) => MachinerySchedulingDialog(
+                                        projectMachineryId: m['id'],
+                                        machineryName: mName,
+                                        expectedQuantity: expected,
+                                        serviceName: sName,
+                                      ),
+                                    ).then((updated) {
+                                      if (updated == true) _loadProjectData();
+                                    });
+                                  },
+                                  icon: const Icon(Icons.calendar_month, size: 16, color: Colors.white),
+                                  label: Text('Modify Schedule', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.orange,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  ),
+                                ),
+                              ],
                             ),
-                          if (!isComplete && expected > 0)
-                            Container(
-                              margin: const EdgeInsets.only(top: 8),
-                              height: 6,
-                              width: double.infinity,
-                              decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(3)),
-                              child: FractionallySizedBox(
-                                alignment: Alignment.centerLeft,
-                                widthFactor: (received / expected).clamp(0.0, 1.0),
-                                child: Container(decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(3))),
-                              ),
-                            ),
-                            _buildEVMDisplay(m),
-                        ],
-                      ),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        showSafeDialog(
-                          context: context,
-                          builder: (_) => MachinerySchedulingDialog(
-                            projectMachineryId: m['id'],
-                            machineryName: mName,
-                            expectedQuantity: expected,
-                          ),
-                        ).then((updated) {
-                          if (updated == true) _loadProjectData();
-                        });
-                      },
-                      icon: const Icon(Icons.calendar_month, size: 16, color: Colors.white),
-                      label: Text('Modify Schedule', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.orange,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      ),
-                    ),
+                          );
+                        }).toList(),
+                        const SizedBox(height: 16),
+                      ],
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _viewToggleOpt(IconData icon, String label, bool active, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? AppTheme.primaryGreen : AppTheme.slate200,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: active ? Colors.white : AppTheme.slate600),
+            const SizedBox(width: 4),
+            Text(label, style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: active ? Colors.white : AppTheme.slate600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMachineryTable(Map<String, List<Map<String, dynamic>>> grouped, List<String> serviceNames, bool isMobile) {
+    final DateFormat fmt = DateFormat('MMM dd, yyyy');
+    final List<Map<String, dynamic>> rows = [];
+    for (final sName in serviceNames) {
+      for (final m in grouped[sName]!) {
+        rows.add({
+          'service': sName,
+          'machinery': m,
+        });
+      }
+    }
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(isMobile ? 16 : 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Table(
+              border: TableBorder(horizontalInside: const BorderSide(color: Color(0xFFF1F5F9))),
+              columnWidths: const {
+                0: FlexColumnWidth(2),
+                1: FlexColumnWidth(2),
+                2: FlexColumnWidth(1),
+                3: FlexColumnWidth(1.3),
+                4: FlexColumnWidth(1.3),
+                5: FlexColumnWidth(1.5),
+              },
+              children: [
+                TableRow(
+                  decoration: const BoxDecoration(color: Color(0xFFF8FAFC)),
+                  children: [
+                    _tableHeader('Service'),
+                    _tableHeader('Machinery'),
+                    _tableHeader('Qty'),
+                    _tableHeader('Start'),
+                    _tableHeader('End'),
+                    _tableHeader('Status'),
                   ],
                 ),
-              );
-            }).toList(),
-            const SizedBox(height: 16),
-          ],
-        );
-      },
+                for (final row in rows)
+                  TableRow(
+                    children: [
+                      _tableCell(row['service']?.toString() ?? ''),
+                      _tableCell(row['machinery']?['machinery_name']?.toString() ?? '', bold: true),
+                      _tableCell((row['machinery']?['expected_quantity'] as num?)?.toInt().toString() ?? ''),
+                      _tableCell(row['machinery']?['start_date'] != null ? fmt.format(DateTime.parse(row['machinery']['start_date'].toString())) : '—'),
+                      _tableCell(row['machinery']?['end_date'] != null ? fmt.format(DateTime.parse(row['machinery']['end_date'].toString())) : '—'),
+                      TableCell(
+                        verticalAlignment: TableCellVerticalAlignment.middle,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: TextButton.icon(
+                            onPressed: () => _openTableDatePicker(row['machinery'], fmt),
+                            icon: const Icon(Icons.event, size: 14, color: AppTheme.primaryGreen),
+                            label: Text('Set dates', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _machinery.isEmpty ? null : () => _openBatchDateRange(serviceNames, fmt),
+              icon: const Icon(Icons.event_available, size: 18, color: Colors.white),
+              label: Text('Schedule ALL machinery at once (bulk date range)', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryGreen,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  TableCell _tableHeader(String text) {
+    return TableCell(
+      verticalAlignment: TableCellVerticalAlignment.middle,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Text(text, style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: const Color(0xFF64748B))),
+      ),
+    );
+  }
+
+  TableCell _tableCell(String text, {bool bold = false}) {
+    return TableCell(
+      verticalAlignment: TableCellVerticalAlignment.middle,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Text(text, style: GoogleFonts.manrope(fontSize: 12, fontWeight: bold ? FontWeight.w700 : FontWeight.w400, color: AppTheme.slate700)),
+      ),
+    );
+  }
+
+  Future<void> _openTableDatePicker(Map<String, dynamic> m, DateFormat fmt) async {
+    final initialStart = m['start_date'] != null ? DateTime.parse(m['start_date'].toString()) : DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      initialDateRange: DateTimeRange(
+        start: initialStart,
+        end: m['end_date'] != null ? DateTime.parse(m['end_date'].toString()) : initialStart.add(const Duration(days: 7)),
+      ),
+    );
+    if (picked == null) return;
+    await _applyAssignments(m['id'] as String, picked.start, picked.end);
+    if (mounted) {
+      setState(() {});
+      _loadProjectData();
+    }
+  }
+
+  Future<void> _openBatchDateRange(List<String> serviceNames, DateFormat fmt) async {
+    final first = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      initialDateRange: DateTimeRange(start: first, end: first.add(const Duration(days: 7))),
+    );
+    if (picked == null) return;
+    var count = 0;
+    for (final m in _machinery) {
+      if (m['start_date'] == null || m['end_date'] == null) {
+        await _applyAssignments(m['id'] as String, picked.start, picked.end);
+        count++;
+      }
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(count == 0 ? 'All machinery already scheduled.' : 'Scheduled $count machine(s) from ${fmt.format(picked.start)} to ${fmt.format(picked.end)}'),
+          backgroundColor: AppTheme.primaryGreen,
+        ),
+      );
+      _loadProjectData();
+    }
+  }
+
+  Future<void> _applyAssignments(String projectMachineryId, DateTime start, DateTime end) async {
+    try {
+      final supabase = Supabase.instance.client;
+      await supabase
+          .from('project_machinery_assignments')
+          .delete()
+          .eq('project_machinery_id', projectMachineryId);
+      await supabase.from('project_machinery_assignments').insert({
+        'project_machinery_id': projectMachineryId,
+        'start_date': start.toIso8601String().split('T')[0],
+        'end_date': end.toIso8601String().split('T')[0],
+        'quantity': 1,
+      });
+      await supabase.from('project_machinery').update({
+        'start_date': start.toIso8601String().split('T')[0],
+        'end_date': end.toIso8601String().split('T')[0],
+      }).eq('id', projectMachineryId);
+    } catch (e) {
+      debugPrint('Error saving bulk machinery dates: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving dates: $e')));
+      }
+    }
   }
 
   Widget _buildLaborStatusInfo(String label, int current, int total, Color color) {
@@ -1559,6 +1791,7 @@ currentPath: '/projects/${widget.projectId}',
                             projectInstrumentId: m['id'],
                             instrumentName: mName,
                             expectedQuantity: expected.toInt(),
+                            serviceName: sName,
                           ),
                         ).then((updated) {
                           if (updated == true) _loadProjectData();
@@ -1726,6 +1959,7 @@ currentPath: '/projects/${widget.projectId}',
                           builder: (_) => LaborSchedulingDialog(
                             projectLaborId: l['id'],
                             roleName: roleName,
+                            serviceName: sName,
                           ),
                         ).then((updated) {
                           if (updated == true) _loadProjectData();
@@ -1920,7 +2154,7 @@ currentPath: '/projects/${widget.projectId}',
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Baseline v${snapshot['version']} created!'),
+            content: Text('Lock executed: Baseline v${snapshot['version']} is now the active baseline.'),
             backgroundColor: AppTheme.primaryGreen,
           ),
         );
@@ -2034,7 +2268,7 @@ currentPath: '/projects/${widget.projectId}',
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Baseline v${snapshot['version']} saved successfully!'),
+            content: Text('Lock executed: Baseline v${snapshot['version']} is now the active baseline.'),
             backgroundColor: AppTheme.primaryGreen,
           ),
         );

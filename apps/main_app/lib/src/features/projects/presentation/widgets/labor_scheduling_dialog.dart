@@ -8,11 +8,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class LaborSchedulingDialog extends StatefulWidget {
   final String projectLaborId;
   final String roleName;
+  final String serviceName;
 
   const LaborSchedulingDialog({
     super.key,
     required this.projectLaborId,
     required this.roleName,
+    this.serviceName = '',
   });
 
   @override
@@ -68,6 +70,18 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
 
       final projectId = data['project_id'];
 
+      DateTime? projectStart;
+      try {
+        final pRes = await supabase
+            .from('projects')
+            .select('start_date')
+            .eq('id', projectId)
+            .maybeSingle();
+        projectStart = pRes?['start_date'] != null
+            ? DateTime.tryParse(pRes['start_date'].toString())
+            : null;
+      } catch (_) {}
+
       // Load non-working days
       try {
         final nwDays = await supabase
@@ -119,6 +133,12 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
                 _endDate = DateTime.tryParse(estEnd.toString());
               }
             }
+          }
+          if (_startDate == null) {
+            _startDate = projectStart ?? DateTime.now();
+          }
+          if (_endDate == null && _stipulatedDays != null && _stipulatedDays! > 0) {
+            _endDate = _calculateEndDate(_startDate!, _stipulatedDays!);
           }
           _isLoading = false;
         });
@@ -240,6 +260,20 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
                                     widget.roleName,
                                     style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate500, height: 1.0),
                                   ),
+                                  if (widget.serviceName.isNotEmpty) ...[
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryGreen.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        'Service: ${widget.serviceName}',
+                                        style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen),
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ],
