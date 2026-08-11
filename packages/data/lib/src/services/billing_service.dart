@@ -472,6 +472,7 @@ class BillingService {
   Future<List<Map<String, dynamic>>> getProjectMachineryForStandby(
     String projectId, {
     List<String>? quoteServiceIds,
+    List<String>? projectServiceIds,
   }) async {
     var query = _supabase
         .from('project_machinery')
@@ -482,8 +483,15 @@ class BillingService {
           quote_service_machineries!left(id, monthly_rent_cost)
         ''')
         .eq('project_id', projectId);
+    final orParts = <String>[];
     if (quoteServiceIds != null && quoteServiceIds.isNotEmpty) {
-      query = query.in_('quote_service_id', quoteServiceIds);
+      orParts.add('quote_service_id.in.(${quoteServiceIds.join(',')})');
+    }
+    if (projectServiceIds != null && projectServiceIds.isNotEmpty) {
+      orParts.add('project_service_id.in.(${projectServiceIds.join(',')})');
+    }
+    if (orParts.isNotEmpty) {
+      query = query.or(orParts.join(','));
     }
     final response = await query.order('machinery_name');
     return List<Map<String, dynamic>>.from(response ?? []);
@@ -492,6 +500,7 @@ class BillingService {
   Future<List<Map<String, dynamic>>> getProjectLaborForStandby(
     String projectId, {
     List<String>? quoteServiceIds,
+    List<String>? projectServiceIds,
   }) async {
     var query = _supabase
         .from('project_labor')
@@ -502,8 +511,15 @@ class BillingService {
           labor_roles!left(id, description, hourly_rate)
         ''')
         .eq('project_id', projectId);
+    final orParts = <String>[];
     if (quoteServiceIds != null && quoteServiceIds.isNotEmpty) {
-      query = query.in_('quote_service_id', quoteServiceIds);
+      orParts.add('quote_service_id.in.(${quoteServiceIds.join(',')})');
+    }
+    if (projectServiceIds != null && projectServiceIds.isNotEmpty) {
+      orParts.add('project_service_id.in.(${projectServiceIds.join(',')})');
+    }
+    if (orParts.isNotEmpty) {
+      query = query.or(orParts.join(','));
     }
     final response = await query.order('role_name');
     return List<Map<String, dynamic>>.from(response ?? []);
@@ -512,18 +528,26 @@ class BillingService {
   Future<List<Map<String, dynamic>>> getProjectMaterialsForStandby(
     String projectId, {
     List<String>? quoteServiceIds,
+    List<String>? projectServiceIds,
   }) async {
     var query = _supabase
         .from('project_materials')
         .select('''
           id, material_name, expected_quantity,
           materials!left(id, description, unit),
-          quote_service_materials!inner(unit_price),
+          quote_service_materials!left(unit_price),
           quote_services!left(id, name)
         ''')
         .eq('project_id', projectId);
+    final orParts = <String>[];
     if (quoteServiceIds != null && quoteServiceIds.isNotEmpty) {
-      query = query.in_('quote_service_id', quoteServiceIds);
+      orParts.add('quote_service_id.in.(${quoteServiceIds.join(',')})');
+    }
+    if (projectServiceIds != null && projectServiceIds.isNotEmpty) {
+      orParts.add('project_service_id.in.(${projectServiceIds.join(',')})');
+    }
+    if (orParts.isNotEmpty) {
+      query = query.or(orParts.join(','));
     }
     final response = await query.order('material_name');
     return List<Map<String, dynamic>>.from(response ?? []);

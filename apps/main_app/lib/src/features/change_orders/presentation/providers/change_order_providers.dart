@@ -30,21 +30,30 @@ Future<List<Map<String, dynamic>>> disruptionReasonList(DisruptionReasonListRef 
 
 @riverpod
 Future<List<Map<String, dynamic>>> projectMachineryForStandby(
-    ProjectMachineryForStandbyRef ref, String projectId, [List<String>? quoteServiceIds]) {
-  return ref.watch(billingServiceProvider)
-      .getProjectMachineryForStandby(projectId, quoteServiceIds: quoteServiceIds);
+    ProjectMachineryForStandbyRef ref, String projectId,
+    [List<String>? quoteServiceIds, List<String>? projectServiceIds]) {
+  return ref.watch(billingServiceProvider).getProjectMachineryForStandby(
+      projectId,
+      quoteServiceIds: quoteServiceIds,
+      projectServiceIds: projectServiceIds);
 }
 
 @riverpod
 Future<List<Map<String, dynamic>>> projectLaborForStandby(
-    ProjectLaborForStandbyRef ref, String projectId, [List<String>? quoteServiceIds]) {
-  return ref.watch(billingServiceProvider)
-      .getProjectLaborForStandby(projectId, quoteServiceIds: quoteServiceIds);
+    ProjectLaborForStandbyRef ref, String projectId,
+    [List<String>? quoteServiceIds, List<String>? projectServiceIds]) {
+  return ref.watch(billingServiceProvider).getProjectLaborForStandby(
+      projectId,
+      quoteServiceIds: quoteServiceIds,
+      projectServiceIds: projectServiceIds);
 }
 
 @riverpod
 Future<List<Map<String, dynamic>>> projectMaterialsForStandby(
-    ProjectMaterialsForStandbyRef ref, String projectId, [List<String>? quoteServiceIds]) {
-  return ref.watch(billingServiceProvider)
-      .getProjectMaterialsForStandby(projectId, quoteServiceIds: quoteServiceIds);
+    ProjectMaterialsForStandbyRef ref, String projectId,
+    [List<String>? quoteServiceIds, List<String>? projectServiceIds]) {
+  return ref.watch(billingServiceProvider).getProjectMaterialsForStandby(
+      projectId,
+      quoteServiceIds: quoteServiceIds,
+      projectServiceIds: projectServiceIds);
 }

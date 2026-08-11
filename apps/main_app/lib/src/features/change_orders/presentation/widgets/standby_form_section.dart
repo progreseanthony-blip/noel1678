@@ -19,6 +19,7 @@ class StandbyFormSection extends ConsumerStatefulWidget {
   final ValueChanged<DateTime?> onDisruptionEndChanged;
   final ValueChanged<List<Map<String, dynamic>>> onLinesChanged;
   final List<String>? allowedQuoteServiceIds;
+  final List<String>? allowedProjectServiceIds;
 
   const StandbyFormSection({
     super.key,
@@ -34,6 +35,7 @@ class StandbyFormSection extends ConsumerStatefulWidget {
     required this.onDisruptionEndChanged,
     required this.onLinesChanged,
     this.allowedQuoteServiceIds,
+    this.allowedProjectServiceIds,
   });
 
   @override
@@ -245,18 +247,21 @@ class _StandbyFormSectionState extends ConsumerState<StandbyFormSection> {
       projectMachineryForStandbyProvider(
         widget.projectId,
         widget.allowedQuoteServiceIds,
+        widget.allowedProjectServiceIds,
       ),
     );
     final laborAsync = ref.watch(
       projectLaborForStandbyProvider(
         widget.projectId,
         widget.allowedQuoteServiceIds,
+        widget.allowedProjectServiceIds,
       ),
     );
     final matAsync = ref.watch(
       projectMaterialsForStandbyProvider(
         widget.projectId,
         widget.allowedQuoteServiceIds,
+        widget.allowedProjectServiceIds,
       ),
     );
 

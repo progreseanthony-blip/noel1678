@@ -1372,6 +1372,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
             onDelayDaysChanged: (v) => setState(() => _delayDays = v),
             lines: _lines,
             allowedQuoteServiceIds: _selectedQuoteServiceIds,
+            allowedProjectServiceIds: _selectedProjectServiceIds,
             onDisruptionReasonChanged: (v) =>
                 setState(() => _disruptionReasonId = v),
             onDisruptionStartChanged: (v) =>
@@ -1407,6 +1408,26 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     }
     final result = ids.isEmpty ? null : ids.toList();
     debugPrint('[_selectedQuoteServiceIds] returning: $result from ${_disruptionServices.length} disruption services');
+    return result;
+  }
+
+  List<String>? get _selectedProjectServiceIds {
+    final ids = <String>{};
+    for (final s in _disruptionServices) {
+      final taskId = s['project_task_id'] as String?;
+      if (taskId != null) {
+        final task = _availableTasks.firstWhere(
+          (t) => t['id'] == taskId,
+          orElse: () => <String, dynamic>{},
+        );
+        final psid = task['project_service_id'] as String?;
+        if (psid != null) ids.add(psid);
+      } else {
+        debugPrint('[_selectedProjectServiceIds] taskId=$taskId NOT found in _availableTasks');
+      }
+    }
+    final result = ids.isEmpty ? null : ids.toList();
+    debugPrint('[_selectedProjectServiceIds] returning: $result from ${_disruptionServices.length} disruption services');
     return result;
   }
 
