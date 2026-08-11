@@ -25,11 +25,30 @@ class _MachinerySelectionDialogState
   List<Map<String, dynamic>> _filteredInventory = [];
   final Set<String> _selectedIds = {};
   bool _isShowingAll = false;
+  String _searchQuery = '';
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  List<Map<String, dynamic>> get _searchFiltered {
+    final base = _isShowingAll ? _allInventory : _filteredInventory;
+    if (_searchQuery.isEmpty) return base;
+    final q = _searchQuery.toLowerCase();
+    return base.where((m) {
+      final desc = (m['description'] ?? m['name'] ?? '').toString().toLowerCase();
+      final code = (m['internal_code'] ?? '').toString().toLowerCase();
+      return desc.contains(q) || code.contains(q);
+    }).toList();
   }
 
   Future<void> _loadData() async {
@@ -62,7 +81,7 @@ class _MachinerySelectionDialogState
 
   @override
   Widget build(BuildContext context) {
-    final listToDisplay = _isShowingAll ? _allInventory : _filteredInventory;
+    final listToDisplay = _searchFiltered;
     final title = widget.isInstrument ? 'Select Instruments' : 'Select Machinery';
 
     return AlertDialog(
@@ -89,6 +108,25 @@ class _MachinerySelectionDialogState
                   )
                 : Column(
                     children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: TextField(
+                          controller: _searchCtrl,
+                          onChanged: (v) => setState(() => _searchQuery = v),
+                          decoration: InputDecoration(
+                            hintText: 'Search ${widget.isInstrument ? 'instruments' : 'machinery'} by name or code...',
+                            prefixIcon: const Icon(Icons.search, size: 18),
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                            filled: true,
+                            fillColor: AppTheme.slate50,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                      ),
                       if (!_isShowingAll && _filteredInventory.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 8.0),

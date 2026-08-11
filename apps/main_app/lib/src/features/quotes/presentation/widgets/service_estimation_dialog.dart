@@ -534,7 +534,9 @@ class _ServiceEstimationDialogState
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
       child: Container(
-        width: 1600,
+        width: MediaQuery.of(context).size.width >= 1680
+            ? 1600
+            : MediaQuery.of(context).size.width - 40,
         height: MediaQuery.of(context).size.height * 0.9,
         decoration: BoxDecoration(
           color: AppTheme.backgroundLight,
@@ -854,36 +856,51 @@ class _ServiceEstimationDialogState
   Widget _buildResourcesStep() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(30, 20, 30, 20),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            flex: 8,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _inputLabel('Assigned Machinery & Support'),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        ..._buildHierarchicalResources(),
-                        const SizedBox(height: 8),
-                        _addPrimaryButton(),
-                      ],
-                    ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 1150;
+          final resources = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _inputLabel('Assigned Machinery & Support'),
+              const SizedBox(height: 12),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      ..._buildHierarchicalResources(),
+                      const SizedBox(height: 8),
+                      _addPrimaryButton(),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 30),
-          Expanded(
-            flex: 5,
-            child: _buildCalculationSummary(),
-          ),
-        ],
+              ),
+            ],
+          );
+          final summary = _buildCalculationSummary();
+
+          if (compact) {
+            return SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(height: 520, child: resources),
+                  const SizedBox(height: 16),
+                  summary,
+                ],
+              ),
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(flex: 8, child: resources),
+              const SizedBox(width: 30),
+              Expanded(flex: 5, child: summary),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1034,12 +1051,72 @@ class _ServiceEstimationDialogState
           // Primary machine row
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Column(
-              children: [
-                _machineryHeader(res, isPrimary: true),
-                const SizedBox(height: 10),
-                _primaryInputs(res),
-              ],
+            child: LayoutBuilder(
+              builder: (ctx, constraints) {
+                final wide = constraints.maxWidth >= 640;
+                final info = Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryGreen.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.star_rounded, size: 16, color: AppTheme.primaryGreen),
+                    ),
+                    const SizedBox(width: 10),
+                    _machineryPhoto(res, size: 40),
+                  ],
+                );
+                final nameCol = Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(res['machine_name'] ?? '', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A))),
+                      _primaryBadge(),
+                    ],
+                  ),
+                );
+                final removeBtn = IconButton(
+                  onPressed: () => _removeResource(res['id'] as String),
+                  icon: const Icon(Icons.remove_circle_outline, color: AppTheme.errorRed, size: 18),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                );
+                final fields = _compactFieldGroup(res);
+
+                if (wide) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      info,
+                      const SizedBox(width: 10),
+                      nameCol,
+                      const SizedBox(width: 12),
+                      fields,
+                      const SizedBox(width: 4),
+                      removeBtn,
+                    ],
+                  );
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        info,
+                        const SizedBox(width: 10),
+                        nameCol,
+                        removeBtn,
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    fields,
+                  ],
+                );
+              },
             ),
           ),
 
@@ -1109,37 +1186,12 @@ class _ServiceEstimationDialogState
             ),
           ),
           // QTY input (only field for support)
-          SizedBox(
-            width: 80,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('QTY', style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w700, color: AppTheme.slate400)),
-                const SizedBox(height: 2),
-                SizedBox(
-                  height: 28,
-                  child: TextFormField(
-                    controller: res['qtyCtrl'] as TextEditingController,
-                    keyboardType: TextInputType.number,
-                    onTap: () {
-                      final ctrl = res['qtyCtrl'] as TextEditingController;
-                      if (ctrl.text == '0') ctrl.text = ''; // Clear if zero for easier typing
-                      ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length);
-                    },
-                    onChanged: (val) {
-                      res['quantity'] = double.tryParse(val) ?? 1.0;
-                    },
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                    decoration: InputDecoration(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                      filled: true,
-                      fillColor: Colors.white,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppTheme.slate200)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          _compactInput(
+            'QTY',
+            (val) => res['quantity'] = double.tryParse(val) ?? 1.0,
+            res['qtyCtrl'] as TextEditingController,
+            width: 70,
+            clearZeroOnTap: true,
           ),
           const SizedBox(width: 8),
           // Remove support
@@ -1151,40 +1203,6 @@ class _ServiceEstimationDialogState
           ),
         ],
       ),
-    );
-  }
-
-  Widget _machineryHeader(Map<String, dynamic> res, {required bool isPrimary}) {
-    return Row(
-      children: [
-        // Primary icon: star
-        Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: AppTheme.primaryGreen.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Icon(Icons.star_rounded, size: 16, color: AppTheme.primaryGreen),
-        ),
-        const SizedBox(width: 10),
-        _machineryPhoto(res, size: 40),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(res['machine_name'] ?? '', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: const Color(0xFF0F172A))),
-              _primaryBadge(),
-            ],
-          ),
-        ),
-        IconButton(
-          onPressed: () => _removeResource(res['id'] as String),
-          icon: const Icon(Icons.remove_circle_outline, color: AppTheme.errorRed, size: 18),
-          padding: EdgeInsets.zero,
-          constraints: const BoxConstraints(),
-        ),
-      ],
     );
   }
 
@@ -1211,57 +1229,87 @@ class _ServiceEstimationDialogState
     );
   }
 
-  Widget _primaryInputs(Map<String, dynamic> res) {
+  Widget _compactFieldGroup(Map<String, dynamic> res) {
+    final children = <Widget>[];
+    children.add(_compactInput('QTY', (val) {
+      res['quantity'] = double.tryParse(val) ?? 1.0;
+      _runCalculation();
+    }, res['qtyCtrl'] as TextEditingController, width: 66));
     if (_isLinearBased || _isAcresBased) {
       final perfLabel = _isAcresBased ? 'PERFORMANCE (AC/D)' : (_isLinearBased ? 'PERFORMANCE (LF/D)' : 'PERFORMANCE (SQFT/D)');
-      return Row(
-        children: [
-          _miniInput('QTY', (val) {
-            res['quantity'] = double.tryParse(val) ?? 1.0;
-            _runCalculation();
-          }, res['qtyCtrl'] as TextEditingController),
-          const SizedBox(width: 8),
-          _miniInput(perfLabel, (val) {
-            res['performance_per_day'] = double.tryParse(val) ?? 0.0;
-            _runCalculation();
-          }, res['perfCtrl'] as TextEditingController),
-        ],
-      );
+      children.add(_compactInput(perfLabel, (val) {
+        res['performance_per_day'] = double.tryParse(val) ?? 0.0;
+        _runCalculation();
+      }, res['perfCtrl'] as TextEditingController, width: 150));
+    } else {
+      children.add(_compactInput('TRIPS/D', (val) {
+        final tripsVal = double.tryParse(val) ?? 60.0;
+        res['trips_per_day'] = tripsVal;
+        final capVal = double.tryParse((res['capCtrl'] as TextEditingController).text) ?? 0;
+        (res['perDayCtrl'] as TextEditingController).text = (tripsVal * capVal).toStringAsFixed(0);
+        _runCalculation();
+      }, res['tripsCtrl'] as TextEditingController, width: 74));
+      children.add(_compactInput('CAP (CY)', (val) {
+        final capVal = double.tryParse(val) ?? 30.0;
+        res['capacity_per_trip'] = capVal;
+        final tripsVal = double.tryParse((res['tripsCtrl'] as TextEditingController).text) ?? 0;
+        (res['perDayCtrl'] as TextEditingController).text = (tripsVal * capVal).toStringAsFixed(0);
+        _runCalculation();
+      }, res['capCtrl'] as TextEditingController, width: 80));
+      children.add(_compactInput('CY/D (UNIT)', (val) {
+        final totalVal = double.tryParse(val) ?? 0;
+        final tripsVal = double.tryParse((res['tripsCtrl'] as TextEditingController).text) ?? 60.0;
+        if (tripsVal > 0) {
+          final newCap = totalVal / tripsVal;
+          res['capacity_per_trip'] = newCap;
+          (res['capCtrl'] as TextEditingController).text = newCap.toStringAsFixed(2);
+        }
+        _runCalculation();
+      }, res['perDayCtrl'] as TextEditingController, width: 88));
     }
-    return Row(
-      children: [
-        _miniInput('QTY', (val) {
-          res['quantity'] = double.tryParse(val) ?? 1.0;
-          _runCalculation();
-        }, res['qtyCtrl'] as TextEditingController),
-        const SizedBox(width: 8),
-        _miniInput('TRIPS/D', (val) {
-          final tripsVal = double.tryParse(val) ?? 60.0;
-          res['trips_per_day'] = tripsVal;
-          final capVal = double.tryParse((res['capCtrl'] as TextEditingController).text) ?? 0;
-          (res['perDayCtrl'] as TextEditingController).text = (tripsVal * capVal).toStringAsFixed(0);
-          _runCalculation();
-        }, res['tripsCtrl'] as TextEditingController),
-        const SizedBox(width: 8),
-        _miniInput('CAP (CY)', (val) {
-          final capVal = double.tryParse(val) ?? 30.0;
-          res['capacity_per_trip'] = capVal;
-          final tripsVal = double.tryParse((res['tripsCtrl'] as TextEditingController).text) ?? 0;
-          (res['perDayCtrl'] as TextEditingController).text = (tripsVal * capVal).toStringAsFixed(0);
-          _runCalculation();
-        }, res['capCtrl'] as TextEditingController),
-        const SizedBox(width: 8),
-        _miniInput('CY/D (UNIT)', (val) {
-          final totalVal = double.tryParse(val) ?? 0;
-          final tripsVal = double.tryParse((res['tripsCtrl'] as TextEditingController).text) ?? 60.0;
-          if (tripsVal > 0) {
-            final newCap = totalVal / tripsVal;
-            res['capacity_per_trip'] = newCap;
-            (res['capCtrl'] as TextEditingController).text = newCap.toStringAsFixed(2);
-          }
-          _runCalculation();
-        }, res['perDayCtrl'] as TextEditingController),
-      ],
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: children,
+    );
+  }
+
+  Widget _compactInput(
+    String label,
+    Function(String) onChange,
+    TextEditingController ctrl, {
+    required double width,
+    bool clearZeroOnTap = false,
+  }) {
+    return SizedBox(
+      width: width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.slate500, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 2),
+          SizedBox(
+            height: 26,
+            child: TextFormField(
+              controller: ctrl,
+              onTap: () {
+                if (clearZeroOnTap && ctrl.text == '0') ctrl.text = '';
+                ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length);
+              },
+              onChanged: onChange,
+              keyboardType: TextInputType.number,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              decoration: InputDecoration(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 6),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppTheme.slate200)),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1721,27 +1769,65 @@ class _ServiceEstimationDialogState
   void _showMaterialSelector() {
     showSafeDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('Select Material', style: GoogleFonts.manrope(fontWeight: FontWeight.w800)),
-        content: SizedBox(
-          width: 400,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: _materialsCatalog.length,
-            itemBuilder: (c, i) {
-              final m = _materialsCatalog[i];
-              return ListTile(
-                title: Text(m['description'] ?? ''),
-                subtitle: Text('Unit: ${m['unit'] ?? 'und'}'),
-                onTap: () {
-                  _addMaterial(m);
-                  Navigator.pop(ctx);
-                },
-              );
-            },
-          ),
-        ),
-      ),
+      builder: (ctx) {
+        String query = '';
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            final matched = query.isEmpty
+                ? _materialsCatalog
+                : _materialsCatalog.where((m) {
+                    final q = query.toLowerCase();
+                    return (m['description'] ?? '').toString().toLowerCase().contains(q) ||
+                        (m['unit'] ?? '').toString().toLowerCase().contains(q);
+                  }).toList();
+            return AlertDialog(
+              title: Text('Select Material', style: GoogleFonts.manrope(fontWeight: FontWeight.w800)),
+              content: SizedBox(
+                width: 400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      onChanged: (v) => setDialogState(() => query = v),
+                      decoration: InputDecoration(
+                        hintText: 'Search materials...',
+                        prefixIcon: const Icon(Icons.search, size: 18),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 10),
+                        filled: true,
+                        fillColor: AppTheme.slate50,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: matched.length,
+                        itemBuilder: (c, i) {
+                          final m = matched[i];
+                          return ListTile(
+                            title: Text(m['description'] ?? ''),
+                            subtitle: Text('Unit: ${m['unit'] ?? 'und'}'),
+                            onTap: () {
+                              _addMaterial(m);
+                              Navigator.pop(ctx);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1778,7 +1864,11 @@ class _ServiceEstimationDialogState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
       decoration: BoxDecoration(color: Colors.white, border: Border(top: BorderSide(color: AppTheme.slate200))),
-      child: Row(
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           if (_currentStep > 0)
             OutlinedButton(
@@ -1792,37 +1882,37 @@ class _ServiceEstimationDialogState
               style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
               child: Text('Cancel', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: AppTheme.slate700)),
             ),
-          const Spacer(),
           if (_currentStep < 2)
-            ElevatedButton(
-              onPressed: () => setState(() => _currentStep++),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0F172A),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-              child: Row(
-                children: [
-                  Text('Next Step', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
-                  const SizedBox(width: 10),
-                  const Icon(Icons.arrow_forward, size: 18),
-                ],
-              ),
-            )
-          else
-            _isSaving
-                ? const CircularProgressIndicator(color: AppTheme.primaryGreen)
-                : ElevatedButton(
-                    onPressed: _save,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryGreen,
-                      foregroundColor: const Color(0xFF0F172A),
-                      padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ElevatedButton(
+                onPressed: () => setState(() => _currentStep++),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF0F172A),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Next Step', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+                    const SizedBox(width: 10),
+                    const Icon(Icons.arrow_forward, size: 18),
+                  ],
+                ),
+              )
+            else
+              _isSaving
+                  ? const CircularProgressIndicator(color: AppTheme.primaryGreen)
+                  : ElevatedButton(
+                      onPressed: _save,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryGreen,
+                        foregroundColor: const Color(0xFF0F172A),
+                        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 16),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: Text('Finish & Save Estimate', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
                     ),
-                    child: Text('Finish & Save Estimate', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
-                  ),
         ],
       ),
     );
@@ -1871,34 +1961,6 @@ class _ServiceEstimationDialogState
             Text(DateFormat('MMM dd, yyyy').format(_startDate), style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600)),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _miniInput(String label, Function(String) onChange, TextEditingController ctrl) {
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 10, color: AppTheme.slate500, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
-          SizedBox(
-            height: 32,
-            child: TextFormField(
-              controller: ctrl,
-              onTap: () => ctrl.selection = TextSelection(baseOffset: 0, extentOffset: ctrl.text.length),
-              onChanged: onChange,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-              decoration: InputDecoration(
-                contentPadding: const EdgeInsets.symmetric(horizontal: 8),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: const BorderSide(color: AppTheme.slate200)),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }
