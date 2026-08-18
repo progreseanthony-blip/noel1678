@@ -1,8 +1,8 @@
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class InstrumentSchedulingDialog extends StatefulWidget {
   final String projectInstrumentId;
@@ -269,94 +269,35 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
 
   @override
   Widget build(BuildContext context) {
-    return BackdropFilter(
-      filter: ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-      child: Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        child: Container(
-          width: 700,
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.85),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 30,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: _isLoading 
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.purple.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Center(
-                            child: Icon(Icons.handyman_outlined, color: Colors.purple, size: 20),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Instrument Planning', style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
-                            const SizedBox(height: 4),
-                            Text('${widget.instrumentName} (${widget.expectedQuantity} Units)', style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate500, height: 1.0)),
-                            if (widget.serviceName.isNotEmpty) ...[
-                              const SizedBox(height: 6),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryGreen.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  'Service: ${widget.serviceName}',
-                                  style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen),
-                                ),
-                              ),
-                            ],
-                          ],
-                        ),
-                      ],
+    return ResponsiveDialogShell(
+      title: 'Instrument Planning',
+      subtitle: '${widget.instrumentName} (${widget.expectedQuantity} Units)',
+      icon: Icons.handyman_outlined,
+      maxWidth: 700,
+      bodyPadding: const EdgeInsets.all(24),
+      onClose: () => Navigator.of(context).pop(),
+      body: _isLoading
+          ? const Padding(
+              padding: EdgeInsets.all(48),
+              child: Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen)),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.serviceName.isNotEmpty) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGreen.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
-                        child: const Icon(Icons.close, color: AppTheme.slate400, size: 24),
-                      ),
+                    child: Text(
+                      'Service: ${widget.serviceName}',
+                      style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen),
                     ),
-                  ],
-                ),
-              ),
-              
-              // Body
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                  ),
+                ],
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(color: AppTheme.slate50, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200)),
@@ -455,89 +396,78 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
                           );
                         },
                       ),
-                    ],
+                ],
+              ),
+      footer: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 12,
+        children: [
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () {
+                setState(() {
+                  if (_selectedUnits.length == widget.expectedQuantity) _selectedUnits.clear();
+                  else _selectedUnits.addAll(List.generate(widget.expectedQuantity, (i) => i + 1));
+                });
+              },
+              child: Text(
+                _selectedUnits.length == widget.expectedQuantity ? 'Deselect All' : 'Select All Units',
+                style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.primaryGreen, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFFCBD5E1)),
+                    ),
+                    child: Text(
+                      'Cancel',
+                      style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700),
+                    ),
                   ),
                 ),
               ),
-              
-              // Footer
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF8FAFC),
-                  border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            if (_selectedUnits.length == widget.expectedQuantity) _selectedUnits.clear();
-                            else _selectedUnits.addAll(List.generate(widget.expectedQuantity, (i) => i + 1));
-                          });
-                        },
-                        child: Text(
-                          _selectedUnits.length == widget.expectedQuantity ? 'Deselect All' : 'Select All Units',
-                          style: GoogleFonts.manrope(fontSize: 13, color: Colors.purple, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            onTap: () => Navigator.of(context).pop(),
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFFCBD5E1)),
-                              ),
-                              child: Text(
-                                'Cancel',
-                                style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            onTap: _saveSchedule,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: Colors.purple,
-                                borderRadius: BorderRadius.circular(8),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.purple.withOpacity(0.2),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Text(
-                                'Save All Plans',
-                                style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
-                              ),
-                            ),
-                          ),
+              const SizedBox(width: 12),
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: _saveSchedule,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGreen,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.primaryGreen.withOpacity(0.2),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
                         ),
                       ],
                     ),
-                  ],
+                    child: Text(
+                      'Save All Plans',
+                      style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }

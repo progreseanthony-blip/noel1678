@@ -498,13 +498,12 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
           children: [
             _infoChip(statusText, color: statusColor, bgColor: statusColor.withOpacity(0.1)),
-            if (deviationBadge != null) ...[
-              const SizedBox(width: 8),
-              deviationBadge,
-            ],
+            if (deviationBadge != null) deviationBadge,
           ],
         ),
         const SizedBox(height: 8),
@@ -628,13 +627,12 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 4,
           children: [
             _infoChip(statusText, color: statusColor, bgColor: statusColor.withOpacity(0.1)),
-            if (deviationBadge != null) ...[
-              const SizedBox(width: 8),
-              deviationBadge,
-            ],
+            if (deviationBadge != null) deviationBadge,
           ],
         ),
         const SizedBox(height: 8),
@@ -1043,7 +1041,7 @@ currentPath: '/projects/${widget.projectId}',
                 style: GoogleFonts.manrope(fontSize: 15, color: AppTheme.slate600, fontWeight: FontWeight.w500),
               ),
               // Service Filter
-              _buildServiceFilterBar(),
+              _buildServiceFilterBar(isMobile),
               const SizedBox(height: 16),
               
               // Tabs
@@ -1089,7 +1087,7 @@ currentPath: '/projects/${widget.projectId}',
     );
   }
 
-  Widget _buildServiceFilterBar() {
+  Widget _buildServiceFilterBar(bool isMobile) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1103,36 +1101,69 @@ currentPath: '/projects/${widget.projectId}',
           ),
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _projectServices.map((service) {
-            final isSelected = _selectedServiceFilter == service;
-            return ChoiceChip(
-              label: Text(service),
-              selected: isSelected,
-              onSelected: (val) {
-                if (val) setState(() => _selectedServiceFilter = service);
-              },
-              labelStyle: GoogleFonts.manrope(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? Colors.white : AppTheme.slate600,
+        if (isMobile)
+          DropdownButtonFormField<String>(
+            initialValue: _selectedServiceFilter,
+            isExpanded: true,
+            decoration: InputDecoration(
+              isDense: true,
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppTheme.slate200),
               ),
-              backgroundColor: Colors.white,
-              selectedColor: AppTheme.primaryGreen,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(
-                  color: isSelected ? AppTheme.primaryGreen : AppTheme.slate200,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppTheme.slate200),
+              ),
+            ),
+            items: _projectServices.map((service) {
+              return DropdownMenuItem<String>(
+                value: service,
+                child: Text(
+                  service,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
                 ),
-              ),
-              showCheckmark: false,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              visualDensity: VisualDensity.compact,
-            );
-          }).toList(),
-        ),
+              );
+            }).toList(),
+            onChanged: (val) {
+              if (val != null) setState(() => _selectedServiceFilter = val);
+            },
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _projectServices.map((service) {
+              final isSelected = _selectedServiceFilter == service;
+              return ChoiceChip(
+                label: Text(service),
+                selected: isSelected,
+                onSelected: (val) {
+                  if (val) setState(() => _selectedServiceFilter = service);
+                },
+                labelStyle: GoogleFonts.manrope(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected ? Colors.white : AppTheme.slate600,
+                ),
+                backgroundColor: Colors.white,
+                selectedColor: AppTheme.primaryGreen,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(
+                    color: isSelected ? AppTheme.primaryGreen : AppTheme.slate200,
+                  ),
+                ),
+                showCheckmark: false,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                visualDensity: VisualDensity.compact,
+              );
+            }).toList(),
+          ),
       ],
     );
   }
@@ -1222,94 +1253,57 @@ currentPath: '/projects/${widget.projectId}',
                                 BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
                               ],
                             ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 60, height: 60,
-                                  decoration: BoxDecoration(
-                                    color: Colors.orange.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(10),
-                                    image: photoUrl != null && photoUrl.isNotEmpty
-                                        ? DecorationImage(image: NetworkImage(photoUrl), fit: BoxFit.cover)
-                                        : null,
-                                  ),
-                                  child: (photoUrl == null || photoUrl.isEmpty) 
-                                    ? const Icon(
-                                        Icons.precision_manufacturing, 
-                                        color: Colors.orange,
-                                      )
-                                    : null,
-                                ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Column(
+                            child: isMobile
+                                ? Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        m['machinery_name'] ?? 'Unknown Machine',
-                                        style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        'Received: $received / $expected unidades',
-                                        style: GoogleFonts.manrope(
-                                          fontSize: 13, 
-                                          fontWeight: FontWeight.w600,
-                                          color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
-                                        ),
-                                      ),
-                                      if (m['is_principal'] == true && _machineryProduction.containsKey(m['id']))
-                                        Padding(
-                                          padding: const EdgeInsets.only(top: 2),
-                                          child: Text(
-                                            'Production: ${_machineryProduction[m['id']]!.toStringAsFixed(0)} ${m['quote_services']?['unit_of_measure'] ?? ''} total',
-                                            style: GoogleFonts.manrope(
-                                              fontSize: 12,
-                                              fontWeight: FontWeight.w600,
-                                              color: AppTheme.slate600,
+                                      Row(
+                                        children: [
+                                          _machineryImage(photoUrl),
+                                          const SizedBox(width: 16),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: _machineryInfoItems(m, mName, expected, received, isComplete),
                                             ),
                                           ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      _buildEVMDisplay(m),
+                                      const SizedBox(height: 12),
+                                      SizedBox(
+                                        width: double.infinity,
+                                        child: _machineryScheduleButton(
+                                          projectMachineryId: m['id'],
+                                          machineryName: mName,
+                                          expectedQuantity: expected,
+                                          serviceName: sName,
                                         ),
-                                      if (!isComplete && expected > 0)
-                                        Container(
-                                          margin: const EdgeInsets.only(top: 8),
-                                          height: 6,
-                                          width: double.infinity,
-                                          decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(3)),
-                                          child: FractionallySizedBox(
-                                            alignment: Alignment.centerLeft,
-                                            widthFactor: (received / expected).clamp(0.0, 1.0),
-                                            child: Container(decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(3))),
-                                          ),
-                                        ),
-                                        _buildEVMDisplay(m),
+                                      ),
                                     ],
-                                  ),
-                                ),
-                                ElevatedButton.icon(
-                                  onPressed: () {
-                                    showSafeDialog(
-                                      context: context,
-                                      builder: (_) => MachinerySchedulingDialog(
+                                  )
+                                : Row(
+                                    children: [
+                                      _machineryImage(photoUrl),
+                                      const SizedBox(width: 16),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            ..._machineryInfoItems(m, mName, expected, received, isComplete),
+                                            _buildEVMDisplay(m),
+                                          ],
+                                        ),
+                                      ),
+                                      _machineryScheduleButton(
                                         projectMachineryId: m['id'],
                                         machineryName: mName,
                                         expectedQuantity: expected,
                                         serviceName: sName,
                                       ),
-                                    ).then((updated) {
-                                      if (updated == true) _loadProjectData();
-                                    });
-                                  },
-                                  icon: const Icon(Icons.calendar_month, size: 16, color: Colors.white),
-                                  label: Text('Modify Schedule', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.orange,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                    ],
                                   ),
-                                ),
-                              ],
-                            ),
                           );
                         }).toList(),
                         const SizedBox(height: 16),
@@ -1319,6 +1313,95 @@ currentPath: '/projects/${widget.projectId}',
                 ),
         ),
       ],
+    );
+  }
+
+  Widget _machineryImage(String? photoUrl) {
+    return Container(
+      width: 60, height: 60,
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+        image: photoUrl != null && photoUrl.isNotEmpty
+            ? DecorationImage(image: NetworkImage(photoUrl), fit: BoxFit.cover)
+            : null,
+      ),
+      child: (photoUrl == null || photoUrl.isEmpty)
+          ? const Icon(Icons.precision_manufacturing, color: Colors.orange)
+          : null,
+    );
+  }
+
+  List<Widget> _machineryInfoItems(Map<String, dynamic> m, String mName, int expected, int received, bool isComplete) {
+    return [
+      Text(
+        mName,
+        style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        'Received: $received / $expected unidades',
+        style: GoogleFonts.manrope(
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+          color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
+        ),
+      ),
+      if (m['is_principal'] == true && _machineryProduction.containsKey(m['id']))
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            'Production: ${_machineryProduction[m['id']]!.toStringAsFixed(0)} ${m['quote_services']?['unit_of_measure'] ?? ''} total',
+            style: GoogleFonts.manrope(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.slate600,
+            ),
+          ),
+        ),
+      if (!isComplete && expected > 0)
+        Container(
+          margin: const EdgeInsets.only(top: 8),
+          height: 6,
+          width: double.infinity,
+          decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(3)),
+          child: FractionallySizedBox(
+            alignment: Alignment.centerLeft,
+            widthFactor: (received / expected).clamp(0.0, 1.0),
+            child: Container(decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(3))),
+          ),
+        ),
+    ];
+  }
+
+  Widget _machineryScheduleButton({
+    required String projectMachineryId,
+    required String machineryName,
+    required int expectedQuantity,
+    required String serviceName,
+  }) {
+    return ElevatedButton.icon(
+      onPressed: () {
+        showSafeDialog(
+          context: context,
+          fullscreenOnMobile: true,
+          builder: (_) => MachinerySchedulingDialog(
+            projectMachineryId: projectMachineryId,
+            machineryName: machineryName,
+            expectedQuantity: expectedQuantity,
+            serviceName: serviceName,
+          ),
+        ).then((updated) {
+          if (updated == true) _loadProjectData();
+        });
+      },
+      icon: const Icon(Icons.calendar_month, size: 16, color: Colors.white),
+      label: Text('Modify Schedule', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.orange,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
     );
   }
 
@@ -1787,6 +1870,7 @@ currentPath: '/projects/${widget.projectId}',
                       onPressed: () {
                         showSafeDialog(
                           context: context,
+                          fullscreenOnMobile: true,
                           builder: (_) => InstrumentSchedulingDialog(
                             projectInstrumentId: m['id'],
                             instrumentName: mName,
@@ -1874,134 +1958,158 @@ currentPath: '/projects/${widget.projectId}',
                     BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
                   ],
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 60, height: 60,
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryGreen.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.engineering, color: AppTheme.primaryGreen),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
+                child: isMobile
+                    ? Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            roleName,
-                            style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900),
-                          ),
-                          const SizedBox(height: 6),
                           Row(
                             children: [
-                              _buildLaborStatusInfo(
-                                'Crew Status', 
-                                (l['project_labor_assignments'] != null && (l['project_labor_assignments'] as List).isNotEmpty)
-                                    ? (l['project_labor_assignments'] as List).length
-                                    : 0, 
-                                expected,
-                                Colors.blue
-                              ),
+                              _laborImage(),
+                              const SizedBox(width: 16),
+                              Expanded(child: _buildLaborInfoColumn(l, roleName, expected)),
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          _buildLaborEVMDisplay(l),
-                          if (l['project_labor_assignments'] != null && (l['project_labor_assignments'] as List).isNotEmpty) ...[
-                            const SizedBox(height: 12),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: (l['project_labor_assignments'] as List).map((a) {
-                                final wName = a['workers']?['full_name'] ?? 'Unknown';
-                                final start = a['start_date'] ?? '?';
-                                final end = a['end_date'] ?? '?';
-                                return Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.slate50,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: AppTheme.slate200),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.person_outline, size: 14, color: AppTheme.slate600),
-                                      const SizedBox(width: 6),
-                                      Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            wName,
-                                            style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate700),
-                                          ),
-                                          Text(
-                                            '$start to $end',
-                                            style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate500),
-                  ),
-                ],
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ],
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              _laborScheduleButton(projectLaborId: l['id'], roleName: roleName, serviceName: sName),
+                              const SizedBox(width: 8),
+                              _laborAssignButton(projectLaborId: l['id'], roleName: roleName, expectedEmployees: expected),
+                            ],
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          _laborImage(),
+                          const SizedBox(width: 16),
+                          Expanded(child: _buildLaborInfoColumn(l, roleName, expected)),
+                          const SizedBox(width: 16),
+                          _laborScheduleButton(projectLaborId: l['id'], roleName: roleName, serviceName: sName),
+                          const SizedBox(width: 8),
+                          _laborAssignButton(projectLaborId: l['id'], roleName: roleName, expectedEmployees: expected),
+                          const SizedBox(width: 8),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    IconButton(
-                      onPressed: () {
-                        showSafeDialog(
-                          context: context,
-                          builder: (_) => LaborSchedulingDialog(
-                            projectLaborId: l['id'],
-                            roleName: roleName,
-                            serviceName: sName,
-                          ),
-                        ).then((updated) {
-                          if (updated == true) _loadProjectData();
-                        });
-                      },
-                      icon: const Icon(Icons.calendar_month, color: Colors.orange),
-                      tooltip: 'Modify Dates',
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.orange.withOpacity(0.1),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      onPressed: () {
-                        showSafeDialog(
-                          context: context,
-                          builder: (_) => WorkerAssignmentDialog(
-                            projectLaborId: l['id'],
-                            roleName: roleName,
-                            expectedEmployees: expected,
-                          ),
-                        ).then((updated) {
-                          if (updated == true) _loadProjectData();
-                        });
-                      },
-                      icon: const Icon(Icons.group_add, color: Colors.blue),
-                      tooltip: 'Assign Crew (Build Team)',
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.blue.withOpacity(0.1),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                ),
               );
             }).toList(),
             const SizedBox(height: 16),
           ],
         );
       },
+    );
+  }
+
+  Widget _laborImage() {
+    return Container(
+      width: 60, height: 60,
+      decoration: BoxDecoration(
+        color: AppTheme.primaryGreen.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: const Icon(Icons.engineering, color: AppTheme.primaryGreen),
+    );
+  }
+
+  Widget _buildLaborInfoColumn(Map<String, dynamic> l, String roleName, int expected) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(roleName, style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900)),
+        const SizedBox(height: 6),
+        _buildLaborStatusInfo(
+          'Crew Status',
+          (l['project_labor_assignments'] != null && (l['project_labor_assignments'] as List).isNotEmpty)
+              ? (l['project_labor_assignments'] as List).length
+              : 0,
+          expected,
+          Colors.blue,
+        ),
+        const SizedBox(height: 8),
+        _buildLaborEVMDisplay(l),
+        if (l['project_labor_assignments'] != null && (l['project_labor_assignments'] as List).isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: (l['project_labor_assignments'] as List).map((a) {
+              final wName = a['workers']?['full_name'] ?? 'Unknown';
+              final start = a['start_date'] ?? '?';
+              final end = a['end_date'] ?? '?';
+              return Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppTheme.slate50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.slate200),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.person_outline, size: 14, color: AppTheme.slate600),
+                    const SizedBox(width: 6),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(wName, style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+                        Text('$start to $end', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate500)),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _laborScheduleButton({required String projectLaborId, required String roleName, required String serviceName}) {
+    return IconButton(
+      onPressed: () {
+        showSafeDialog(
+          context: context,
+          fullscreenOnMobile: true,
+          builder: (_) => LaborSchedulingDialog(
+            projectLaborId: projectLaborId,
+            roleName: roleName,
+            serviceName: serviceName,
+          ),
+        ).then((updated) {
+          if (updated == true) _loadProjectData();
+        });
+      },
+      icon: const Icon(Icons.calendar_month, color: Colors.orange),
+      tooltip: 'Modify Dates',
+      style: IconButton.styleFrom(
+        backgroundColor: Colors.orange.withOpacity(0.1),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
+  }
+
+  Widget _laborAssignButton({required String projectLaborId, required String roleName, required int expectedEmployees}) {
+    return IconButton(
+      onPressed: () {
+        showSafeDialog(
+          context: context,
+          fullscreenOnMobile: true,
+          builder: (_) => WorkerAssignmentDialog(
+            projectLaborId: projectLaborId,
+            roleName: roleName,
+            expectedEmployees: expectedEmployees,
+          ),
+        ).then((updated) {
+          if (updated == true) _loadProjectData();
+        });
+      },
+      icon: const Icon(Icons.group_add, color: Colors.blue),
+      tooltip: 'Assign Crew (Build Team)',
+      style: IconButton.styleFrom(
+        backgroundColor: Colors.blue.withOpacity(0.1),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
     );
   }
 

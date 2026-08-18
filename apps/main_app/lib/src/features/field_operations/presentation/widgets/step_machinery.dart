@@ -243,6 +243,7 @@ class _StepMachineryState extends State<StepMachinery> {
 
     await showSafeDialog<void>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (ctx) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
         child: Dialog(
@@ -613,16 +614,17 @@ class _StepMachineryState extends State<StepMachinery> {
     return Row(children: [
       Text('Service:', style: _t(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
       const SizedBox(width: 12),
-      SizedBox(width: 260, child: DropdownButtonFormField<String>(
-        value: _serviceFilter,
+      Flexible(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 260), child: DropdownButtonFormField<String>(
+        initialValue: _serviceFilter,
+        isExpanded: true,
         decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
-        hint: Text('All Services', style: _t(fontSize: 15)),
+        hint: Text('All Services', style: _t(fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis),
         items: [
-          DropdownMenuItem<String>(value: null, child: Text('All Services', style: _t(fontSize: 15))),
-          ...services.map((s) => DropdownMenuItem(value: s, child: Text(s, style: _t(fontSize: 15)))),
+          DropdownMenuItem<String>(value: null, child: Text('All Services', style: _t(fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis)),
+          ...services.map((s) => DropdownMenuItem(value: s, child: Text(s, style: _t(fontSize: 15), maxLines: 1, overflow: TextOverflow.ellipsis))),
         ],
         onChanged: (v) => setState(() => _serviceFilter = v),
-      )),
+      ))),
     ]);
   }
 
@@ -791,7 +793,7 @@ class _StepMachineryState extends State<StepMachinery> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
-              Expanded(child: Text('$machName ($currentCount/$expectedQty)', style: _t(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.slate900))),
+              Expanded(child: Text('$machName ($currentCount/$expectedQty)', style: _t(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.slate900), overflow: TextOverflow.ellipsis, maxLines: 1)),
             ]),
             if (pm['is_principal'] == true) _buildDailyProgress(pm, pmId, expectedQty, entryIndices),
           ],
@@ -1026,10 +1028,17 @@ class _StepMachineryState extends State<StepMachinery> {
       return Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(
-            'Trips: ${cumTrips.toStringAsFixed(0)} / ${cumTargetTrips.toStringAsFixed(0)} ($pctTrips%)    CY: ${cumCY.toStringAsFixed(0)} / ${cumTargetCY.toStringAsFixed(0)} ($pctCY%)',
-            style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate700),
-          ),
+          LayoutBuilder(builder: (ctx, c) {
+            final tripsLabel = 'Trips: ${cumTrips.toStringAsFixed(0)} / ${cumTargetTrips.toStringAsFixed(0)} ($pctTrips%)';
+            final cyLabel = 'CY: ${cumCY.toStringAsFixed(0)} / ${cumTargetCY.toStringAsFixed(0)} ($pctCY%)';
+            if (c.maxWidth < 420) {
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(tripsLabel, style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate700)),
+                Text(cyLabel, style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate700)),
+              ]);
+            }
+            return Text('$tripsLabel    $cyLabel', style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate700));
+          }),
           const SizedBox(height: 2),
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
@@ -1229,10 +1238,17 @@ class _StepMachineryState extends State<StepMachinery> {
       return Padding(
         padding: const EdgeInsets.only(bottom: 6),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(
-            'Trips: ${cumTrips.toStringAsFixed(0)} / ${cumTargetTrips.toStringAsFixed(0)}    CY: ${cumCY.toStringAsFixed(0)} / ${cumTargetCY.toStringAsFixed(0)}',
-            style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate700),
-          ),
+          LayoutBuilder(builder: (ctx, c) {
+            final tripsLabel = 'Trips: ${cumTrips.toStringAsFixed(0)} / ${cumTargetTrips.toStringAsFixed(0)}';
+            final cyLabel = 'CY: ${cumCY.toStringAsFixed(0)} / ${cumTargetCY.toStringAsFixed(0)}';
+            if (c.maxWidth < 420) {
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(tripsLabel, style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate700)),
+                Text(cyLabel, style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate700)),
+              ]);
+            }
+            return Text('$tripsLabel    $cyLabel', style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate700));
+          }),
           const SizedBox(height: 2),
           ClipRRect(
             borderRadius: BorderRadius.circular(2),
@@ -1323,8 +1339,10 @@ class _StepMachineryState extends State<StepMachinery> {
         .toSet();
     operators.removeWhere((w) => takenIds.contains(w['id'] as String?));
 
+    final isMobile = MediaQuery.sizeOf(context).width < 680;
+
     return Padding(
-      padding: const EdgeInsets.only(left: 44),
+      padding: EdgeInsets.only(left: isMobile ? 16 : 44),
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(color: AppTheme.primaryGreen.withAlpha(10), borderRadius: BorderRadius.circular(8)),
@@ -1343,9 +1361,9 @@ class _StepMachineryState extends State<StepMachinery> {
                   Text('#${entry['_unit_number']}', style: _t(fontSize: 12, fontWeight: FontWeight.w500, color: AppTheme.slate500)),
               ]),
             ),
-          Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Expanded(flex: 3, child: Container(
-              padding: const EdgeInsets.all(10),
+          LayoutBuilder(builder: (ctx, constraints) {
+            final dataPanel = Container(
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: AppTheme.slate200),
@@ -1369,46 +1387,88 @@ class _StepMachineryState extends State<StepMachinery> {
                   ),
                   const SizedBox(height: 6),
                   if (pm != null) _buildRateUpliftToggle(index, entry, pm),
-                  Row(children: [
-                    Expanded(child: _numField(index, 'start_meter', 'Start', entry['start_meter']?.toString() ?? '', (v) => _updateEntry(index, 'start_meter', v))),
-                    const SizedBox(width: 6),
-                    Expanded(child: _numField(index, 'end_meter', 'End', entry['end_meter']?.toString() ?? '', (v) => _updateEntry(index, 'end_meter', v))),
-                    const SizedBox(width: 6),
-                    _displayBadge('Diff', entry['total_hours']?.toString() ?? '--', AppTheme.slate700),
-                  ]),
+                  LayoutBuilder(builder: (ctx2, c) {
+                    if (c.maxWidth < 480) {
+                      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        _numField(index, 'start_meter', 'Start', entry['start_meter']?.toString() ?? '', (v) => _updateEntry(index, 'start_meter', v)),
+                        const SizedBox(height: 6),
+                        _numField(index, 'end_meter', 'End', entry['end_meter']?.toString() ?? '', (v) => _updateEntry(index, 'end_meter', v)),
+                        const SizedBox(height: 6),
+                        _displayBadge('Diff', entry['total_hours']?.toString() ?? '--', AppTheme.slate700, expand: true),
+                      ]);
+                    }
+                    return Row(children: [
+                      Expanded(child: _numField(index, 'start_meter', 'Start', entry['start_meter']?.toString() ?? '', (v) => _updateEntry(index, 'start_meter', v))),
+                      const SizedBox(width: 6),
+                      Expanded(child: _numField(index, 'end_meter', 'End', entry['end_meter']?.toString() ?? '', (v) => _updateEntry(index, 'end_meter', v))),
+                      const SizedBox(width: 6),
+                      _displayBadge('Diff', entry['total_hours']?.toString() ?? '--', AppTheme.slate700),
+                    ]);
+                  }),
                   const SizedBox(height: 6),
-                  Row(children: [
-                    Expanded(child: _numField(index, 'fuel_added', 'Fuel (gal)', entry['fuel_added']?.toString() ?? '', (v) => _updateEntry(index, 'fuel_added', v))),
-                    if (entry['_is_principal'] == true) ...[
-                      if (pm != null && _isTripBased(pm)) ...[
-                        const SizedBox(width: 8),
-                        Expanded(
-                          flex: 1,
-                          child: _numField(index, 'production_value', 'Trips', entry['production_value']?.toString() ?? '', (v) {
-                            final capacity = _getEstimationCapacity(pm!);
-                            _updateEntry(index, 'production_value', v);
-                            if (capacity > 0) {
-                              _updateEntry(index, '_calculated_cy', v * capacity);
-                            }
-                          }),
-                        ),
-                        const SizedBox(width: 6),
-                        _displayBadge('CY/trip', _getEstimationCapacity(pm!).toStringAsFixed(0), AppTheme.slate400),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: _displayBadge('Total CY', (entry['_calculated_cy'] as num?)?.toString() ?? '--', AppTheme.primaryGreen, expand: true),
-                        ),
-                      ] else ...[
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _numField(index, 'production_value', 'Prod (${entry['production_unit'] ?? 'units'})', entry['production_value']?.toString() ?? '', (v) {
-                            _updateEntry(index, 'production_value', v);
-                            _updateEntry(index, '_calculated_cy', v);
-                          }),
-                        ),
+                  LayoutBuilder(builder: (ctx2, c) {
+                    final fuelField = _numField(index, 'fuel_added', 'Fuel (gal)', entry['fuel_added']?.toString() ?? '', (v) => _updateEntry(index, 'fuel_added', v));
+                    if (c.maxWidth < 480) {
+                      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        fuelField,
+                        if (entry['_is_principal'] == true) ...[
+                          const SizedBox(height: 6),
+                          if (pm != null && _isTripBased(pm)) ...[
+                            _numField(index, 'production_value', 'Trips', entry['production_value']?.toString() ?? '', (v) {
+                              final capacity = _getEstimationCapacity(pm!);
+                              _updateEntry(index, 'production_value', v);
+                              if (capacity > 0) {
+                                _updateEntry(index, '_calculated_cy', v * capacity);
+                              }
+                            }),
+                            const SizedBox(height: 6),
+                            Row(children: [
+                              Expanded(child: _displayBadge('CY/trip', _getEstimationCapacity(pm!).toStringAsFixed(0), AppTheme.slate400, expand: true)),
+                              const SizedBox(width: 6),
+                              Expanded(child: _displayBadge('Total CY', (entry['_calculated_cy'] as num?)?.toString() ?? '--', AppTheme.primaryGreen, expand: true)),
+                            ]),
+                          ] else ...[
+                            _numField(index, 'production_value', 'Prod (${entry['production_unit'] ?? 'units'})', entry['production_value']?.toString() ?? '', (v) {
+                              _updateEntry(index, 'production_value', v);
+                              _updateEntry(index, '_calculated_cy', v);
+                            }),
+                          ],
+                        ],
+                      ]);
+                    }
+                    return Row(children: [
+                      Expanded(child: fuelField),
+                      if (entry['_is_principal'] == true) ...[
+                        if (pm != null && _isTripBased(pm)) ...[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            flex: 1,
+                            child: _numField(index, 'production_value', 'Trips', entry['production_value']?.toString() ?? '', (v) {
+                              final capacity = _getEstimationCapacity(pm!);
+                              _updateEntry(index, 'production_value', v);
+                              if (capacity > 0) {
+                                _updateEntry(index, '_calculated_cy', v * capacity);
+                              }
+                            }),
+                          ),
+                          const SizedBox(width: 6),
+                          _displayBadge('CY/trip', _getEstimationCapacity(pm!).toStringAsFixed(0), AppTheme.slate400),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: _displayBadge('Total CY', (entry['_calculated_cy'] as num?)?.toString() ?? '--', AppTheme.primaryGreen, expand: true),
+                          ),
+                        ] else ...[
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _numField(index, 'production_value', 'Prod (${entry['production_unit'] ?? 'units'})', entry['production_value']?.toString() ?? '', (v) {
+                              _updateEntry(index, 'production_value', v);
+                              _updateEntry(index, '_calculated_cy', v);
+                            }),
+                          ),
+                        ],
                       ],
-                    ],
-                  ]),
+                    ]);
+                  }),
                   const SizedBox(height: 6),
                   Row(children: [
                     if (isUnplanned)
@@ -1463,10 +1523,10 @@ class _StepMachineryState extends State<StepMachinery> {
                   ],
                 ],
               ]),
-            )),
-            const SizedBox(width: 8),
-            Expanded(flex: 2, child: Container(
-              padding: const EdgeInsets.all(10),
+            );
+
+            final photoPanel = Container(
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: AppTheme.slate200),
@@ -1478,8 +1538,21 @@ class _StepMachineryState extends State<StepMachinery> {
                   Expanded(child: _buildPhotoSection(index, entry, 'end_shift_photos', 'End')),
                 ]),
               ]),
-            )),
-          ]),
+            );
+
+            if (constraints.maxWidth < 680) {
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                dataPanel,
+                const SizedBox(height: 8),
+                photoPanel,
+              ]);
+            }
+            return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Expanded(flex: 3, child: dataPanel),
+              const SizedBox(width: 8),
+              Expanded(flex: 2, child: photoPanel),
+            ]);
+          }),
         ]),
       ),
     );
@@ -1499,7 +1572,7 @@ class _StepMachineryState extends State<StepMachinery> {
         labelText: label,
         isDense: true,
         labelStyle: _t(fontSize: 13),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: AppTheme.slate200)),
         enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: AppTheme.slate200)),
         focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(6), borderSide: BorderSide(color: AppTheme.primaryGreen.withAlpha(150), width: 2)),
@@ -1517,17 +1590,17 @@ class _StepMachineryState extends State<StepMachinery> {
     return Column(
       crossAxisAlignment: expand ? CrossAxisAlignment.stretch : CrossAxisAlignment.start,
       children: [
-      Text(label, style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate400)),
+      Text(label, style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate400)),
       const SizedBox(height: 2),
       Container(
-        padding: EdgeInsets.symmetric(horizontal: expand ? 4 : 12, vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: expand ? 4 : 12, vertical: 10),
         alignment: expand ? Alignment.center : null,
         decoration: BoxDecoration(
           color: color.withAlpha(15),
           borderRadius: BorderRadius.circular(6),
           border: Border.all(color: color.withAlpha(50)),
         ),
-        child: Text(value, style: _t(fontSize: 14, fontWeight: FontWeight.w700, color: color)),
+        child: Text(value, style: _t(fontSize: 14, fontWeight: FontWeight.w700, color: color), maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
     ]);
   }

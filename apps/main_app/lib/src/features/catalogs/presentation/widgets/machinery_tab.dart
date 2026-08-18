@@ -44,6 +44,7 @@ class _MachineryTabState extends ConsumerState<MachineryTab> {
   void _showForm([Map<String, dynamic>? item]) {
     showSafeDialog(
       context: context,
+      fullscreenOnMobile: true,
       builder: (context) => MachineryDialog(machineryToEdit: item),
     ).then((success) {
       if (success == true) _loadData();

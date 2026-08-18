@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:noel_core/noel_core.dart';
 
+import 'responsive_dialog_shell.dart';
 import 'scroll_indicator.dart';
 
 Future<T?> showSafeDialog<T>({
@@ -10,7 +11,22 @@ Future<T?> showSafeDialog<T>({
   Color? barrierColor,
   bool useSafeArea = true,
   RouteSettings? routeSettings,
+  bool fullscreenOnMobile = false,
 }) {
+  if (fullscreenOnMobile && isMobileContext(context)) {
+    return showGeneralDialog<T>(
+      context: context,
+      barrierDismissible: barrierDismissible,
+      barrierLabel: 'Dismiss',
+      barrierColor: barrierColor ?? Colors.black.withValues(alpha: 0.5),
+      transitionDuration: const Duration(milliseconds: 250),
+      pageBuilder: (ctx, animation, secondaryAnimation) {
+        final dialog = builder(ctx);
+        if (dialog is ResponsiveDialogShell) return dialog;
+        return MobileDialogFrame(child: dialog);
+      },
+    );
+  }
   return showDialog<T>(
     context: context,
     barrierDismissible: barrierDismissible,

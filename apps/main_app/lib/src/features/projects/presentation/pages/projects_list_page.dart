@@ -254,61 +254,82 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
 
   Widget _buildStatsRow(bool isMobile) {
     final total = _projects?.length ?? 0;
-    return Row(
-      children: [
-        _buildStatCard('Total Projects', total.toString(), AppTheme.slate900, Icons.folder_outlined, const Color(0xFFF1F5F9), isMobile),
-        const SizedBox(width: 12),
-        _buildStatCard('Active', _totalActive.toString(), AppTheme.primaryGreen, Icons.play_circle_outline, AppTheme.primaryGreen.withOpacity(0.1), isMobile),
-        const SizedBox(width: 12),
-        _buildStatCard('Completed', _totalCompleted.toString(), Colors.blue, Icons.check_circle_outline, Colors.blue.withOpacity(0.1), isMobile),
-        const SizedBox(width: 12),
-        _buildStatCard('On Hold', _totalOnHold.toString(), Colors.orange, Icons.pause_circle_outline, Colors.orange.withOpacity(0.1), isMobile),
-      ],
+    final cards = [
+      _buildStatCard('Total Projects', total.toString(), AppTheme.slate900, Icons.folder_outlined, const Color(0xFFF1F5F9), isMobile),
+      _buildStatCard('Active', _totalActive.toString(), AppTheme.primaryGreen, Icons.play_circle_outline, AppTheme.primaryGreen.withOpacity(0.1), isMobile),
+      _buildStatCard('Completed', _totalCompleted.toString(), Colors.blue, Icons.check_circle_outline, Colors.blue.withOpacity(0.1), isMobile),
+      _buildStatCard('On Hold', _totalOnHold.toString(), Colors.orange, Icons.pause_circle_outline, Colors.orange.withOpacity(0.1), isMobile),
+    ];
+    if (!isMobile) {
+      return Row(
+        children: [
+          for (var i = 0; i < cards.length; i++) ...[
+            if (i > 0) const SizedBox(width: 12),
+            Expanded(child: cards[i]),
+          ],
+        ],
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cardWidth = (constraints.maxWidth - 12) / 2;
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final card in cards) SizedBox(width: cardWidth, child: card),
+          ],
+        );
+      },
     );
   }
 
   Widget _buildStatCard(String label, String value, Color color, IconData icon, Color bgColor, bool isMobile) {
-    return Expanded(
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 14, vertical: isMobile ? 10 : 12),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.slate200),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(8)),
-                  child: Icon(icon, size: 16, color: color),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  value,
-                  style: GoogleFonts.manrope(
-                    fontSize: isMobile ? 18 : 20,
-                    fontWeight: FontWeight.w900,
-                    color: color,
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 14, vertical: isMobile ? 10 : 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.slate200),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(8)),
+                child: Icon(icon, size: 16, color: color),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    style: GoogleFonts.manrope(
+                      fontSize: isMobile ? 18 : 20,
+                      fontWeight: FontWeight.w900,
+                      color: color,
+                    ),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: GoogleFonts.manrope(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.slate500,
               ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: GoogleFonts.manrope(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.slate500,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

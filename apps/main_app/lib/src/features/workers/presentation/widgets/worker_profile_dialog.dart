@@ -62,6 +62,7 @@ class _WorkerProfileDialogState extends ConsumerState<WorkerProfileDialog> {
               Navigator.pop(context);
               showSafeDialog(
                 context: context,
+                fullscreenOnMobile: true,
                 builder: (context) => WorkerFormDialog(worker: widget.worker),
               );
             },

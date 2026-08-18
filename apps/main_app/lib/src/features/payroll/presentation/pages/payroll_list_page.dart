@@ -49,6 +49,7 @@ class _PayrollListPageState extends ConsumerState<PayrollListPage> {
   Future<void> _createPeriod() async {
     final result = await showSafeDialog<Map<String, dynamic>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (_) => PayrollPeriodDialog(projectId: widget.projectId),
     );
     if (result != null) {
@@ -249,8 +250,8 @@ class _PayrollListPageState extends ConsumerState<PayrollListPage> {
         onTap: () => context.push('/projects/${widget.projectId}/payroll/${p['id']}'),
         child: Padding(
           padding: const EdgeInsets.all(20),
-          child: Row(children: [
-            Container(
+          child: LayoutBuilder(builder: (ctx, constraints) {
+            final iconBox = Container(
               width: 48, height: 48,
               decoration: BoxDecoration(
                 color: isClosed ? AppTheme.slate50 : AppTheme.primaryGreen.withOpacity(0.1),
@@ -261,22 +262,23 @@ class _PayrollListPageState extends ConsumerState<PayrollListPage> {
                 color: isClosed ? AppTheme.slate400 : AppTheme.primaryGreen,
                 size: 22,
               ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(p['name'] ?? '', style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${p['start_date']} - ${p['end_date']}',
-                    style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500),
-                  ),
-                ],
-              ),
-            ),
-            Container(
+            );
+
+            final titleInfo = Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(p['name'] ?? '', style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.slate900), overflow: TextOverflow.ellipsis, maxLines: 1),
+                const SizedBox(height: 4),
+                Text(
+                  '${p['start_date']} - ${p['end_date']}',
+                  style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+              ],
+            );
+
+            final statusBadge = Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
                 color: isClosed ? AppTheme.slate50 : AppTheme.primaryGreen.withOpacity(0.08),
@@ -291,9 +293,9 @@ class _PayrollListPageState extends ConsumerState<PayrollListPage> {
                   letterSpacing: 0.5,
                 ),
               ),
-            ),
-            const SizedBox(width: 24),
-            Column(
+            );
+
+            final moneyInfo = Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
@@ -306,9 +308,9 @@ class _PayrollListPageState extends ConsumerState<PayrollListPage> {
                   style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.slate900),
                 ),
               ],
-            ),
-            const SizedBox(width: 16),
-            PopupMenuButton<String>(
+            );
+
+            final popup = PopupMenuButton<String>(
               onSelected: (action) {
                 if (action == 'delete') _deletePeriod(p);
               },
@@ -318,8 +320,35 @@ class _PayrollListPageState extends ConsumerState<PayrollListPage> {
                 )),
               ],
               icon: const Icon(Icons.more_vert, color: AppTheme.slate400),
-            ),
-          ]),
+            );
+
+            if (constraints.maxWidth < 560) {
+              return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  iconBox,
+                  const SizedBox(width: 16),
+                  Expanded(child: titleInfo),
+                  popup,
+                ]),
+                const SizedBox(height: 12),
+                Row(children: [
+                  statusBadge,
+                  const Spacer(),
+                  moneyInfo,
+                ]),
+              ]);
+            }
+            return Row(children: [
+              iconBox,
+              const SizedBox(width: 16),
+              Expanded(child: titleInfo),
+              statusBadge,
+              const SizedBox(width: 24),
+              moneyInfo,
+              const SizedBox(width: 16),
+              popup,
+            ]);
+          }),
         ),
       ),
     );

@@ -156,6 +156,7 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
   Future<void> _reject() async {
     final reason = await showSafeDialog<String>(
       context: context,
+      fullscreenOnMobile: true,
       barrierColor: Colors.black.withOpacity(0.2),
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),

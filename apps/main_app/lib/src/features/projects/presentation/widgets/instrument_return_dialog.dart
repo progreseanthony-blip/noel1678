@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -224,92 +223,28 @@ class _InstrumentReturnDialogState extends State<InstrumentReturnDialog> {
     final formattedDate =
         '${_returnDate.month.toString().padLeft(2, '0')}/${_returnDate.day.toString().padLeft(2, '0')}/${_returnDate.year}';
 
-    return BackdropFilter(
-      filter: ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-      child: Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        child: Container(
-          width: 620,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 30,
-                offset: const Offset(0, 10),
+    return ResponsiveDialogShell(
+      title: widget.isEditing ? 'Edit Return' : 'Return Instrument',
+      subtitle: widget.instrumentName,
+      icon: Icons.outbound_outlined,
+      isEditMode: widget.isEditing,
+      maxWidth: 620,
+      bodyPadding: const EdgeInsets.all(24),
+      onClose: () => Navigator.of(context).pop(),
+      body: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(color: Colors.purple.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+              child: Text(
+                widget.serviceName,
+                style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.purple),
               ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 40,
-                          height: 40,
-                          decoration: BoxDecoration(
-                            color: Colors.purple.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Center(
-                            child: Icon(Icons.outbound_outlined, color: Colors.purple, size: 20),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.isEditing ? 'Edit Return' : 'Return Instrument',
-                              style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(widget.instrumentName, style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate500, height: 1.0)),
-                            const SizedBox(height: 4),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(color: Colors.purple.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                              child: Text(
-                                widget.serviceName,
-                                style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.purple),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
-                        child: const Icon(Icons.close, color: AppTheme.slate400, size: 24),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Body
-              Flexible(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+            ),
                         // ── Return Date ──
                         Text('Return Date', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
                         const SizedBox(height: 8),
@@ -476,79 +411,64 @@ class _InstrumentReturnDialogState extends State<InstrumentReturnDialog> {
                       ],
                     ),
                   ),
+                footer: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          const Spacer(),
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: Text(
+                  'Cancel',
+                  style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700),
                 ),
               ),
-
-              // Footer
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF8FAFC),
-                  border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+            ),
+          ),
+          const SizedBox(width: 12),
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: _isSaving ? null : _saveReturn,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _isSaving ? AppTheme.slate400 : Colors.purple,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.purple.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Spacer(),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFFCBD5E1)),
-                          ),
-                          child: Text(
-                            'Cancel',
-                            style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700),
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: _isSaving ? null : _saveReturn,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                          decoration: BoxDecoration(
-                            color: _isSaving ? AppTheme.slate400 : Colors.purple,
-                            borderRadius: BorderRadius.circular(8),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.purple.withOpacity(0.2),
-                                blurRadius: 10,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (_isSaving)
-                                const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                              else
-                                const Icon(Icons.outbound_outlined, color: Colors.white, size: 18),
-                              const SizedBox(width: 8),
-                              Text(
-                                _isSaving ? 'Saving...' : widget.isEditing ? 'Save Changes' : 'Confirm Return',
-                                style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    if (_isSaving)
+                      const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    else
+                      const Icon(Icons.outbound_outlined, color: Colors.white, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      _isSaving ? 'Saving...' : widget.isEditing ? 'Save Changes' : 'Confirm Return',
+                      style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
                     ),
                   ],
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

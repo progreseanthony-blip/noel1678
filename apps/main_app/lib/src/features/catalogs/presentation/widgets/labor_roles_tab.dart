@@ -44,6 +44,7 @@ class _LaborRolesTabState extends ConsumerState<LaborRolesTab> {
   void _showForm([Map<String, dynamic>? role]) {
     showSafeDialog(
       context: context,
+      fullscreenOnMobile: true,
       builder: (context) => LaborRoleDialog(roleToEdit: role),
     ).then((success) {
       if (success == true) _loadData();

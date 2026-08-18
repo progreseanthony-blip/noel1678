@@ -79,6 +79,7 @@ class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
     final result = await showSafeDialog<bool>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
+      fullscreenOnMobile: true,
       builder: (_) => MachineryReturnDialog(
         projectId: widget.projectId,
         inspectionId: inspection['id'],
@@ -100,6 +101,7 @@ class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
     final result = await showSafeDialog<bool>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
+      fullscreenOnMobile: true,
       builder: (_) => MachineryReturnDialog(
         projectId: widget.projectId,
         inspectionId: inspection['id'],
@@ -119,6 +121,7 @@ class _MachineryHistoryDialogState extends State<MachineryHistoryDialog> {
     showSafeDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
+      fullscreenOnMobile: true,
       builder: (_) => MachineryReceptionDialog(
         projectId: widget.projectId,
         projectMachineryId: widget.projectMachineryId,

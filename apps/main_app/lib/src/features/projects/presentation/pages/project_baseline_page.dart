@@ -749,6 +749,7 @@ currentPath: '/projects/${widget.projectId}/baseline',
                       || _project?['calculation_metadata']?['baseline_frozen'] == true;
                   showSafeDialog(
                     context: context,
+                    fullscreenOnMobile: true,
                     builder: (ctx) => AddUnplannedResourceDialog(
                       projectId: widget.projectId,
                       changeType: isFrozen ? 'change_order' : 'planning',
@@ -1031,6 +1032,7 @@ currentPath: '/projects/${widget.projectId}/baseline',
                             onTap: () {
                               showSafeDialog(
                                 context: context,
+                                fullscreenOnMobile: true,
                                 builder: (_) => AddUnplannedResourceDialog(
                                   projectId: widget.projectId,
                                   initialData: res,

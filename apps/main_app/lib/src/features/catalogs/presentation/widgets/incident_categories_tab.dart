@@ -34,6 +34,7 @@ class _IncidentCategoriesTabState extends ConsumerState<IncidentCategoriesTab> {
   Future<void> _create() async {
     final result = await showSafeDialog<Map<String, String>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (ctx) => _CategoryFormDialog(),
     );
     if (result == null) return;
@@ -48,6 +49,7 @@ class _IncidentCategoriesTabState extends ConsumerState<IncidentCategoriesTab> {
   Future<void> _edit(Map<String, dynamic> cat) async {
     final result = await showSafeDialog<Map<String, String>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (ctx) => _CategoryFormDialog(initial: cat),
     );
     if (result == null) return;

@@ -347,7 +347,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                 ),
               ),
               const SizedBox(height: 16),
-              _buildServiceFilterBar(),
+              _buildServiceFilterBar(isMobile),
               const SizedBox(height: 16),
               TabBar(
                 controller: _tabController,
@@ -381,7 +381,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
     );
   }
 
-  Widget _buildServiceFilterBar() {
+  Widget _buildServiceFilterBar(bool isMobile) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -395,36 +395,69 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
           ),
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: _projectServices.map((service) {
-            final isSelected = _selectedServiceFilter == service;
-            return ChoiceChip(
-              label: Text(service),
-              selected: isSelected,
-              onSelected: (val) {
-                if (val) setState(() => _selectedServiceFilter = service);
-              },
-              labelStyle: GoogleFonts.manrope(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                color: isSelected ? Colors.white : AppTheme.slate600,
+        if (isMobile)
+          DropdownButtonFormField<String>(
+            initialValue: _selectedServiceFilter,
+            isExpanded: true,
+            decoration: InputDecoration(
+              isDense: true,
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppTheme.slate200),
               ),
-              backgroundColor: Colors.white,
-              selectedColor: AppTheme.primaryGreen,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-                side: BorderSide(
-                  color: isSelected ? AppTheme.primaryGreen : AppTheme.slate200,
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+                borderSide: const BorderSide(color: AppTheme.slate200),
+              ),
+            ),
+            items: _projectServices.map((service) {
+              return DropdownMenuItem<String>(
+                value: service,
+                child: Text(
+                  service,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
                 ),
-              ),
-              showCheckmark: false,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              visualDensity: VisualDensity.compact,
-            );
-          }).toList(),
-        ),
+              );
+            }).toList(),
+            onChanged: (val) {
+              if (val != null) setState(() => _selectedServiceFilter = val);
+            },
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _projectServices.map((service) {
+              final isSelected = _selectedServiceFilter == service;
+              return ChoiceChip(
+                label: Text(service),
+                selected: isSelected,
+                onSelected: (val) {
+                  if (val) setState(() => _selectedServiceFilter = service);
+                },
+                labelStyle: GoogleFonts.manrope(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                  color: isSelected ? Colors.white : AppTheme.slate600,
+                ),
+                backgroundColor: Colors.white,
+                selectedColor: AppTheme.primaryGreen,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(
+                    color: isSelected ? AppTheme.primaryGreen : AppTheme.slate200,
+                  ),
+                ),
+                showCheckmark: false,
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                visualDensity: VisualDensity.compact,
+              );
+            }).toList(),
+          ),
       ],
     );
   }
@@ -502,6 +535,181 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
               final returnedCount = _returnedMachineryCounts[m['id']] ?? 0;
               final photoUrl = _machineryPhotos[mName];
 
+              final image = Stack(
+                children: [
+                  Container(
+                    width: 60, height: 60,
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      image: photoUrl != null && photoUrl.isNotEmpty
+                          ? DecorationImage(image: NetworkImage(photoUrl), fit: BoxFit.cover)
+                          : null,
+                    ),
+                    child: (photoUrl == null || photoUrl.isEmpty)
+                      ? const Icon(Icons.precision_manufacturing, color: Colors.orange)
+                      : null,
+                  ),
+                  if (returnedCount >= received && received > 0)
+                    Positioned(
+                      top: -2, right: -2,
+                      child: Container(
+                        width: 22, height: 22,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryGreen,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: const Icon(Icons.check, size: 14, color: Colors.white),
+                      ),
+                    ),
+                ],
+              );
+
+              final info = Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      m['machinery_name'] ?? 'Unknown Machine',
+                      style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Received: $received / $expected unidades',
+                      style: GoogleFonts.manrope(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
+                      ),
+                    ),
+                    if (received > 0) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(
+                            'Returned: $returnedCount / $received',
+                            style: GoogleFonts.manrope(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: returnedCount >= received ? AppTheme.primaryGreen : Colors.orange,
+                            ),
+                          ),
+                          if (returnedCount >= received) ...[
+                            const SizedBox(width: 4),
+                            Icon(Icons.check_circle, size: 14, color: AppTheme.primaryGreen),
+                          ],
+                        ],
+                      ),
+                    ],
+                    if (!isComplete && expected > 0)
+                      Container(
+                        margin: const EdgeInsets.only(top: 8),
+                        height: 6,
+                        width: double.infinity,
+                        decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(3)),
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: (received / expected).clamp(0.0, 1.0),
+                          child: Container(decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(3))),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+
+              final actions = <Widget>[
+                if (received > 0)
+                  IconButton(
+                    onPressed: () {
+                      showSafeDialog(
+                        context: context,
+                        barrierColor: Colors.black.withOpacity(0.5),
+                        builder: (_) => MachineryHistoryDialog(
+                          projectId: widget.projectId,
+                          projectMachineryId: m['id'],
+                          machineryName: mName,
+                          serviceName: sName,
+                        ),
+                      ).then((updated) {
+                        if (updated == true) _loadData();
+                      });
+                    },
+                    icon: const Icon(Icons.history, color: Colors.orange),
+                    tooltip: 'View History',
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.orange.withOpacity(0.1),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                if (returnedCount > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGreen.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle_outline, size: 14, color: AppTheme.primaryGreen),
+                        const SizedBox(width: 4),
+                        Text('$returnedCount returned', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
+                      ],
+                    ),
+                  ),
+                if (_activeRentalCounts[m['id']] != null && _activeRentalCounts[m['id']]! > 0)
+                  ElevatedButton.icon(
+                    onPressed: _isCompleted ? null : () {
+                      showSafeDialog(
+                        context: context,
+                        barrierColor: Colors.black.withOpacity(0.5),
+                        builder: (_) => MachineryHistoryDialog(
+                          projectId: widget.projectId,
+                          projectMachineryId: m['id'],
+                          machineryName: mName,
+                          serviceName: sName,
+                        ),
+                      ).then((updated) {
+                        if (updated == true) _loadData();
+                      });
+                    },
+                    icon: const Icon(Icons.outbound_outlined, size: 16, color: Colors.white),
+                    label: Text('Return (${_activeRentalCounts[m['id']]})', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isCompleted ? AppTheme.slate400 : Colors.orange,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                if (!isComplete && !_isCompleted)
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      showSafeDialog(
+                        context: context,
+                        barrierColor: Colors.black.withOpacity(0.5),
+                        fullscreenOnMobile: true,
+                        builder: (_) => MachineryReceptionDialog(
+                          projectId: widget.projectId,
+                          projectMachineryId: m['id'],
+                          machineryName: mName,
+                          serviceName: sName,
+                        ),
+                      ).then((received) {
+                        if (received == true) _loadData();
+                      });
+                    },
+                    icon: const Icon(Icons.add_box, size: 16, color: Colors.white),
+                    label: Text('Receive', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isComplete ? AppTheme.slate400 : Colors.orange,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+              ];
+
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
@@ -513,186 +721,35 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                     BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
                   ],
                 ),
-                child: Row(
-                  children: [
-                    Stack(
-                      children: [
-                        Container(
-                          width: 60, height: 60,
-                          decoration: BoxDecoration(
-                            color: Colors.orange.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(10),
-                            image: photoUrl != null && photoUrl.isNotEmpty
-                                ? DecorationImage(image: NetworkImage(photoUrl), fit: BoxFit.cover)
-                                : null,
-                          ),
-                          child: (photoUrl == null || photoUrl.isEmpty)
-                            ? const Icon(Icons.precision_manufacturing, color: Colors.orange)
-                            : null,
-                        ),
-                        if (returnedCount >= received && received > 0)
-                          Positioned(
-                            top: -2, right: -2,
-                            child: Container(
-                              width: 22, height: 22,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryGreen,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2),
-                              ),
-                              child: const Icon(Icons.check, size: 14, color: Colors.white),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
+                child: isMobile
+                    ? Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            m['machinery_name'] ?? 'Unknown Machine',
-                            style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900),
+                          Row(
+                            children: [
+                              image,
+                              const SizedBox(width: 16),
+                              info,
+                            ],
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Received: $received / $expected unidades',
-                            style: GoogleFonts.manrope(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
-                            ),
-                          ),
-                          if (received > 0) ...[
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Text(
-                                  'Returned: $returnedCount / $received',
-                                  style: GoogleFonts.manrope(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: returnedCount >= received ? AppTheme.primaryGreen : Colors.orange,
-                                  ),
-                                ),
-                                if (returnedCount >= received) ...[
-                                  const SizedBox(width: 4),
-                                  Icon(Icons.check_circle, size: 14, color: AppTheme.primaryGreen),
-                                ],
-                              ],
-                            ),
+                          if (actions.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Wrap(spacing: 8, runSpacing: 8, children: actions),
                           ],
-                          if (!isComplete && expected > 0)
-                            Container(
-                              margin: const EdgeInsets.only(top: 8),
-                              height: 6,
-                              width: double.infinity,
-                              decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(3)),
-                              child: FractionallySizedBox(
-                                alignment: Alignment.centerLeft,
-                                widthFactor: (received / expected).clamp(0.0, 1.0),
-                                child: Container(decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(3))),
-                              ),
-                            ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          image,
+                          const SizedBox(width: 16),
+                          info,
+                          const SizedBox(width: 8),
+                          for (var i = 0; i < actions.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 8),
+                            actions[i],
+                          ],
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    if (received > 0)
-                      IconButton(
-                        onPressed: () {
-                          showSafeDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => MachineryHistoryDialog(
-                              projectId: widget.projectId,
-                              projectMachineryId: m['id'],
-                              machineryName: mName,
-                              serviceName: sName,
-                            ),
-                          ).then((updated) {
-                            if (updated == true) _loadData();
-                          });
-                        },
-                        icon: const Icon(Icons.history, color: Colors.orange),
-                        tooltip: 'View History',
-                        style: IconButton.styleFrom(
-                          backgroundColor: Colors.orange.withOpacity(0.1),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    if (returnedCount > 0) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryGreen.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.3)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.check_circle_outline, size: 14, color: AppTheme.primaryGreen),
-                            const SizedBox(width: 4),
-                            Text('$returnedCount returned', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (_activeRentalCounts[m['id']] != null && _activeRentalCounts[m['id']]! > 0) ...[
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        onPressed: _isCompleted ? null : () {
-                          showSafeDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => MachineryHistoryDialog(
-                              projectId: widget.projectId,
-                              projectMachineryId: m['id'],
-                              machineryName: mName,
-                              serviceName: sName,
-                            ),
-                          ).then((updated) {
-                            if (updated == true) _loadData();
-                          });
-                        },
-                        icon: const Icon(Icons.outbound_outlined, size: 16, color: Colors.white),
-                        label: Text('Return (${_activeRentalCounts[m['id']]})', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isCompleted ? AppTheme.slate400 : Colors.orange,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                      ),
-                    ],
-                    if (received > 0) const SizedBox(width: 8),
-                    if (!isComplete && !_isCompleted)
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          showSafeDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => MachineryReceptionDialog(
-                              projectId: widget.projectId,
-                              projectMachineryId: m['id'],
-                              machineryName: mName,
-                              serviceName: sName,
-                            ),
-                          ).then((received) {
-                            if (received == true) _loadData();
-                          });
-                        },
-                        icon: const Icon(Icons.add_box, size: 16, color: Colors.white),
-                        label: Text('Receive', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isComplete ? AppTheme.slate400 : Colors.orange,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                      ),
-                  ],
-                ),
               );
             }).toList(),
             const SizedBox(height: 16),
@@ -746,6 +803,104 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
               final mName = m['material_name'] ?? 'Unknown Material';
               final unitName = m['unit_name'] ?? 'units';
 
+              final image = Container(
+                width: 60, height: 60,
+                decoration: BoxDecoration(
+                  color: isComplete ? AppTheme.primaryGreen.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(Icons.inventory, color: isComplete ? AppTheme.primaryGreen : Colors.blue),
+              );
+
+              final info = Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      mName,
+                      style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Received: $received / $expected $unitName${_materialUsage.containsKey(m['id']) ? ' · Used: ${_materialUsage[m['id']]!.toStringAsFixed(1)} · Rem: ${(expected - _materialUsage[m['id']]!).toStringAsFixed(1)}' : ''}',
+                      style: GoogleFonts.manrope(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
+                      ),
+                    ),
+                    if (!isComplete && expected > 0)
+                      Container(
+                        margin: const EdgeInsets.only(top: 8),
+                        height: 6,
+                        width: double.infinity,
+                        decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(3)),
+                        child: FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: (received / expected).clamp(0.0, 1.0),
+                          child: Container(decoration: BoxDecoration(color: Colors.blue, borderRadius: BorderRadius.circular(3))),
+                        ),
+                      ),
+                  ],
+                ),
+              );
+
+              final actions = <Widget>[
+                if (received > 0)
+                  IconButton(
+                    onPressed: _isCompleted ? null : () {
+                      showSafeDialog(
+                        context: context,
+                        barrierColor: Colors.black.withOpacity(0.5),
+                        builder: (_) => MaterialHistoryDialog(
+                          projectId: widget.projectId,
+                          projectMaterialId: m['id'],
+                          materialName: mName,
+                          serviceName: sName,
+                          unitName: unitName,
+                          expectedQuantity: expected,
+                        ),
+                      ).then((updated) {
+                        if (updated == true) _loadData();
+                      });
+                    },
+                    icon: const Icon(Icons.history, color: AppTheme.primaryGreen),
+                    tooltip: 'View History & Edit',
+                    style: IconButton.styleFrom(
+                      backgroundColor: AppTheme.primaryGreen.withOpacity(0.1),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                if (!isComplete && !_isCompleted)
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      showSafeDialog(
+                        context: context,
+                        barrierColor: Colors.black.withOpacity(0.5),
+                        fullscreenOnMobile: true,
+                        builder: (_) => MaterialReceptionDialog(
+                          projectId: widget.projectId,
+                          projectMaterialId: m['id'],
+                          materialName: mName,
+                          serviceName: sName,
+                          unitName: unitName,
+                          expectedQuantity: expected,
+                          currentReceived: received,
+                        ),
+                      ).then((received) {
+                        if (received == true) _loadData();
+                      });
+                    },
+                    icon: const Icon(Icons.add_box, size: 16, color: Colors.white),
+                    label: Text('Receive', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: isComplete ? AppTheme.slate400 : Colors.blue,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+              ];
+
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
@@ -757,105 +912,35 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                     BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
                   ],
                 ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 60, height: 60,
-                      decoration: BoxDecoration(
-                        color: isComplete ? AppTheme.primaryGreen.withOpacity(0.1) : Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(Icons.inventory, color: isComplete ? AppTheme.primaryGreen : Colors.blue),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
+                child: isMobile
+                    ? Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            mName,
-                            style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900),
+                          Row(
+                            children: [
+                              image,
+                              const SizedBox(width: 16),
+                              info,
+                            ],
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Received: $received / $expected $unitName${_materialUsage.containsKey(m['id']) ? ' · Used: ${_materialUsage[m['id']]!.toStringAsFixed(1)} · Rem: ${(expected - _materialUsage[m['id']]!).toStringAsFixed(1)}' : ''}',
-                            style: GoogleFonts.manrope(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
-                            ),
-                          ),
-                          if (!isComplete && expected > 0)
-                            Container(
-                              margin: const EdgeInsets.only(top: 8),
-                              height: 6,
-                              width: double.infinity,
-                              decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(3)),
-                              child: FractionallySizedBox(
-                                alignment: Alignment.centerLeft,
-                                widthFactor: (received / expected).clamp(0.0, 1.0),
-                                child: Container(decoration: BoxDecoration(color: Colors.blue, borderRadius: BorderRadius.circular(3))),
-                              ),
-                            ),
+                          if (actions.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Wrap(spacing: 8, runSpacing: 8, children: actions),
+                          ],
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          image,
+                          const SizedBox(width: 16),
+                          info,
+                          const SizedBox(width: 16),
+                          for (var i = 0; i < actions.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 8),
+                            actions[i],
+                          ],
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    if (received > 0)
-                      IconButton(
-                        onPressed: _isCompleted ? null : () {
-                          showSafeDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => MaterialHistoryDialog(
-                              projectId: widget.projectId,
-                              projectMaterialId: m['id'],
-                              materialName: mName,
-                              serviceName: sName,
-                              unitName: unitName,
-                              expectedQuantity: expected,
-                            ),
-                          ).then((updated) {
-                            if (updated == true) _loadData();
-                          });
-                        },
-                        icon: const Icon(Icons.history, color: AppTheme.primaryGreen),
-                        tooltip: 'View History & Edit',
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.primaryGreen.withOpacity(0.1),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    if (received > 0) const SizedBox(width: 8),
-                    if (!isComplete && !_isCompleted)
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          showSafeDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => MaterialReceptionDialog(
-                              projectId: widget.projectId,
-                              projectMaterialId: m['id'],
-                              materialName: mName,
-                              serviceName: sName,
-                              unitName: unitName,
-                              expectedQuantity: expected,
-                              currentReceived: received,
-                            ),
-                          ).then((received) {
-                            if (received == true) _loadData();
-                          });
-                        },
-                        icon: const Icon(Icons.add_box, size: 16, color: Colors.white),
-                        label: Text('Receive', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isComplete ? AppTheme.slate400 : Colors.blue,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                      ),
-                  ],
-                ),
               );
             }).toList(),
             const SizedBox(height: 16),
@@ -909,6 +994,164 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
               final returnedCount = _returnedInstrumentCounts[m['id']] ?? 0;
               final mName = m['instrument_name'] ?? 'Unknown Instrument';
 
+              final image = Stack(
+                children: [
+                  Container(
+                    width: 60, height: 60,
+                    decoration: BoxDecoration(
+                      color: isComplete ? AppTheme.primaryGreen.withOpacity(0.1) : Colors.purple.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(Icons.handyman, color: isComplete ? AppTheme.primaryGreen : Colors.purple),
+                  ),
+                  if (returnedCount >= received && received > 0)
+                    Positioned(
+                      top: -2, right: -2,
+                      child: Container(
+                        width: 22, height: 22,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryGreen,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: const Icon(Icons.check, size: 14, color: Colors.white),
+                      ),
+                    ),
+                ],
+              );
+
+              final info = Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      mName,
+                      style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Received: $received / $expected',
+                      style: GoogleFonts.manrope(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
+                      ),
+                    ),
+                    if (received > 0) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(
+                            'Returned: $returnedCount / $received',
+                            style: GoogleFonts.manrope(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                              color: returnedCount >= received ? AppTheme.primaryGreen : Colors.orange,
+                            ),
+                          ),
+                          if (returnedCount >= received) ...[
+                            const SizedBox(width: 4),
+                            Icon(Icons.check_circle, size: 14, color: AppTheme.primaryGreen),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              );
+
+              final actions = <Widget>[
+                if (received > 0)
+                  IconButton(
+                    onPressed: () {
+                      showSafeDialog(
+                        context: context,
+                        barrierColor: Colors.black.withOpacity(0.5),
+                        builder: (_) => InstrumentHistoryDialog(
+                          projectId: widget.projectId,
+                          projectInstrumentId: m['id'],
+                          instrumentName: mName,
+                          serviceName: sName,
+                        ),
+                      ).then((updated) {
+                        if (updated == true) _loadData();
+                      });
+                    },
+                    icon: const Icon(Icons.history, color: AppTheme.primaryGreen),
+                    tooltip: 'View History',
+                    style: IconButton.styleFrom(
+                      backgroundColor: AppTheme.primaryGreen.withOpacity(0.1),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                if (returnedCount > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGreen.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle_outline, size: 14, color: AppTheme.primaryGreen),
+                        const SizedBox(width: 4),
+                        Text('$returnedCount returned', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
+                      ],
+                    ),
+                  ),
+                if (_activeInstrumentCounts[m['id']] != null && _activeInstrumentCounts[m['id']]! > 0)
+                  ElevatedButton.icon(
+                    onPressed: _isCompleted ? null : () {
+                      showSafeDialog(
+                        context: context,
+                        barrierColor: Colors.black.withOpacity(0.5),
+                        builder: (_) => InstrumentHistoryDialog(
+                          projectId: widget.projectId,
+                          projectInstrumentId: m['id'],
+                          instrumentName: mName,
+                          serviceName: sName,
+                        ),
+                      ).then((updated) {
+                        if (updated == true) _loadData();
+                      });
+                    },
+                    icon: const Icon(Icons.outbound_outlined, size: 16, color: Colors.white),
+                    label: Text('Return (${_activeInstrumentCounts[m['id']]})', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isCompleted ? AppTheme.slate400 : Colors.purple,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+                if (!isComplete && !_isCompleted)
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      showSafeDialog(
+                        context: context,
+                        barrierColor: Colors.black.withOpacity(0.5),
+                        fullscreenOnMobile: true,
+                        builder: (_) => InstrumentReceptionDialog(
+                          projectId: widget.projectId,
+                          projectInstrumentId: m['id'],
+                          instrumentName: mName,
+                          serviceName: sName,
+                        ),
+                      ).then((received) {
+                        if (received == true) _loadData();
+                      });
+                    },
+                    icon: const Icon(Icons.qr_code_scanner, size: 16, color: Colors.white),
+                    label: Text('Receive', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.purple,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    ),
+                  ),
+              ];
+
               return Container(
                 margin: const EdgeInsets.only(bottom: 12),
                 padding: const EdgeInsets.all(16),
@@ -920,169 +1163,35 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                     BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4)),
                   ],
                 ),
-                child: Row(
-                  children: [
-                    Stack(
-                      children: [
-                        Container(
-                          width: 60, height: 60,
-                          decoration: BoxDecoration(
-                            color: isComplete ? AppTheme.primaryGreen.withOpacity(0.1) : Colors.purple.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(Icons.handyman, color: isComplete ? AppTheme.primaryGreen : Colors.purple),
-                        ),
-                        if (returnedCount >= received && received > 0)
-                          Positioned(
-                            top: -2, right: -2,
-                            child: Container(
-                              width: 22, height: 22,
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryGreen,
-                                shape: BoxShape.circle,
-                                border: Border.all(color: Colors.white, width: 2),
-                              ),
-                              child: const Icon(Icons.check, size: 14, color: Colors.white),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
+                child: isMobile
+                    ? Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            mName,
-                            style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.bold, color: AppTheme.slate900),
+                          Row(
+                            children: [
+                              image,
+                              const SizedBox(width: 16),
+                              info,
+                            ],
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Received: $received / $expected',
-                            style: GoogleFonts.manrope(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: isComplete ? AppTheme.primaryGreen : AppTheme.slate500,
-                            ),
-                          ),
-                          if (received > 0) ...[
-                            const SizedBox(height: 4),
-                            Row(
-                              children: [
-                                Text(
-                                  'Returned: $returnedCount / $received',
-                                  style: GoogleFonts.manrope(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: returnedCount >= received ? AppTheme.primaryGreen : Colors.orange,
-                                  ),
-                                ),
-                                if (returnedCount >= received) ...[
-                                  const SizedBox(width: 4),
-                                  Icon(Icons.check_circle, size: 14, color: AppTheme.primaryGreen),
-                                ],
-                              ],
-                            ),
+                          if (actions.isNotEmpty) ...[
+                            const SizedBox(height: 12),
+                            Wrap(spacing: 8, runSpacing: 8, children: actions),
+                          ],
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          image,
+                          const SizedBox(width: 16),
+                          info,
+                          const SizedBox(width: 16),
+                          for (var i = 0; i < actions.length; i++) ...[
+                            if (i > 0) const SizedBox(width: 8),
+                            actions[i],
                           ],
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 16),
-                    if (received > 0)
-                      IconButton(
-                        onPressed: () {
-                          showSafeDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => InstrumentHistoryDialog(
-                              projectId: widget.projectId,
-                              projectInstrumentId: m['id'],
-                              instrumentName: mName,
-                              serviceName: sName,
-                            ),
-                          ).then((updated) {
-                            if (updated == true) _loadData();
-                          });
-                        },
-                        icon: const Icon(Icons.history, color: AppTheme.primaryGreen),
-                        tooltip: 'View History',
-                        style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.primaryGreen.withOpacity(0.1),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        ),
-                      ),
-                    if (returnedCount > 0) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryGreen.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.3)),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.check_circle_outline, size: 14, color: AppTheme.primaryGreen),
-                            const SizedBox(width: 4),
-                            Text('$returnedCount returned', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (_activeInstrumentCounts[m['id']] != null && _activeInstrumentCounts[m['id']]! > 0) ...[
-                      const SizedBox(width: 8),
-                      ElevatedButton.icon(
-                        onPressed: _isCompleted ? null : () {
-                          showSafeDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => InstrumentHistoryDialog(
-                              projectId: widget.projectId,
-                              projectInstrumentId: m['id'],
-                              instrumentName: mName,
-                              serviceName: sName,
-                            ),
-                          ).then((updated) {
-                            if (updated == true) _loadData();
-                          });
-                        },
-                        icon: const Icon(Icons.outbound_outlined, size: 16, color: Colors.white),
-                        label: Text('Return (${_activeInstrumentCounts[m['id']]})', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isCompleted ? AppTheme.slate400 : Colors.purple,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                      ),
-                    ],
-                    if (received > 0) const SizedBox(width: 8),
-                    if (!isComplete && !_isCompleted)
-                      ElevatedButton.icon(
-                        onPressed: () {
-                          showSafeDialog(
-                            context: context,
-                            barrierColor: Colors.black.withOpacity(0.5),
-                            builder: (_) => InstrumentReceptionDialog(
-                              projectId: widget.projectId,
-                              projectInstrumentId: m['id'],
-                              instrumentName: mName,
-                              serviceName: sName,
-                            ),
-                          ).then((received) {
-                            if (received == true) _loadData();
-                          });
-                        },
-                        icon: const Icon(Icons.qr_code_scanner, size: 16, color: Colors.white),
-                        label: Text('Receive', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        ),
-                      ),
-                  ],
-                ),
               );
             }).toList(),
             const SizedBox(height: 16),

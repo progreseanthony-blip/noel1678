@@ -675,7 +675,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
       child: GestureDetector(
         onTap: () => _showQuoteForm(quote),
         child: Container(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: const Color(0xFFF1F5F9),
             borderRadius: BorderRadius.circular(6),
@@ -692,7 +692,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
       child: GestureDetector(
         onTap: () => _confirmDeleteQuote(quote),
         child: Container(
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: AppTheme.errorRed.withOpacity(0.08),
             borderRadius: BorderRadius.circular(6),
@@ -820,6 +820,7 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
   Future<void> _showQuoteForm([Map<String, dynamic>? quote]) async {
     final updated = await showSafeDialog<bool>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (context) => QuoteFormDialog(quoteToEdit: quote),
     );
     if (updated == true && mounted) {

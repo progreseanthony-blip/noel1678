@@ -480,11 +480,11 @@ class _WorkersPageState extends ConsumerState<WorkersPage> {
   }
 
   void _showWorkerForm(BuildContext context, {Map<String, dynamic>? worker}) {
-    showSafeDialog(context: context, builder: (context) => WorkerFormDialog(worker: worker));
+    showSafeDialog(context: context, fullscreenOnMobile: true, builder: (context) => WorkerFormDialog(worker: worker));
   }
 
   void _showWorkerProfile(BuildContext context, Map<String, dynamic> worker) {
-    showSafeDialog(context: context, builder: (context) => WorkerProfileDialog(worker: worker));
+    showSafeDialog(context: context, fullscreenOnMobile: true, builder: (context) => WorkerProfileDialog(worker: worker));
   }
 
   Future<void> _confirmDeleteWorker(BuildContext context, Map<String, dynamic> worker) async {

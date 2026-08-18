@@ -1313,6 +1313,7 @@ String _nonEmptyStr(dynamic value) {
 
     final result = await showSafeDialog<Map<String, dynamic>>(
       context: context,
+      fullscreenOnMobile: true,
       barrierColor: Colors.black.withOpacity(0.6),
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) {
@@ -2267,6 +2268,7 @@ String _nonEmptyStr(dynamic value) {
                                   onTap: () async {
                                     final result = await showSafeDialog(
                                       context: context,
+                                      fullscreenOnMobile: true,
                                       builder: (_) => ServiceEstimationDialog(
                                         service: {
                                           'id': null,
@@ -4065,6 +4067,7 @@ String _nonEmptyStr(dynamic value) {
   Future<void> _showInstrumentSelector(ServiceEntry svc) async {
     final result = await showSafeDialog<List<Map<String, dynamic>>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (context) => MachinerySelectionDialog(
         serviceId: svc.catalogId ?? '',
         isInstrument: true,
@@ -4378,6 +4381,7 @@ String _nonEmptyStr(dynamic value) {
     if (dialog != null) {
       showSafeDialog(
         context: context,
+        fullscreenOnMobile: true,
         builder: (context) => dialog!,
       ).then((success) {
         if (success == true) _loadCatalogs();

@@ -258,17 +258,21 @@ class PayrollService {
 
   // ── Worker sign-off report helpers ──
 
-  Future<Map<String, dynamic>> getWorkerDetailedLogs(String periodId) async {
+  Future<Map<String, dynamic>> getWorkerDetailedLogs(
+    String periodId, {
+    String? startDate,
+    String? endDate,
+  }) async {
     final period = await _supabase
         .from('payroll_periods')
         .select('project_id, start_date, end_date')
         .eq('id', periodId)
         .single();
     final projectId = period['project_id'] as String;
-    final startDate = period['start_date'] as String;
-    final endDate = period['end_date'] as String;
+    final from = startDate ?? period['start_date'] as String;
+    final to = endDate ?? period['end_date'] as String;
 
-    final logs = await _fetchLogs(projectId, startDate, endDate);
+    final logs = await _fetchLogs(projectId, from, to);
 
     if (logs.isEmpty) {
       return {
@@ -319,23 +323,28 @@ class PayrollService {
     };
   }
 
-  Future<Map<String, dynamic>> getDailyLogsForWorker(String periodId, String workerId) async {
+  Future<Map<String, dynamic>> getDailyLogsForWorker(
+    String periodId,
+    String workerId, {
+    String? startDate,
+    String? endDate,
+  }) async {
     final period = await _supabase
         .from('payroll_periods')
         .select('project_id, start_date, end_date')
         .eq('id', periodId)
         .single();
     final projectId = period['project_id'] as String;
-    final startDate = period['start_date'] as String;
-    final endDate = period['end_date'] as String;
+    final from = startDate ?? period['start_date'] as String;
+    final to = endDate ?? period['end_date'] as String;
 
     // Fetch daily reports in the period
     final reports = await _supabase
         .from('daily_reports')
         .select('id, report_date')
         .eq('project_id', projectId)
-        .gte('report_date', startDate)
-        .lte('report_date', endDate);
+        .gte('report_date', from)
+        .lte('report_date', to);
 
     if (reports.isEmpty) {
       return {

@@ -985,6 +985,7 @@ class _BaselineImpactSectionState
   }) async {
     final result = await showSafeDialog<Map<String, dynamic>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (ctx) => _CatalogSelectorDialog(
         title: title,
         items: items,
@@ -1124,6 +1125,7 @@ class _BaselineImpactSectionState
 
     return showSafeDialog<Map<String, dynamic>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (dCtx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
@@ -1220,6 +1222,7 @@ class _BaselineImpactSectionState
 
     return showSafeDialog<Map<String, dynamic>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (dCtx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(
@@ -1299,6 +1302,7 @@ class _BaselineImpactSectionState
 
     return showSafeDialog<Map<String, dynamic>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (dCtx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(

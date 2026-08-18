@@ -1,4 +1,3 @@
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
@@ -178,87 +177,21 @@ class _CloseProjectDialogState extends State<CloseProjectDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return BackdropFilter(
-      filter: ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-      child: Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        child: Container(
-          width: 520,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 30, offset: const Offset(0, 10)),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-                decoration: const BoxDecoration(
-                  border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+    return ResponsiveDialogShell(
+      title: 'Close Project',
+      subtitle: widget.projectTitle,
+      icon: widget.isAdmin ? Icons.checklist : Icons.lock_outline,
+      maxWidth: 520,
+      bodyPadding: const EdgeInsets.all(32),
+      onClose: () => Navigator.of(context).pop(),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen))
+          : _error != null
+              ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 40, height: 40,
-                          decoration: BoxDecoration(
-                            color: widget.isAdmin
-                                ? AppTheme.primaryGreen.withOpacity(0.1)
-                                : AppTheme.slate200,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            widget.isAdmin ? Icons.checklist : Icons.lock_outline,
-                            color: widget.isAdmin ? AppTheme.primaryGreen : AppTheme.slate400,
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Close Project',
-                              style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              widget.projectTitle,
-                              style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate500, height: 1.0),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => Navigator.of(context).pop(),
-                        child: const Icon(Icons.close, color: AppTheme.slate400, size: 24),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Body
-              Padding(
-                padding: const EdgeInsets.all(32),
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen))
-                    : _error != null
-                        ? Center(child: Text(_error!, style: const TextStyle(color: Colors.red)))
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
                               if (!widget.isAdmin) ...[
                                 Container(
                                   padding: const EdgeInsets.all(12),
@@ -349,43 +282,30 @@ class _CloseProjectDialogState extends State<CloseProjectDialog> {
                               ),
                             ],
                           ),
-              ),
 
-              // Footer
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF8FAFC),
-                  border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: Text('Cancel', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: (!widget.isAdmin || _isSaving || _isLoading || !_allPassed) ? null : _closeProject,
-                      icon: _isSaving
-                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Icon(Icons.check_circle, size: 16, color: Colors.white),
-                      label: Text(
-                        _isSaving ? 'Closing...' : 'Close Project',
-                        style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _allPassed ? AppTheme.primaryGreen : AppTheme.slate400,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+      footer: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('Cancel', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate500)),
           ),
-        ),
+          ElevatedButton.icon(
+            onPressed: (!widget.isAdmin || _isSaving || _isLoading || !_allPassed) ? null : _closeProject,
+            icon: _isSaving
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                : const Icon(Icons.check_circle, size: 16, color: Colors.white),
+            label: Text(
+              _isSaving ? 'Closing...' : 'Close Project',
+              style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _allPassed ? AppTheme.primaryGreen : AppTheme.slate400,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+          ),
+        ],
       ),
     );
   }

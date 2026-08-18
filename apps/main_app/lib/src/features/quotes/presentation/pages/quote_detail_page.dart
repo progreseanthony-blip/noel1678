@@ -521,6 +521,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                             onPressed: () {
                               showSafeDialog(
                                 context: context,
+                                fullscreenOnMobile: true,
                                 builder: (_) => QuoteFormDialog(quoteToEdit: _quote),
                               ).then((updated) { if (updated == true) _loadData(); });
                             },
@@ -677,6 +678,7 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                                     onTap: () {
                                       showSafeDialog(
                                         context: context,
+                                        fullscreenOnMobile: true,
                                         builder: (_) => QuoteFormDialog(quoteToEdit: _quote),
                                       ).then((updated) { if (updated == true) _loadData(); });
                                     },

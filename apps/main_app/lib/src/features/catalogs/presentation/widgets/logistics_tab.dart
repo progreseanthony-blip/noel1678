@@ -48,6 +48,7 @@ class _LogisticsTabState extends ConsumerState<LogisticsTab> {
   void _showForm([Map<String, dynamic>? item]) {
     showSafeDialog(
       context: context,
+      fullscreenOnMobile: true,
       builder: (context) => LogisticsDialog(itemToEdit: item),
     ).then((success) {
       if (success == true) _loadData();

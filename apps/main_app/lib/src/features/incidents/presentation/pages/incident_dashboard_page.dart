@@ -92,7 +92,10 @@ class _IncidentsDashboardPageState extends ConsumerState<IncidentsDashboardPage>
         ),
       ),
       appBar: AppBar(
-        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.pop()),
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          onPressed: () => _mobileScaffoldKey.currentState?.openDrawer(),
+        ),
         title: Text('Incidents Dashboard', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
       ),
       body: _buildContent(),
@@ -230,20 +233,21 @@ class _IncidentsDashboardPageState extends ConsumerState<IncidentsDashboardPage>
                 Expanded(
                   child: Container(
                     height: 20,
+                    alignment: Alignment.centerLeft,
                     decoration: BoxDecoration(
                       color: AppTheme.slate50,
                       borderRadius: BorderRadius.circular(4),
                     ),
-                    child: Row(children: [
-                      Container(
-                        width: widthFraction > 0 ? widthFraction * 200 : 0,
-                        height: 20,
+                    child: FractionallySizedBox(
+                      widthFactor: widthFraction.clamp(0.0, 1.0),
+                      heightFactor: 1.0,
+                      child: Container(
                         decoration: BoxDecoration(
                           color: seg.$3,
                           borderRadius: BorderRadius.circular(4),
                         ),
                       ),
-                    ]),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 8),

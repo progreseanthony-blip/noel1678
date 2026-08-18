@@ -218,6 +218,22 @@ class _DailyReportsListPageState extends ConsumerState<DailyReportsListPage> {
     );
   }
 
+  Widget _compactAction({
+    required IconData icon,
+    required String tooltip,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return IconButton(
+      icon: Icon(icon, size: 18, color: color),
+      tooltip: tooltip,
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+      onPressed: onPressed,
+    );
+  }
+
   Widget _emptyState() {
     return Center(
       child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -275,48 +291,63 @@ class _DailyReportsListPageState extends ConsumerState<DailyReportsListPage> {
               ),
               const SizedBox(width: 8),
               if (r['weather_condition'] != null)
-                Text(r['weather_condition'] as String, style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400)),
+                Flexible(
+                  child: Text(
+                    r['weather_condition'] as String,
+                    style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate400),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
             ]),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (status == 'submitted' && _isAdmin) ...[
-                  IconButton(
-                    icon: const Icon(Icons.check_circle, size: 20, color: AppTheme.primaryGreen),
-                    tooltip: 'Approve',
-                    onPressed: () => _approveReport(r['id'] as String),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.cancel, size: 20, color: AppTheme.errorRed),
-                    tooltip: 'Reject',
-                    onPressed: () => _rejectReport(r['id'] as String),
-                  ),
+            trailing: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (status == 'submitted' && _isAdmin) ...[
+                    _compactAction(
+                      icon: Icons.check_circle,
+                      tooltip: 'Approve',
+                      color: AppTheme.primaryGreen,
+                      onPressed: () => _approveReport(r['id'] as String),
+                    ),
+                    _compactAction(
+                      icon: Icons.cancel,
+                      tooltip: 'Reject',
+                      color: AppTheme.errorRed,
+                      onPressed: () => _rejectReport(r['id'] as String),
+                    ),
+                  ],
+                  if (isDraft || status == 'rejected')
+                    _compactAction(
+                      icon: Icons.edit,
+                      tooltip: 'Edit',
+                      color: AppTheme.primaryGreen,
+                      onPressed: () async {
+                        await context.push('/projects/${widget.projectId}/daily-report?reportId=${r['id']}');
+                        if (mounted) _loadData();
+                      },
+                    ),
+                  if (status == 'submitted' || status == 'approved')
+                    _compactAction(
+                      icon: Icons.visibility,
+                      tooltip: 'View',
+                      color: AppTheme.slate500,
+                      onPressed: () async {
+                        await context.push('/projects/${widget.projectId}/daily-report?reportId=${r['id']}');
+                        if (mounted) _loadData();
+                      },
+                    ),
+                  if (isDraft)
+                    _compactAction(
+                      icon: Icons.delete_outline,
+                      tooltip: 'Delete',
+                      color: AppTheme.errorRed,
+                      onPressed: () => _deleteReport(r['id'] as String),
+                    ),
                 ],
-                if (isDraft || status == 'rejected')
-                  IconButton(
-                    icon: const Icon(Icons.edit, size: 18, color: AppTheme.primaryGreen),
-                    tooltip: 'Edit',
-                    onPressed: () async {
-                      await context.push('/projects/${widget.projectId}/daily-report?reportId=${r['id']}');
-                      if (mounted) _loadData();
-                    },
-                  ),
-                if (status == 'submitted' || status == 'approved')
-                  IconButton(
-                    icon: const Icon(Icons.visibility, size: 18, color: AppTheme.slate500),
-                    tooltip: 'View',
-                    onPressed: () async {
-                      await context.push('/projects/${widget.projectId}/daily-report?reportId=${r['id']}');
-                      if (mounted) _loadData();
-                    },
-                  ),
-                if (isDraft)
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.errorRed),
-                    tooltip: 'Delete',
-                    onPressed: () => _deleteReport(r['id'] as String),
-                  ),
-              ],
+              ),
             ),
           ),
         );

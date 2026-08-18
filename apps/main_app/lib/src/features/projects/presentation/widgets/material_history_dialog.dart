@@ -81,6 +81,7 @@ class _MaterialHistoryDialogState extends State<MaterialHistoryDialog> {
     showSafeDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
+      fullscreenOnMobile: true,
       builder: (_) => MaterialReceptionDialog(
         projectId: widget.projectId,
         projectMaterialId: widget.projectMaterialId,

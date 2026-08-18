@@ -44,6 +44,7 @@ class _MaterialsTabState extends ConsumerState<MaterialsTab> {
   void _showForm([Map<String, dynamic>? item]) {
     showSafeDialog(
       context: context,
+      fullscreenOnMobile: true,
       builder: (context) => MaterialDialog(materialToEdit: item),
     ).then((success) {
       if (success == true) _loadData();

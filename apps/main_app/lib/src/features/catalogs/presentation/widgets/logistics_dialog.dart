@@ -465,6 +465,7 @@ class _LogisticsDialogState extends ConsumerState<LogisticsDialog> {
     final ctrl = TextEditingController(text: curName);
     final newName = await showSafeDialog<String>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (context) => AlertDialog(
         title: Text('Edit Application', style: GoogleFonts.manrope(fontWeight: FontWeight.bold)),
         content: TextField(controller: ctrl, decoration: InputDecoration(hintText: 'Application name'), autofocus: true),

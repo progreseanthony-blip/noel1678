@@ -145,7 +145,7 @@ class _StepMaterialsState extends State<StepMaterials> {
     return Row(children: [
       Text('Service:', style: _t(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
       const SizedBox(width: 12),
-      SizedBox(width: 260, child: DropdownButtonFormField<String>(
+      Flexible(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 260), child: DropdownButtonFormField<String>(
         value: _serviceFilter,
         decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
         hint: Text('All Services', style: _t(fontSize: 15)),
@@ -154,7 +154,7 @@ class _StepMaterialsState extends State<StepMaterials> {
           ...services.map((s) => DropdownMenuItem(value: s, child: Text(s, style: _t(fontSize: 15)))),
         ],
         onChanged: (v) => setState(() => _serviceFilter = v),
-      )),
+      ))),
     ]);
   }
 

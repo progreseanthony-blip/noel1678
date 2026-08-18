@@ -141,17 +141,20 @@ class _IncidentsListPageState extends ConsumerState<IncidentsListPage> {
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(children: [
-        _filterChip('All', 'all', _incidents.length),
-        const SizedBox(width: 8),
-        _filterChip('Open', 'open', statusCounts['open'] ?? 0),
-        const SizedBox(width: 8),
-        _filterChip('In Progress', 'in_progress', statusCounts['in_progress'] ?? 0),
-        const SizedBox(width: 8),
-        _filterChip('Resolved', 'resolved', statusCounts['resolved'] ?? 0),
-        const SizedBox(width: 8),
-        _filterChip('Closed', 'closed', statusCounts['closed'] ?? 0),
-      ]),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: [
+          _filterChip('All', 'all', _incidents.length),
+          const SizedBox(width: 8),
+          _filterChip('Open', 'open', statusCounts['open'] ?? 0),
+          const SizedBox(width: 8),
+          _filterChip('In Progress', 'in_progress', statusCounts['in_progress'] ?? 0),
+          const SizedBox(width: 8),
+          _filterChip('Resolved', 'resolved', statusCounts['resolved'] ?? 0),
+          const SizedBox(width: 8),
+          _filterChip('Closed', 'closed', statusCounts['closed'] ?? 0),
+        ]),
+      ),
     );
   }
 

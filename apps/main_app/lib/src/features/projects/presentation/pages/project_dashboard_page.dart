@@ -697,6 +697,7 @@ class _ProjectDashboardPageState extends ConsumerState<ProjectDashboardPage> {
                     final result = await showSafeDialog(
                       context: context,
                       barrierColor: Colors.black.withOpacity(0.5),
+                      fullscreenOnMobile: true,
                       builder: (_) => CloseProjectDialog(
                         projectId: widget.projectId,
                         projectTitle: _project?['title'] ?? '',

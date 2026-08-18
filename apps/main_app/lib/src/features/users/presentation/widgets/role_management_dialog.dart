@@ -41,6 +41,7 @@ class _RoleManagementDialogState extends State<RoleManagementDialog> {
   Future<void> _addRole() async {
     final result = await showSafeDialog<bool>(
       context: context,
+      fullscreenOnMobile: true,
       barrierColor: Colors.black.withOpacity(0.5),
       builder: (ctx) => const _RoleFormDialog(),
     );
@@ -50,6 +51,7 @@ class _RoleManagementDialogState extends State<RoleManagementDialog> {
   Future<void> _editRole(Map<String, dynamic> role) async {
     final result = await showSafeDialog<bool>(
       context: context,
+      fullscreenOnMobile: true,
       barrierColor: Colors.black.withOpacity(0.5),
       builder: (ctx) => _RoleFormDialog(roleToEdit: role),
     );

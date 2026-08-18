@@ -84,25 +84,18 @@ class _PayrollPeriodDialogState extends ConsumerState<PayrollPeriodDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Container(
-        width: 440,
-        padding: const EdgeInsets.all(28),
-        child: Form(
-          key: _formKey,
-          child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(
-              widget.periodToEdit != null ? 'Edit Period' : 'New Period',
-              style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Define a date range to calculate labor costs.',
-              style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500),
-            ),
-            const SizedBox(height: 24),
+    return ResponsiveDialogShell(
+      title: widget.periodToEdit != null ? 'Edit Period' : 'New Period',
+      subtitle: 'Define a date range to calculate labor costs.',
+      maxWidth: 440,
+      bodyPadding: const EdgeInsets.all(28),
+      onClose: () => Navigator.of(context).pop(),
+      body: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             TextFormField(
               controller: _nameCtrl,
               decoration: InputDecoration(
@@ -148,22 +141,23 @@ class _PayrollPeriodDialogState extends ConsumerState<PayrollPeriodDialog> {
                 ),
               ),
             ]),
-            const SizedBox(height: 28),
-            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancel', style: GoogleFonts.manrope(color: AppTheme.slate500)),
-              ),
-              const SizedBox(width: 12),
-              FilledButton(
-                onPressed: _save,
-                style: FilledButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
-                child: Text('Save', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
-              ),
-            ]),
-          ]),
-          ),
+          ],
         ),
+      ),
+      footer: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancel', style: GoogleFonts.manrope(color: AppTheme.slate500)),
+          ),
+          const SizedBox(width: 12),
+          FilledButton(
+            onPressed: _save,
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.primaryGreen),
+            child: Text('Save', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+          ),
+        ],
       ),
     );
   }

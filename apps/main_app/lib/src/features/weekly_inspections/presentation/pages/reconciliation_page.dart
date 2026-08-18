@@ -4,6 +4,7 @@ import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_data/noel_data.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
 import '../../../../shared/widgets/completed_project_banner.dart';
@@ -169,8 +170,9 @@ class _ReconciliationPageState extends State<ReconciliationPage> {
         TextEditingController(text: currentAdjusted.toString());
     final reasonController = TextEditingController(text: reason);
 
-    showDialog(
+    showSafeDialog(
       context: context,
+      fullscreenOnMobile: true,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E293B),
         title: Text(

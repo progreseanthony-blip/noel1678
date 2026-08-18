@@ -145,6 +145,7 @@ class _StepLaborState extends State<StepLabor> {
 
     await showSafeDialog<void>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (ctx) => BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
         child: Dialog(
@@ -373,6 +374,30 @@ class _StepLaborState extends State<StepLabor> {
   String? _fmtDateRange(dynamic s, dynamic e) { if (s == null && e == null) return null; String f(dynamic d) { if (d == null) return '?'; try { final dt = DateTime.parse(d.toString().split(' ')[0]); const ms = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; return '${ms[dt.month-1]} ${dt.day}'; } catch (_) { return '?'; } } return '${f(s)} \u2192 ${f(e)}'; }
 
   Widget _buildWeatherDayButton() {
+    final content = <Widget>[
+      TextButton.icon(
+        onPressed: _markAllWorkersAbsent,
+        icon: const Icon(Icons.person_off, size: 14, color: Colors.orange),
+        label: Text('Mark All Absent', style: _t(fs: 13, w: FontWeight.w700, c: Colors.orange)),
+        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+      ),
+      const SizedBox(width: 4),
+      TextButton.icon(
+        onPressed: _creditMinimumHours,
+        icon: const Icon(Icons.more_time, size: 14, color: Colors.orange),
+        label: Text('Credit 1h', style: _t(fs: 13, w: FontWeight.w700, c: Colors.orange)),
+        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+      ),
+      if (widget.stoppedAt != null && widget.stoppedAt!.isNotEmpty) ...[
+        const SizedBox(width: 4),
+        TextButton.icon(
+          onPressed: () => _stopAllAt(widget.stoppedAt!),
+          icon: const Icon(Icons.stop, size: 14, color: AppTheme.errorRed),
+          label: Text('Stop All at ${widget.stoppedAt!.substring(0, 5)}', style: _t(fs: 13, w: FontWeight.w700, c: AppTheme.errorRed)),
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+        ),
+      ],
+    ];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
@@ -380,34 +405,28 @@ class _StepLaborState extends State<StepLabor> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.orange.withAlpha(40)),
       ),
-      child: Row(children: [
-        const Icon(Icons.thunderstorm, size: 16, color: Colors.orange),
-        const SizedBox(width: 8),
-        Text('Weather / Non-working day?', style: _t(fs: 13, w: FontWeight.w600, c: Colors.orange)),
-        const Spacer(),
-        TextButton.icon(
-          onPressed: _markAllWorkersAbsent,
-          icon: const Icon(Icons.person_off, size: 14, color: Colors.orange),
-          label: Text('Mark All Absent', style: _t(fs: 13, w: FontWeight.w700, c: Colors.orange)),
-          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-        ),
-        const SizedBox(width: 4),
-        TextButton.icon(
-          onPressed: _creditMinimumHours,
-          icon: const Icon(Icons.more_time, size: 14, color: Colors.orange),
-          label: Text('Credit 1h', style: _t(fs: 13, w: FontWeight.w700, c: Colors.orange)),
-          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-        ),
-        if (widget.stoppedAt != null && widget.stoppedAt!.isNotEmpty) ...[
-          const SizedBox(width: 4),
-          TextButton.icon(
-            onPressed: () => _stopAllAt(widget.stoppedAt!),
-            icon: const Icon(Icons.stop, size: 14, color: AppTheme.errorRed),
-            label: Text('Stop All at ${widget.stoppedAt!.substring(0, 5)}', style: _t(fs: 13, w: FontWeight.w700, c: AppTheme.errorRed)),
-            style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-          ),
-        ],
-      ]),
+      child: LayoutBuilder(builder: (ctx, constraints) {
+        if (constraints.maxWidth < 420) {
+          return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.thunderstorm, size: 16, color: Colors.orange),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text('Weather / Non-working day?', style: _t(fs: 13, w: FontWeight.w600, c: Colors.orange), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ]),
+            const SizedBox(height: 4),
+            Wrap(spacing: 4, runSpacing: 4, children: content),
+          ]);
+        }
+        return Row(children: [
+          const Icon(Icons.thunderstorm, size: 16, color: Colors.orange),
+          const SizedBox(width: 8),
+          Text('Weather / Non-working day?', style: _t(fs: 13, w: FontWeight.w600, c: Colors.orange)),
+          const Spacer(),
+          ...content,
+        ]);
+      }),
     );
   }
 
@@ -497,6 +516,7 @@ class _StepLaborState extends State<StepLabor> {
 
   Widget _timeBox(String lb, String d, IconData ic, Color c) => Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10), decoration: BoxDecoration(color: c.withAlpha(20), borderRadius: BorderRadius.circular(8), border: Border.all(color: c.withAlpha(50))), child: Row(mainAxisSize: MainAxisSize.min, children: [Icon(ic, size: 14, color: c), const SizedBox(width: 6), Text(d, style: _t(fs: 15, w: FontWeight.w700, c: AppTheme.slate900))]));
   Widget _hoursBadge(double h, Color c) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: c.withAlpha(25), borderRadius: BorderRadius.circular(12)), child: Text('${h.toStringAsFixed(1)}h', style: _t(fs: 13, w: FontWeight.w700, c: c)));
+  Widget _tChip(String lb, String v, Color c) => Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3), decoration: BoxDecoration(color: c.withAlpha(20), borderRadius: BorderRadius.circular(12)), child: Text('$lb $v', style: _t(fs: 12, w: FontWeight.w700, c: AppTheme.slate900)));
   Widget _roField(String l, String v) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(l, style: _t(fs: 12, w: FontWeight.w600, c: AppTheme.slate400)), Text(v, style: _t(fs: 15, w: FontWeight.w600, c: AppTheme.slate900))]);
   Widget _empty(String t) => Container(width: double.infinity, padding: const EdgeInsets.all(32), decoration: BoxDecoration(color: AppTheme.slate50, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200)), child: Column(children: [Icon(Icons.people_outline, size: 40, color: AppTheme.slate400), const SizedBox(height: 8), Text(t, style: _t(fs: 15, w: FontWeight.w600, c: AppTheme.slate500))]));
 
@@ -537,7 +557,7 @@ class _StepLaborState extends State<StepLabor> {
     ]);
   }
 
-  Widget _buildServiceFilter() { final svcs = _allServices(); if (svcs.isEmpty) return const SizedBox.shrink(); return Row(children: [Text('Service:', style: _t(fs: 14, w: FontWeight.w600, c: AppTheme.slate500)), const SizedBox(width: 12), SizedBox(width: 260, child: DropdownButtonFormField<String>(value: _serviceFilter, decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)), hint: Text('All Services', style: _t(fs: 15)), items: [DropdownMenuItem<String>(value: null, child: Text('All Services', style: _t(fs: 15))), ...svcs.map((s) => DropdownMenuItem(value: s, child: Text(s, style: _t(fs: 15))))], onChanged: (v) => setState(() => _serviceFilter = v)))]); }
+  Widget _buildServiceFilter() { final svcs = _allServices(); if (svcs.isEmpty) return const SizedBox.shrink(); return Row(children: [Text('Service:', style: _t(fs: 14, w: FontWeight.w600, c: AppTheme.slate500)), const SizedBox(width: 12), Flexible(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 260), child: DropdownButtonFormField<String>(initialValue: _serviceFilter, isExpanded: true, decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)), hint: Text('All Services', style: _t(fs: 15), maxLines: 1, overflow: TextOverflow.ellipsis), items: [DropdownMenuItem<String>(value: null, child: Text('All Services', style: _t(fs: 15), maxLines: 1, overflow: TextOverflow.ellipsis)), ...svcs.map((s) => DropdownMenuItem(value: s, child: Text(s, style: _t(fs: 15), maxLines: 1, overflow: TextOverflow.ellipsis)))], onChanged: (v) => setState(() => _serviceFilter = v))))]); }
 
   Widget _buildServiceGroup(String svc, List<Map<String, dynamic>> roles) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     const SizedBox(height: 8),
@@ -701,12 +721,19 @@ class _StepLaborState extends State<StepLabor> {
         Row(children: [Expanded(child: InkWell(onTap: () => _pickTime(context, ci, (v) => _updateEntryField(idx, 'check_in_time', v)), child: _timeBox('Check-in', ciD, Icons.login, AppTheme.primaryGreen))), const SizedBox(width: 8), Icon(Icons.arrow_forward, size: 14, color: AppTheme.slate400), const SizedBox(width: 8), Expanded(child: InkWell(onTap: () => _pickTime(context, co, (v) => _updateEntryField(idx, 'check_out_time', v)), child: _timeBox('Check-out', coD, Icons.logout, AppTheme.errorRed)))]),
         const SizedBox(height: 8),
         Row(children: [
-          _hoursBadge(e['regular_hours'] as double? ?? 0, AppTheme.primaryGreen),
-          const SizedBox(width: 6),
-          _hoursBadge(e['overtime_hours'] as double? ?? 0, Colors.orange),
-          if (bm > 0) ...[const SizedBox(width: 6), _hoursBadge(-(bm / 60.0), AppTheme.slate400)],
-          const SizedBox(width: 6),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(12)), child: Text('Net ${tn.toStringAsFixed(1)}h', style: _t(fs: 12, w: FontWeight.w700, c: AppTheme.slate600))),
+          Expanded(
+            child: Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _hoursBadge(e['regular_hours'] as double? ?? 0, AppTheme.primaryGreen),
+                _hoursBadge(e['overtime_hours'] as double? ?? 0, Colors.orange),
+                if (bm > 0) _hoursBadge(-(bm / 60.0), AppTheme.slate400),
+                Container(padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(12)), child: Text('Net ${tn.toStringAsFixed(1)}h', style: _t(fs: 12, w: FontWeight.w700, c: AppTheme.slate600))),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
           TextButton.icon(
             onPressed: () {
               String? estCheckIn;
@@ -727,8 +754,13 @@ class _StepLaborState extends State<StepLabor> {
             label: Text('Reassign', style: _t(fs: 13, w: FontWeight.w600, c: AppTheme.primaryGreen)),
             style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 6), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
           ),
-          const Spacer(),
-          if (isUnplanned || e['deviation_reason_id'] != null) Flexible(child: DropdownButtonFormField<String>(value: e['deviation_reason_id'], isExpanded: true, decoration: const InputDecoration(labelText: 'Reason', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8)), items: _laborReasons.map((r) => DropdownMenuItem<String>(value: r['id'] as String?, child: Text(r['description'] ?? '', style: _t(fs: 12)))).toList(), onChanged: (v) => _updateEntryField(idx, 'deviation_reason_id', v)))]),
+          if (isUnplanned || e['deviation_reason_id'] != null) ...[
+            const SizedBox(width: 8),
+            Flexible(
+              child: DropdownButtonFormField<String>(value: e['deviation_reason_id'], isExpanded: true, decoration: const InputDecoration(labelText: 'Reason', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 8)), items: _laborReasons.map((r) => DropdownMenuItem<String>(value: r['id'] as String?, child: Text(r['description'] ?? '', style: _t(fs: 12)))).toList(), onChanged: (v) => _updateEntryField(idx, 'deviation_reason_id', v)),
+            ),
+          ],
+        ]),
       ] else ...[
         Row(children: [
           _roField('In', ciD), const SizedBox(width: 8),
@@ -758,23 +790,40 @@ class _StepLaborState extends State<StepLabor> {
   // ── Search & compact view ──
 
   Widget _buildTopBar() {
-    return Row(children: [
-      Expanded(child: _buildSearchBar()),
-      const SizedBox(width: 8),
-      FilterChip(
-        label: Text('Missing', style: _t(fs: 12, w: FontWeight.w600, c: _missingOnly ? Colors.white : Colors.orange)),
-        selected: _missingOnly,
-        onSelected: (v) => setState(() => _missingOnly = v),
-        selectedColor: Colors.orange,
-        checkmarkColor: Colors.white,
-        visualDensity: VisualDensity.compact,
-        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        avatar: Icon(Icons.schedule, size: 14, color: _missingOnly ? Colors.white : Colors.orange),
-      ),
-      const SizedBox(width: 8),
-      _buildViewToggle(),
-    ]);
+    return LayoutBuilder(builder: (ctx, constraints) {
+      if (constraints.maxWidth < 440) {
+        return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          _buildSearchBar(),
+          const SizedBox(height: 8),
+          Row(children: [
+            _buildMissingChip(),
+            const Spacer(),
+            _buildViewToggle(),
+          ]),
+        ]);
+      }
+      return Row(children: [
+        Expanded(child: _buildSearchBar()),
+        const SizedBox(width: 8),
+        _buildMissingChip(),
+        const SizedBox(width: 8),
+        _buildViewToggle(),
+      ]);
+    });
+  }
+
+  Widget _buildMissingChip() {
+    return FilterChip(
+      label: Text('Missing', style: _t(fs: 12, w: FontWeight.w600, c: _missingOnly ? Colors.white : Colors.orange)),
+      selected: _missingOnly,
+      onSelected: (v) => setState(() => _missingOnly = v),
+      selectedColor: Colors.orange,
+      checkmarkColor: Colors.white,
+      visualDensity: VisualDensity.compact,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      avatar: Icon(Icons.schedule, size: 14, color: _missingOnly ? Colors.white : Colors.orange),
+    );
   }
 
   Widget _buildSearchBar() {
@@ -855,22 +904,26 @@ class _StepLaborState extends State<StepLabor> {
           onPreset: _applyPreset, onCustom: _showCustomTimeDialog,
         ),
         const SizedBox(height: 6),
-        Row(children: [
-          _presetRow(
-            label: 'Check-out', icon: Icons.logout,
-            presets: const ['15:30', '16:00', '17:00', '18:00'],
-            onPreset: _applyCheckOutPreset, onCustom: _showCustomCheckOutTimeDialog,
-          ),
-          if (_selectedWorkerIds.isNotEmpty) ...[
-            const Spacer(),
-            Text('${_selectedWorkerIds.length} selected', style: _t(fs: 12, w: FontWeight.w600, c: AppTheme.slate500)),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => setState(() => _selectedWorkerIds.clear()),
-              child: Text('Clear', style: _t(fs: 12, w: FontWeight.w600, c: AppTheme.errorRed)),
+        Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _presetRow(
+              label: 'Check-out', icon: Icons.logout,
+              presets: const ['15:30', '16:00', '17:00', '18:00'],
+              onPreset: _applyCheckOutPreset, onCustom: _showCustomCheckOutTimeDialog,
             ),
+            if (_selectedWorkerIds.isNotEmpty) ...[
+              Text('${_selectedWorkerIds.length} selected', style: _t(fs: 12, w: FontWeight.w600, c: AppTheme.slate500)),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => setState(() => _selectedWorkerIds.clear()),
+                child: Text('Clear', style: _t(fs: 12, w: FontWeight.w600, c: AppTheme.errorRed)),
+              ),
+            ],
           ],
-        ]),
+        ),
       ]),
     );
   }
@@ -881,32 +934,37 @@ class _StepLaborState extends State<StepLabor> {
     required void Function(String) onPreset,
     required VoidCallback onCustom,
   }) {
-    return Row(children: [
-      Icon(icon, size: 14, color: AppTheme.slate500),
-      const SizedBox(width: 6),
-      Text('$label:', style: _t(fs: 13, w: FontWeight.w600, c: AppTheme.slate600)),
-      const SizedBox(width: 8),
-      ...presets.map((t) => Padding(
-        padding: const EdgeInsets.only(right: 6),
-        child: TextButton(
-          onPressed: _selectedWorkerIds.isEmpty ? null : () => onPreset(t),
-          style: TextButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            backgroundColor: _selectedWorkerIds.isEmpty ? AppTheme.slate200 : AppTheme.primaryGreen.withAlpha(15),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-            minimumSize: Size.zero,
-            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        Icon(icon, size: 14, color: AppTheme.slate500),
+        const SizedBox(width: 6),
+        Text('$label:', style: _t(fs: 13, w: FontWeight.w600, c: AppTheme.slate600)),
+        const SizedBox(width: 8),
+        ...presets.map((t) => Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: TextButton(
+            onPressed: _selectedWorkerIds.isEmpty ? null : () => onPreset(t),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              backgroundColor: _selectedWorkerIds.isEmpty ? AppTheme.slate200 : AppTheme.primaryGreen.withAlpha(15),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(t, style: _t(fs: 13, w: FontWeight.w600, c: _selectedWorkerIds.isEmpty ? AppTheme.slate400 : AppTheme.primaryGreen)),
           ),
-          child: Text(t, style: _t(fs: 13, w: FontWeight.w600, c: _selectedWorkerIds.isEmpty ? AppTheme.slate400 : AppTheme.primaryGreen)),
+        )),
+        TextButton.icon(
+          onPressed: _selectedWorkerIds.isEmpty ? null : onCustom,
+          icon: const Icon(Icons.more_time, size: 14),
+          label: Text('Custom', style: _t(fs: 13, w: FontWeight.w600, c: _selectedWorkerIds.isEmpty ? AppTheme.slate400 : AppTheme.primaryGreen)),
+          style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
         ),
-      )),
-      TextButton.icon(
-        onPressed: _selectedWorkerIds.isEmpty ? null : onCustom,
-        icon: const Icon(Icons.more_time, size: 14),
-        label: Text('Custom', style: _t(fs: 13, w: FontWeight.w600, c: _selectedWorkerIds.isEmpty ? AppTheme.slate400 : AppTheme.primaryGreen)),
-        style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-      ),
-    ]);
+      ],
+    );
   }
 
   void _applyPreset(String time) {
@@ -1039,20 +1097,117 @@ class _StepLaborState extends State<StepLabor> {
   Widget _buildCompactView(List<Map<String, dynamic>> filteredLabor) {
     final items = _buildCompactItems(filteredLabor);
     if (items.isEmpty) return _empty('No workers match your search');
+    final tableWidth = widget.isReadOnly ? 516.0 : 646.0;
     return Container(
       decoration: BoxDecoration(border: Border.all(color: AppTheme.slate200), borderRadius: BorderRadius.circular(8)),
       clipBehavior: Clip.antiAlias,
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        _buildTableHeader(),
-        const Divider(height: 1, color: AppTheme.slate200),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 500),
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: items.length,
-            itemBuilder: (_, i) => _buildTableRow(items[i]),
-          ),
-        ),
+      child: LayoutBuilder(builder: (ctx, constraints) {
+        if (constraints.maxWidth < 600) {
+          return Column(mainAxisSize: MainAxisSize.min, children: items.map(_buildMobileCompactRow).toList());
+        }
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            SizedBox(width: tableWidth, child: _buildTableHeader()),
+            const Divider(height: 1, color: AppTheme.slate200),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 500),
+              child: SizedBox(
+                width: tableWidth,
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: items.length,
+                  itemBuilder: (_, i) => _buildTableRow(items[i]),
+                ),
+              ),
+            ),
+          ]),
+        );
+      }),
+    );
+  }
+
+  Widget _buildMobileCompactRow(Map<String, dynamic> item) {
+    if (item['type'] == 'header') {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+        color: AppTheme.slate50,
+        child: Row(children: [
+          Expanded(child: Text(item['name'] as String, style: _t(fs: 13, w: FontWeight.w800, c: AppTheme.slate700), overflow: TextOverflow.ellipsis)),
+          if (item['affected'] == true) _disruptionBadge(),
+        ]),
+      );
+    }
+
+    final wid = item['worker_id'] as String;
+    final isPresent = item['is_present'] as bool;
+    final isAbsent = item['is_absent'] as bool;
+    final isSelected = _selectedWorkerIds.contains(wid);
+    final eIdx = item['entry_index'] as int;
+    final present = isPresent && eIdx >= 0 && eIdx < _entries.length;
+    final e = present ? _entries[eIdx] : null;
+    final ci = present ? (e!['check_in_time'] as String? ?? '') : '';
+    final co = present ? (e!['check_out_time'] as String? ?? '') : '';
+    final hrs = present ? (e!['regular_hours'] as double? ?? 0) : 0.0;
+    final othrs = present ? (e!['overtime_hours'] as double? ?? 0) : 0.0;
+    final ciD = ci.length >= 5 ? ci.substring(0, 5) : (ci.isEmpty ? '--:--' : ci);
+    final coD = co.length >= 5 ? co.substring(0, 5) : (co.isEmpty ? '--:--' : co);
+
+    final statusIcon = present
+        ? const Icon(Icons.check_circle, size: 16, color: AppTheme.primaryGreen)
+        : (isAbsent ? const Icon(Icons.person_off, size: 16, color: Colors.orange) : const SizedBox.shrink());
+
+    final actions = <Widget>[];
+    if (!widget.isReadOnly) {
+      if (isAbsent) {
+        actions.add(_actionBtn(Icons.undo, 'Undo absent', Colors.orange, () => _toggleAbsent(wid)));
+      } else if (present) {
+        actions.add(_actionBtn(Icons.access_time, 'Set check-in time', AppTheme.primaryGreen, () => _pickTime(context, e!['check_in_time'] as String?, (v) => _updateEntryField(eIdx, 'check_in_time', v))));
+        actions.add(const SizedBox(width: 8));
+        actions.add(_actionBtn(Icons.logout, 'Set check-out time', AppTheme.errorRed, () => _pickTime(context, e!['check_out_time'] as String?, (v) => _updateEntryField(eIdx, 'check_out_time', v))));
+      } else {
+        actions.add(_actionBtn(Icons.login, 'Check-in', AppTheme.primaryGreen, () => _addEntry(wid, plannedLaborId: item['plan_id'] as String)));
+        actions.add(const SizedBox(width: 8));
+        actions.add(_actionBtn(Icons.person_off, 'Mark absent', Colors.orange, () => _toggleAbsent(wid)));
+      }
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppTheme.slate200.withAlpha(80))),
+        color: isAbsent ? Colors.orange.withAlpha(8) : (present ? AppTheme.primaryGreen.withAlpha(6) : null),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          if (!widget.isReadOnly && !isAbsent)
+            Checkbox(
+              value: isSelected,
+              onChanged: (_) => setState(() { isSelected ? _selectedWorkerIds.remove(wid) : _selectedWorkerIds.add(wid); }),
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
+            ),
+          Expanded(child: Text(item['full_name'] as String, style: _t(fs: 13, w: FontWeight.w700, c: AppTheme.slate900), overflow: TextOverflow.ellipsis)),
+          statusIcon,
+        ]),
+        Text(item['role_name'] as String, style: _t(fs: 12, c: AppTheme.slate500), overflow: TextOverflow.ellipsis),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+          if (present) ...[
+            _tChip('In', ciD, AppTheme.primaryGreen),
+            _tChip('Out', coD, AppTheme.errorRed),
+            _hoursBadge(hrs, AppTheme.primaryGreen),
+            if (othrs > 0) _hoursBadge(othrs, Colors.orange),
+          ] else if (isAbsent) ...[
+            Text('Absent', style: _t(fs: 12, w: FontWeight.w600, c: Colors.orange)),
+          ] else ...[
+            Text('Not checked in', style: _t(fs: 12, w: FontWeight.w500, c: AppTheme.slate400)),
+          ],
+        ]),
+        if (actions.isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Wrap(spacing: 8, runSpacing: 6, children: actions),
+        ],
       ]),
     );
   }

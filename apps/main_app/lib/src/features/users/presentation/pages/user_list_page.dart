@@ -122,6 +122,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
   Future<void> _showUserForm({Map<String, dynamic>? user}) async {
     final result = await showSafeDialog<bool>(
       context: context,
+      fullscreenOnMobile: true,
       barrierColor: Colors.black.withOpacity(0.6),
       builder: (context) => UserFormDialog(userToEdit: user),
     );
@@ -134,6 +135,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
   void _showRoleManager() {
     showSafeDialog(
       context: context,
+      fullscreenOnMobile: true,
       barrierColor: Colors.black.withOpacity(0.6),
       builder: (context) => const RoleManagementDialog(),
     );

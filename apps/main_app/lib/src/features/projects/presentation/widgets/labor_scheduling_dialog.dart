@@ -1,9 +1,9 @@
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 
 class LaborSchedulingDialog extends StatefulWidget {
   final String projectLaborId;
@@ -202,98 +202,32 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
   Widget build(BuildContext context) {
     final DateFormat fmt = DateFormat('MMM dd, yyyy');
 
-    return BackdropFilter(
-      filter: ui.ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-      child: Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        child: Container(
-          width: 480,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.15),
-                blurRadius: 30,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: _isLoading
-              ? const Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen)))
-              : Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Header
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-                      decoration: const BoxDecoration(
-                        border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                width: 40,
-                                height: 40,
-                                decoration: BoxDecoration(
-                                  color: AppTheme.primaryGreen.withOpacity(0.1),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Center(
-                                  child: Icon(Icons.calendar_month, color: AppTheme.primaryGreen, size: 20),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Modify Dates',
-                                    style: GoogleFonts.manrope(fontSize: 20, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    widget.roleName,
-                                    style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate500, height: 1.0),
-                                  ),
-                                  if (widget.serviceName.isNotEmpty) ...[
-                                    const SizedBox(height: 6),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                      decoration: BoxDecoration(
-                                        color: AppTheme.primaryGreen.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(4),
-                                      ),
-                                      child: Text(
-                                        'Service: ${widget.serviceName}',
-                                        style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen),
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ],
-                          ),
-                          MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            child: GestureDetector(
-                              onTap: () => Navigator.of(context).pop(),
-                              child: const Icon(Icons.close, color: AppTheme.slate400, size: 24),
-                            ),
-                          ),
-                        ],
-                      ),
+    return ResponsiveDialogShell(
+      title: 'Modify Dates',
+      subtitle: widget.roleName,
+      icon: Icons.calendar_month,
+      maxWidth: 480,
+      bodyPadding: const EdgeInsets.all(24),
+      onClose: () => Navigator.of(context).pop(),
+      body: _isLoading
+          ? const Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen)))
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (widget.serviceName.isNotEmpty) ...[
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryGreen.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                    // Body
-                    Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+                    child: Text(
+                      'Service: ${widget.serviceName}',
+                      style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen),
+                    ),
+                  ),
+                ],
                           if (_stipulatedDays != null)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 16),
@@ -313,79 +247,66 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
                               ),
                             ],
                           ),
-                        ],
-                      ),
-                    ),
-                    // Footer
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF8FAFC),
-                        border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Spacer(),
-                          MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            child: GestureDetector(
-                              onTap: () => Navigator.of(context).pop(),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: const Color(0xFFCBD5E1)),
-                                ),
-                                child: Text(
-                                  'Cancel',
-                                  style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            child: GestureDetector(
-                              onTap: _isSaving ? null : _save,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: _isSaving ? AppTheme.slate400 : AppTheme.primaryGreen,
-                                  borderRadius: BorderRadius.circular(8),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppTheme.primaryGreen.withOpacity(0.2),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    if (_isSaving)
-                                      const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                                    else
-                                      const Icon(Icons.save, color: Colors.white, size: 18),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      _isSaving ? 'Saving...' : 'Save Dates',
-                                      style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                ],
+              ),
+      footer: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          const Spacer(),
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: () => Navigator.of(context).pop(),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFFCBD5E1)),
+                ),
+                child: Text(
+                  'Cancel',
+                  style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: _isSaving ? null : _save,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                decoration: BoxDecoration(
+                  color: _isSaving ? AppTheme.slate400 : AppTheme.primaryGreen,
+                  borderRadius: BorderRadius.circular(8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.primaryGreen.withOpacity(0.2),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-        ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (_isSaving)
+                      const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    else
+                      const Icon(Icons.save, color: Colors.white, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      _isSaving ? 'Saving...' : 'Save Dates',
+                      style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

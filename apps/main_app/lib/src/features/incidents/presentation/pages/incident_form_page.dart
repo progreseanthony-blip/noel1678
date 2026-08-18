@@ -123,6 +123,7 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
   Future<void> _addResourceItem() async {
     final result = await showSafeDialog<Map<String, dynamic>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (ctx) => _AddResourceDialog(
         materials: _projectMaterials,
         machinery: _projectMachinery,
@@ -144,6 +145,7 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
         : item['project_instrument_id']?.toString();
     final result = await showSafeDialog<Map<String, dynamic>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (ctx) => _AddResourceDialog(
         materials: _projectMaterials,
         machinery: _projectMachinery,
@@ -587,128 +589,129 @@ class _AddResourceDialogState extends State<_AddResourceDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.editMode ? 'Edit Affected Resource' : 'Add Affected Resource'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                value: _selectedType,
-                items: const [
-                  DropdownMenuItem(value: 'material', child: Text('Material')),
-                  DropdownMenuItem(value: 'machinery', child: Text('Machinery')),
-                  DropdownMenuItem(value: 'labor', child: Text('Labor/Personnel')),
-                  DropdownMenuItem(value: 'instrument', child: Text('Instrument')),
-                ],
-                onChanged: widget.editMode ? null : (v) => setState(() {
-                  _selectedType = v!;
-                  _selectedResourceId = null;
-                }),
-                decoration: const InputDecoration(labelText: 'Resource Type', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value: _selectedResourceId,
-                items: _currentList.map((r) {
-                  final name = r['material_name'] ?? r['machinery_name'] ?? r['role_name'] ?? r['instrument_name'] ?? '';
-                  return DropdownMenuItem(value: r['id'] as String, child: Text(name as String, style: const TextStyle(fontSize: 13)));
-                }).toList(),
-                onChanged: (v) {
-                  setState(() {
-                    _selectedResourceId = v;
-                    final selected = _currentList.cast<Map<String, dynamic>?>().firstWhere((r) => r?['id'] == v, orElse: () => null);
-                    if (selected != null) {
-                      _unitCtrl.text = selected['unit_name'] as String? 
-                          ?? (_selectedType == 'machinery' ? 'hrs' 
-                          : _selectedType == 'labor' ? 'workers'
-                          : _selectedType == 'instrument' ? 'days'
-                          : '');
-                      _hourlyCostRate = _suggestedRate(selected);
-                      _rateCtrl.text = _hourlyCostRate > 0 ? _hourlyCostRate.toStringAsFixed(0) : '0';
-                    }
-                  });
-                },
-                decoration: const InputDecoration(labelText: 'Resource', border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                initialValue: widget.editMode ? widget.initialQuantity.toString() : '1',
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Quantity Affected', border: OutlineInputBorder()),
-                onChanged: (v) => _quantity = double.tryParse(v) ?? 1,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _unitCtrl,
-                decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder(), hintText: 'm³, units, hours...'),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _rateCtrl,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Hourly Cost Rate (\$/hr)',
-                  hintText: 'Cost per hour of downtime',
-                  border: OutlineInputBorder(),
-                  prefixText: '\$ ',
-                ),
-                onChanged: (v) => _hourlyCostRate = double.tryParse(v) ?? 0,
-              ),
-              if (_selectedType == 'machinery') ...[
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _dailyRateCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Daily Rent Rate (\$/day)',
-                    hintText: 'Auto-calculated from monthly rent / 30',
-                    border: OutlineInputBorder(),
-                    prefixText: '\$ ',
-                  ),
-                  onChanged: (v) => _dailyRate = double.tryParse(v) ?? 0,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: _daysCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Days Affected',
-                    hintText: 'Number of calendar days machine was unavailable',
-                    border: OutlineInputBorder(),
-                  ),
-                  onChanged: (v) => _daysAffected = double.tryParse(v) ?? 0,
-                ),
-              ],
+    return ResponsiveDialogShell(
+      title: widget.editMode ? 'Edit Affected Resource' : 'Add Affected Resource',
+      maxWidth: 480,
+      onClose: () => Navigator.of(context).pop(),
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButtonFormField<String>(
+            value: _selectedType,
+            items: const [
+              DropdownMenuItem(value: 'material', child: Text('Material')),
+              DropdownMenuItem(value: 'machinery', child: Text('Machinery')),
+              DropdownMenuItem(value: 'labor', child: Text('Labor/Personnel')),
+              DropdownMenuItem(value: 'instrument', child: Text('Instrument')),
             ],
+            onChanged: widget.editMode ? null : (v) => setState(() {
+              _selectedType = v!;
+              _selectedResourceId = null;
+            }),
+            decoration: const InputDecoration(labelText: 'Resource Type', border: OutlineInputBorder()),
           ),
-        ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: _selectedResourceId,
+            items: _currentList.map((r) {
+              final name = r['material_name'] ?? r['machinery_name'] ?? r['role_name'] ?? r['instrument_name'] ?? '';
+              return DropdownMenuItem(value: r['id'] as String, child: Text(name as String, style: const TextStyle(fontSize: 13)));
+            }).toList(),
+            onChanged: (v) {
+              setState(() {
+                _selectedResourceId = v;
+                final selected = _currentList.cast<Map<String, dynamic>?>().firstWhere((r) => r?['id'] == v, orElse: () => null);
+                if (selected != null) {
+                  _unitCtrl.text = selected['unit_name'] as String? 
+                      ?? (_selectedType == 'machinery' ? 'hrs' 
+                      : _selectedType == 'labor' ? 'workers'
+                      : _selectedType == 'instrument' ? 'days'
+                      : '');
+                  _hourlyCostRate = _suggestedRate(selected);
+                  _rateCtrl.text = _hourlyCostRate > 0 ? _hourlyCostRate.toStringAsFixed(0) : '0';
+                }
+              });
+            },
+            decoration: const InputDecoration(labelText: 'Resource', border: OutlineInputBorder()),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            initialValue: widget.editMode ? widget.initialQuantity.toString() : '1',
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Quantity Affected', border: OutlineInputBorder()),
+            onChanged: (v) => _quantity = double.tryParse(v) ?? 1,
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _unitCtrl,
+            decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder(), hintText: 'm³, units, hours...'),
+          ),
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _rateCtrl,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Hourly Cost Rate (\$/hr)',
+              hintText: 'Cost per hour of downtime',
+              border: OutlineInputBorder(),
+              prefixText: '\$ ',
+            ),
+            onChanged: (v) => _hourlyCostRate = double.tryParse(v) ?? 0,
+          ),
+          if (_selectedType == 'machinery') ...[
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _dailyRateCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Daily Rent Rate (\$/day)',
+                hintText: 'Auto-calculated from monthly rent / 30',
+                border: OutlineInputBorder(),
+                prefixText: '\$ ',
+              ),
+              onChanged: (v) => _dailyRate = double.tryParse(v) ?? 0,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _daysCtrl,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Days Affected',
+                hintText: 'Number of calendar days machine was unavailable',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (v) => _daysAffected = double.tryParse(v) ?? 0,
+            ),
+          ],
+        ],
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-        FilledButton(
-          onPressed: _selectedResourceId == null ? null : () {
-            final selected = _currentList.cast<Map<String, dynamic>?>().firstWhere((r) => r?['id'] == _selectedResourceId, orElse: () => null);
-            final name = selected?['material_name'] ?? selected?['machinery_name'] ?? selected?['role_name'] ?? selected?['instrument_name'] ?? '';
-            Navigator.pop(context, {
-              'affected_type': _selectedType,
-              if (_selectedType == 'material') 'project_material_id': _selectedResourceId,
-              if (_selectedType == 'machinery') 'project_machinery_id': _selectedResourceId,
-              if (_selectedType == 'labor') 'project_labor_id': _selectedResourceId,
-              if (_selectedType == 'instrument') 'project_instrument_id': _selectedResourceId,
-              'resource_name': name,
-              'quantity_affected': _quantity,
-              'unit': _unitCtrl.text,
-              'hourly_cost_rate': _hourlyCostRate,
-              if (_selectedType == 'machinery') 'daily_rate': _dailyRate,
-              if (_selectedType == 'machinery') 'days_affected': _daysAffected,
-            });
-          },
-          child: Text(widget.editMode ? 'Update' : 'Add'),
-        ),
-      ],
+      footer: Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+          const SizedBox(width: 8),
+          FilledButton(
+            onPressed: _selectedResourceId == null ? null : () {
+              final selected = _currentList.cast<Map<String, dynamic>?>().firstWhere((r) => r?['id'] == _selectedResourceId, orElse: () => null);
+              final name = selected?['material_name'] ?? selected?['machinery_name'] ?? selected?['role_name'] ?? selected?['instrument_name'] ?? '';
+              Navigator.pop(context, {
+                'affected_type': _selectedType,
+                if (_selectedType == 'material') 'project_material_id': _selectedResourceId,
+                if (_selectedType == 'machinery') 'project_machinery_id': _selectedResourceId,
+                if (_selectedType == 'labor') 'project_labor_id': _selectedResourceId,
+                if (_selectedType == 'instrument') 'project_instrument_id': _selectedResourceId,
+                'resource_name': name,
+                'quantity_affected': _quantity,
+                'unit': _unitCtrl.text,
+                'hourly_cost_rate': _hourlyCostRate,
+                if (_selectedType == 'machinery') 'daily_rate': _dailyRate,
+                if (_selectedType == 'machinery') 'days_affected': _daysAffected,
+              });
+            },
+            child: Text(widget.editMode ? 'Update' : 'Add'),
+          ),
+        ],
+      ),
     );
   }
 }

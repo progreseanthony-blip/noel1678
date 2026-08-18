@@ -192,6 +192,16 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
 
   List<Map<String, dynamic>> get _currentEntries => _isVirtual ? _virtualEntries : _entries;
 
+  String? get _virtualStart =>
+      _isVirtual && _originalStart != null ? DateFormat('yyyy-MM-dd').format(_originalStart!) : null;
+  String? get _virtualEnd =>
+      _isVirtual && _currentEnd != null ? DateFormat('yyyy-MM-dd').format(_currentEnd!) : null;
+
+  String get _displayStart =>
+      _isVirtual && _originalStart != null ? DateFormat('yyyy-MM-dd').format(_originalStart!) : (_period?['start_date'] as String?) ?? '';
+  String get _displayEnd =>
+      _isVirtual && _currentEnd != null ? DateFormat('yyyy-MM-dd').format(_currentEnd!) : (_period?['end_date'] as String?) ?? '';
+
   num get _totalReg => (_isVirtual ? _virtualTotals['total_regular_hours'] : _period?['total_regular_hours'] ?? 0) as num;
   num get _totalOT => (_isVirtual ? _virtualTotals['total_overtime_hours'] : _period?['total_overtime_hours'] ?? 0) as num;
   num get _totalCost => (_isVirtual ? _virtualTotals['total_cost'] : _period?['total_cost'] ?? 0) as num;
@@ -203,8 +213,8 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       final bytes = await PayrollPdfGenerator.generate(
         projectTitle: _projectTitle,
         periodName: _period?['name'] ?? '',
-        startDate: _period?['start_date'] ?? '',
-        endDate: _period?['end_date'] ?? '',
+        startDate: _displayStart,
+        endDate: _displayEnd,
         entries: _currentEntries,
         totalReg: _totalReg,
         totalOT: _totalOT,
@@ -228,8 +238,8 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       final bytes = PayrollExcelGenerator.generate(
         projectTitle: _projectTitle,
         periodName: _period?['name'] ?? '',
-        startDate: _period?['start_date'] ?? '',
-        endDate: _period?['end_date'] ?? '',
+        startDate: _displayStart,
+        endDate: _displayEnd,
         entries: _currentEntries,
         totalReg: _totalReg,
         totalOT: _totalOT,
@@ -255,7 +265,11 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
     setState(() => _isSignoffLoading = true);
     try {
       final service = ref.read(payrollServiceProvider);
-      final result = await service.getWorkerDetailedLogs(widget.periodId);
+      final result = await service.getWorkerDetailedLogs(
+        widget.periodId,
+        startDate: _virtualStart,
+        endDate: _virtualEnd,
+      );
       final workers = List<Map<String, dynamic>>.from(result['workers'] as List);
       if (workers.isEmpty) {
         if (mounted) {
@@ -266,8 +280,8 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       final bytes = await WorkerSignoffPdfGenerator.generate(
         projectTitle: _projectTitle,
         periodName: _period?['name'] ?? '',
-        startDate: _period?['start_date'] ?? '',
-        endDate: _period?['end_date'] ?? '',
+        startDate: _displayStart,
+        endDate: _displayEnd,
         workers: workers,
         totalReg: result['total_regular_hours'] as num,
         totalOT: result['total_overtime_hours'] as num,
@@ -282,8 +296,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sign-off PDF error: $e')));
       }
+    } finally {
+      if (mounted) setState(() => _isSignoffLoading = false);
     }
-    if (mounted) setState(() => _isSignoffLoading = false);
   }
 
   Future<void> _exportIndividualReport(Map<String, dynamic> workerEntry) async {
@@ -291,7 +306,12 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
     try {
       final service = ref.read(payrollServiceProvider);
       final workerId = workerEntry['worker_id'] as String;
-      final result = await service.getDailyLogsForWorker(widget.periodId, workerId);
+      final result = await service.getDailyLogsForWorker(
+        widget.periodId,
+        workerId,
+        startDate: _virtualStart,
+        endDate: _virtualEnd,
+      );
 
       if (result['worker'] == null) {
         if (mounted) {
@@ -303,8 +323,8 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       final bytes = await WorkerIndividualReportPdfGenerator.generate(
         projectTitle: _projectTitle,
         periodName: _period?['name'] ?? '',
-        startDate: _period?['start_date'] ?? '',
-        endDate: _period?['end_date'] ?? '',
+        startDate: _displayStart,
+        endDate: _displayEnd,
         worker: result['worker'] as Map<String, dynamic>,
         dailyLogs: List<Map<String, dynamic>>.from(result['daily_logs'] as List),
         totalReg: result['total_regular_hours'] as num,
@@ -321,8 +341,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Individual report error: $e')));
       }
+    } finally {
+      if (mounted) setState(() => _isIndividualLoading = false);
     }
-    if (mounted) setState(() => _isIndividualLoading = false);
   }
 
   Future<void> _closePeriod() async {
@@ -442,95 +463,35 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
             ],
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              GestureDetector(
-                onTap: () {
-                  if (_originalStart == null) return;
-                  _onSliderChanged((_accumDays - 1).clamp(1, 90));
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: AppTheme.slate200),
-                  ),
-                  child: Text('−1d', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate600)),
-                ),
-              ),
+          if (MediaQuery.of(context).size.width < 768)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(children: [
+                  _dayStepBtn('−1d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays - 1).clamp(1, 90)); }),
+                  const SizedBox(width: 6),
+                  _dayStepBtn('−7d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays - 7).clamp(1, 90)); }),
+                  const Spacer(),
+                  _dayStepBtn('+7d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays + 7).clamp(1, 90)); }),
+                  const SizedBox(width: 6),
+                  _dayStepBtn('+1d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays + 1).clamp(1, 90)); }),
+                ]),
+                const SizedBox(height: 8),
+                _buildAccumSlider(accum),
+              ],
+            )
+          else
+            Row(children: [
+              _dayStepBtn('−1d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays - 1).clamp(1, 90)); }),
               const SizedBox(width: 6),
-              GestureDetector(
-                onTap: () {
-                  if (_originalStart == null) return;
-                  _onSliderChanged((_accumDays - 7).clamp(1, 90));
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: AppTheme.slate200),
-                  ),
-                  child: Text('−7d', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate600)),
-                ),
-              ),
+              _dayStepBtn('−7d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays - 7).clamp(1, 90)); }),
               const SizedBox(width: 8),
-              Expanded(
-                child: SliderTheme(
-                  data: SliderThemeData(
-                    activeTrackColor: AppTheme.primaryGreen,
-                    inactiveTrackColor: AppTheme.slate200,
-                    thumbColor: AppTheme.primaryGreen,
-                    overlayColor: AppTheme.primaryGreen.withOpacity(0.1),
-                    trackHeight: 4,
-                    thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-                  ),
-                  child: Slider(
-                    value: _accumDays,
-                    min: 1,
-                    max: 90,
-                    divisions: 89,
-                    label: '$accum days',
-                    onChanged: _onSliderChanged,
-                    onChangeEnd: _onSliderChangeEnd,
-                  ),
-                ),
-              ),
+              Expanded(child: _buildAccumSlider(accum)),
               const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () {
-                  if (_originalStart == null) return;
-                  _onSliderChanged((_accumDays + 7).clamp(1, 90));
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: AppTheme.slate200),
-                  ),
-                  child: Text('+7d', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate600)),
-                ),
-              ),
+              _dayStepBtn('+7d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays + 7).clamp(1, 90)); }),
               const SizedBox(width: 6),
-              GestureDetector(
-                onTap: () {
-                  if (_originalStart == null) return;
-                  _onSliderChanged((_accumDays + 1).clamp(1, 90));
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: AppTheme.slate200),
-                  ),
-                  child: Text('+1d', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate600)),
-                ),
-              ),
-            ],
-          ),
+              _dayStepBtn('+1d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays + 1).clamp(1, 90)); }),
+            ]),
           const SizedBox(height: 6),
           Row(
             children: [
@@ -547,6 +508,43 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _dayStepBtn(String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: AppTheme.slate200),
+        ),
+        child: Text(label, style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate600)),
+      ),
+    );
+  }
+
+  Widget _buildAccumSlider(int accum) {
+    return SliderTheme(
+      data: SliderThemeData(
+        activeTrackColor: AppTheme.primaryGreen,
+        inactiveTrackColor: AppTheme.slate200,
+        thumbColor: AppTheme.primaryGreen,
+        overlayColor: AppTheme.primaryGreen.withOpacity(0.1),
+        trackHeight: 4,
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+      ),
+      child: Slider(
+        value: _accumDays,
+        min: 1,
+        max: 90,
+        divisions: 89,
+        label: '$accum days',
+        onChanged: _onSliderChanged,
+        onChangeEnd: _onSliderChangeEnd,
       ),
     );
   }
@@ -628,7 +626,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
         if (completed != _isCompleted) setState(() => _isCompleted = completed);
       },
       child: SingleChildScrollView(
-      padding: const EdgeInsets.all(32),
+      padding: EdgeInsets.all(MediaQuery.of(context).size.width < 768 ? 16 : 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -644,114 +642,129 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Title + status row + actions
-                Row(children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(children: [
-                          Text(
+                LayoutBuilder(builder: (ctx, constraints) {
+                  final titleBlock = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(children: [
+                        Flexible(
+                          child: Text(
                             _isVirtual ? 'Preview' : (p['name'] ?? ''),
                             style: GoogleFonts.manrope(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.slate900),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 12),
-                          if (!_isVirtual)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: _statusColor(p['status']).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                (p['status'] as String?)?.toUpperCase() ?? '',
-                                style: GoogleFonts.manrope(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: _statusColor(p['status']),
-                                ),
-                              ),
-                            )
-                          else
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppTheme.primaryGreen.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                'VIRTUAL',
-                                style: GoogleFonts.manrope(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppTheme.primaryGreen,
-                                ),
+                        ),
+                        const SizedBox(width: 12),
+                        if (!_isVirtual)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: _statusColor(p['status']).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              (p['status'] as String?)?.toUpperCase() ?? '',
+                              style: GoogleFonts.manrope(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: _statusColor(p['status']),
                               ),
                             ),
-                        ]),
-                        const SizedBox(height: 4),
-                        Text(
-                          _isVirtual
-                              ? 'From ${_shortFmt.format(_originalStart!)} — accumulating to ${_dateFmt.format(_currentEnd!)}'
-                              : '${p['start_date']} — ${p['end_date']}',
-                          style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          _projectTitle,
-                          style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.primaryGreen, fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (!isClosed) ...[
-                    FilledButton.icon(
-                      onPressed: _isCompleted || _isVirtual ? null : _recalculate,
-                      icon: _isCalculating
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                          : const Icon(Icons.refresh, size: 20),
-                      label: Text(_isCalculating ? 'Calculating...' : 'Calculate'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppTheme.primaryGreen,
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryGreen.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'VIRTUAL',
+                              style: GoogleFonts.manrope(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.primaryGreen,
+                              ),
+                            ),
+                          ),
+                      ]),
+                      const SizedBox(height: 4),
+                      Text(
+                        _isVirtual
+                            ? 'From ${_shortFmt.format(_originalStart!)} — accumulating to ${_dateFmt.format(_currentEnd!)}'
+                            : '${p['start_date']} — ${p['end_date']}',
+                        style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500),
                       ),
-                    ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _projectTitle,
+                        style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.primaryGreen, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  );
+                  final buttons = <Widget>[
+                    if (!isClosed) ...[
+                      FilledButton.icon(
+                        onPressed: _isCompleted || _isVirtual ? null : _recalculate,
+                        icon: _isCalculating
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.refresh, size: 20),
+                        label: Text(_isCalculating ? 'Calculating...' : 'Calculate'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppTheme.primaryGreen,
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        onPressed: _isCompleted ? null : _closePeriod,
+                        icon: const Icon(Icons.lock_outline, size: 20),
+                        label: const Text('Close Period'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          side: BorderSide(color: AppTheme.slate200),
+                        ),
+                      ),
+                    ],
                     const SizedBox(width: 12),
-                    OutlinedButton.icon(
-                      onPressed: _isCompleted ? null : _closePeriod,
-                      icon: const Icon(Icons.lock_outline, size: 20),
-                      label: const Text('Close Period'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        side: BorderSide(color: AppTheme.slate200),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(width: 12),
-                  if (_hasEntries) ...[
-                    if (_isSignoffLoading)
-                      const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryGreen))
-                    else
+                    if (_hasEntries) ...[
+                      if (_isSignoffLoading)
+                        const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryGreen))
+                      else
+                        _exportButton(
+                          icon: Icons.fact_check_outlined,
+                          label: 'Sign-off',
+                          onTap: _exportWorkerSignoffPdf,
+                        ),
+                      const SizedBox(width: 8),
                       _exportButton(
-                        icon: Icons.fact_check_outlined,
-                        label: 'Sign-off',
-                        onTap: _exportWorkerSignoffPdf,
+                        icon: Icons.download,
+                        label: 'Excel',
+                        onTap: _exportExcel,
                       ),
-                    const SizedBox(width: 8),
-                    _exportButton(
-                      icon: Icons.download,
-                      label: 'Excel',
-                      onTap: _exportExcel,
-                    ),
-                    const SizedBox(width: 8),
-                    _exportButton(
-                      icon: Icons.picture_as_pdf_outlined,
-                      label: 'PDF',
-                      onTap: _exportPdf,
-                    ),
-                  ],
-                ]),
+                      const SizedBox(width: 8),
+                      _exportButton(
+                        icon: Icons.picture_as_pdf_outlined,
+                        label: 'PDF',
+                        onTap: _exportPdf,
+                      ),
+                    ],
+                  ];
+                  if (constraints.maxWidth < 700) {
+                    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      titleBlock,
+                      const SizedBox(height: 16),
+                      Wrap(spacing: 12, runSpacing: 12, children: buttons),
+                    ]);
+                  }
+                  return Row(children: [
+                    Expanded(child: titleBlock),
+                    ...buttons,
+                  ]);
+                }),
                 const SizedBox(height: 20),
                 // Date scrubber
                 _buildDateScrubber(),
@@ -761,15 +774,29 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
           const SizedBox(height: 24),
 
           // Summary row
-          Row(children: [
-            _summaryTile('Workers', '${_isVirtual ? _virtualTotals['total_workers'] : p['total_workers'] ?? 0}', Icons.people_outline),
-            const SizedBox(width: 16),
-            _summaryTile('Regular Hours', _fmtHrs((_isVirtual ? _virtualTotals['total_regular_hours'] : p['total_regular_hours'] ?? 0).toDouble()), Icons.access_time),
-            const SizedBox(width: 16),
-            _summaryTile('Overtime Hours', _fmtHrs((_isVirtual ? _virtualTotals['total_overtime_hours'] : p['total_overtime_hours'] ?? 0).toDouble()), Icons.timer_outlined),
-            const SizedBox(width: 16),
-            _summaryTile('Total Cost', _fmt((_isVirtual ? _virtualTotals['total_cost'] : p['total_cost'] ?? 0).toDouble()), Icons.attach_money, isHighlight: true),
-          ]),
+          LayoutBuilder(builder: (ctx, constraints) {
+            final tiles = [
+              _summaryTileInner('Workers', '${_isVirtual ? _virtualTotals['total_workers'] : p['total_workers'] ?? 0}', Icons.people_outline),
+              _summaryTileInner('Regular Hours', _fmtHrs((_isVirtual ? _virtualTotals['total_regular_hours'] : p['total_regular_hours'] ?? 0).toDouble()), Icons.access_time),
+              _summaryTileInner('Overtime Hours', _fmtHrs((_isVirtual ? _virtualTotals['total_overtime_hours'] : p['total_overtime_hours'] ?? 0).toDouble()), Icons.timer_outlined),
+              _summaryTileInner('Total Cost', _fmt((_isVirtual ? _virtualTotals['total_cost'] : p['total_cost'] ?? 0).toDouble()), Icons.attach_money, isHighlight: true),
+            ];
+            if (constraints.maxWidth < 700) {
+              final half = (constraints.maxWidth - 12) / 2;
+              return Wrap(spacing: 12, runSpacing: 12, children: [
+                for (final t in tiles) SizedBox(width: half, child: t),
+              ]);
+            }
+            return Row(children: [
+              Expanded(child: tiles[0]),
+              const SizedBox(width: 16),
+              Expanded(child: tiles[1]),
+              const SizedBox(width: 16),
+              Expanded(child: tiles[2]),
+              const SizedBox(width: 16),
+              Expanded(child: tiles[3]),
+            ]);
+          }),
           const SizedBox(height: 28),
 
           // Table
@@ -779,71 +806,90 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppTheme.slate200),
             ),
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
-                  child: Row(
-                    children: [
-                      _col('WORKER', 25),
-                      _col('ROLE', 18),
-                      _col('RATE', 10),
-                      _col('REG HRS', 10),
-                      _col('OT HRS', 10),
-                      _col('TOTAL HRS', 12),
-                      _col('TOTAL COST', 15),
+            child: MediaQuery.of(context).size.width < 768
+              ? Column(
+                  children: [
+                    if (_isVirtual && _virtualEntries.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Center(child: Text('No labor logs found for this period.')),
+                      )
+                    else if (!_isVirtual && _entries.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Center(child: Text('No labor logs found for this period.')),
+                      )
+                    else ...[
+                      ...(_isVirtual ? _virtualEntries : _entries).map((e) => _buildMobileWorkerCard(e, onTap: _isIndividualLoading ? null : () => _exportIndividualReport(e))),
+                      _buildMobileTotalCard(),
                     ],
-                  ),
+                  ],
+                )
+              : Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
+                      child: Row(
+                        children: [
+                          _col('WORKER', 25),
+                          _col('ROLE', 18),
+                          _col('RATE', 10),
+                          _col('REG HRS', 10),
+                          _col('OT HRS', 10),
+                          _col('TOTAL HRS', 12),
+                          _col('TOTAL COST', 15),
+                        ],
+                      ),
+                    ),
+                    if (_isVirtual && _virtualEntries.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Center(child: Text('No labor logs found for this period.')),
+                      )
+                    else if (!_isVirtual && _entries.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.all(32),
+                        child: Center(child: Text('No labor logs found for this period.')),
+                      )
+                    else
+                      ...(_isVirtual ? _virtualEntries : _entries).map((e) => _buildRow(e, onTap: _isIndividualLoading ? null : () => _exportIndividualReport(e))),
+                    // Grand total row
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                      decoration: BoxDecoration(
+                        border: Border(top: BorderSide(color: AppTheme.slate200)),
+                        color: AppTheme.slate50,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(flex: 25, child: Text(
+                            'TOTAL',
+                            style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900),
+                          )),
+                          const Expanded(flex: 18, child: SizedBox.shrink()),
+                          const Expanded(flex: 10, child: SizedBox.shrink()),
+                          Expanded(flex: 10, child: Text(
+                            _fmtHrs((_isVirtual ? _virtualTotals['total_regular_hours'] : _period?['total_regular_hours'] ?? 0).toDouble()),
+                            style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900),
+                          )),
+                          Expanded(flex: 10, child: Text(
+                            _fmtHrs((_isVirtual ? _virtualTotals['total_overtime_hours'] : _period?['total_overtime_hours'] ?? 0).toDouble()),
+                            style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900),
+                          )),
+                          Expanded(flex: 12, child: Text(
+                            _fmtHrs(((_isVirtual ? _virtualTotals['total_regular_hours'] : _period?['total_regular_hours'] ?? 0) + (_isVirtual ? _virtualTotals['total_overtime_hours'] : _period?['total_overtime_hours'] ?? 0)).toDouble()),
+                            style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900),
+                          )),
+                          Expanded(flex: 15, child: Text(
+                            _fmt((_isVirtual ? _virtualTotals['total_cost'] : _period?['total_cost'] ?? 0).toDouble()),
+                            style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen),
+                          )),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                if (_isVirtual && _virtualEntries.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(child: Text('No labor logs found for this period.')),
-                  )
-                else if (!_isVirtual && _entries.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(32),
-                    child: Center(child: Text('No labor logs found for this period.')),
-                  )
-                else
-                  ...(_isVirtual ? _virtualEntries : _entries).map((e) => _buildRow(e, onTap: _isIndividualLoading ? null : () => _exportIndividualReport(e))),
-                // Grand total row
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  decoration: BoxDecoration(
-                    border: Border(top: BorderSide(color: AppTheme.slate200)),
-                    color: AppTheme.slate50,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(flex: 25, child: Text(
-                        'TOTAL',
-                        style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-                      )),
-                      const Expanded(flex: 18, child: SizedBox.shrink()),
-                      const Expanded(flex: 10, child: SizedBox.shrink()),
-                      Expanded(flex: 10, child: Text(
-                        _fmtHrs((_isVirtual ? _virtualTotals['total_regular_hours'] : _period?['total_regular_hours'] ?? 0).toDouble()),
-                        style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-                      )),
-                      Expanded(flex: 10, child: Text(
-                        _fmtHrs((_isVirtual ? _virtualTotals['total_overtime_hours'] : _period?['total_overtime_hours'] ?? 0).toDouble()),
-                        style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-                      )),
-                      Expanded(flex: 12, child: Text(
-                        _fmtHrs(((_isVirtual ? _virtualTotals['total_regular_hours'] : _period?['total_regular_hours'] ?? 0) + (_isVirtual ? _virtualTotals['total_overtime_hours'] : _period?['total_overtime_hours'] ?? 0)).toDouble()),
-                        style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-                      )),
-                      Expanded(flex: 15, child: Text(
-                        _fmt((_isVirtual ? _virtualTotals['total_cost'] : _period?['total_cost'] ?? 0).toDouble()),
-                        style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen),
-                      )),
-                    ],
-                  ),
-                ),
-              ],
-            ),
           ),
         ],
       ),
@@ -851,9 +897,8 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
     );
   }
 
-  Widget _summaryTile(String label, String value, IconData icon, {bool isHighlight = false}) {
-    return Expanded(
-      child: Container(
+  Widget _summaryTileInner(String label, String value, IconData icon, {bool isHighlight = false}) {
+    return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: isHighlight ? AppTheme.primaryGreen.withOpacity(0.05) : Colors.white,
@@ -870,17 +915,18 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
             child: Icon(icon, color: isHighlight ? AppTheme.primaryGreen : AppTheme.slate500, size: 20),
           ),
           const SizedBox(width: 14),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500, fontWeight: FontWeight.w600)),
-              const SizedBox(height: 2),
-              Text(value, style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: isHighlight ? AppTheme.primaryGreen : AppTheme.slate900)),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                const SizedBox(height: 2),
+                Text(value, style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: isHighlight ? AppTheme.primaryGreen : AppTheme.slate900), maxLines: 1, overflow: TextOverflow.ellipsis),
+              ],
+            ),
           ),
         ]),
-      ),
-    );
+      );
   }
 
   Widget _col(String title, int flex) {
@@ -889,6 +935,90 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       child: Text(
         title,
         style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: AppTheme.slate500),
+      ),
+    );
+  }
+
+  Widget _buildMobileWorkerCard(Map<String, dynamic> e, {VoidCallback? onTap}) {
+    final reg = (e['regular_hours'] ?? 0).toDouble();
+    final ot = (e['overtime_hours'] ?? 0).toDouble();
+    final rate = (e['hourly_rate'] ?? 0).toDouble();
+    final totalCost = (e['total_pay'] ?? (reg + ot) * rate).toDouble();
+
+    final card = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(
+              child: Text(
+                e['full_name'] ?? 'N/A',
+                style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate900),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(_fmt(totalCost), style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+          ]),
+          const SizedBox(height: 4),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(color: AppTheme.slate50, borderRadius: BorderRadius.circular(4)),
+            child: Text(
+              (e['role_name'] ?? '').toUpperCase(),
+              style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate600, letterSpacing: 0.3),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 6, children: [
+            _mobileStatChip('Rate', _fmt(rate)),
+            _mobileStatChip('Reg', '${_fmtHrs(reg)}h'),
+            _mobileStatChip('OT', '${_fmtHrs(ot)}h'),
+            _mobileStatChip('Total', '${_fmtHrs(reg + ot)}h'),
+          ]),
+        ],
+      ),
+    );
+    if (onTap == null) return card;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(onTap: onTap, child: card),
+    );
+  }
+
+  Widget _buildMobileTotalCard() {
+    final reg = (_isVirtual ? _virtualTotals['total_regular_hours'] : _period?['total_regular_hours'] ?? 0).toDouble();
+    final ot = (_isVirtual ? _virtualTotals['total_overtime_hours'] : _period?['total_overtime_hours'] ?? 0).toDouble();
+    final cost = (_isVirtual ? _virtualTotals['total_cost'] : _period?['total_cost'] ?? 0).toDouble();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(color: AppTheme.slate50, border: const Border(top: BorderSide(color: AppTheme.slate200))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text('TOTAL', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+          const Spacer(),
+          Text(_fmt(cost), style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+        ]),
+        const SizedBox(height: 6),
+        Wrap(spacing: 8, runSpacing: 6, children: [
+          _mobileStatChip('Reg', '${_fmtHrs(reg)}h'),
+          _mobileStatChip('OT', '${_fmtHrs(ot)}h'),
+          _mobileStatChip('Total', '${_fmtHrs(reg + ot)}h'),
+        ]),
+      ]),
+    );
+  }
+
+  Widget _mobileStatChip(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: AppTheme.slate50, borderRadius: BorderRadius.circular(4), border: Border.all(color: AppTheme.slate200)),
+      child: Text(
+        '$label $value',
+        style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate700),
       ),
     );
   }

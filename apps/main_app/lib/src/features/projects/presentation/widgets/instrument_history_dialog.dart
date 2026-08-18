@@ -79,6 +79,7 @@ class _InstrumentHistoryDialogState extends State<InstrumentHistoryDialog> {
     final result = await showSafeDialog<bool>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
+      fullscreenOnMobile: true,
       builder: (_) => InstrumentReturnDialog(
         projectId: widget.projectId,
         inspectionId: inspection['id'],
@@ -94,6 +95,7 @@ class _InstrumentHistoryDialogState extends State<InstrumentHistoryDialog> {
     final result = await showSafeDialog<bool>(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
+      fullscreenOnMobile: true,
       builder: (_) => InstrumentReturnDialog(
         projectId: widget.projectId,
         inspectionId: inspection['id'],
@@ -110,6 +112,7 @@ class _InstrumentHistoryDialogState extends State<InstrumentHistoryDialog> {
     showSafeDialog(
       context: context,
       barrierColor: Colors.black.withOpacity(0.5),
+      fullscreenOnMobile: true,
       builder: (_) => InstrumentReceptionDialog(
         projectId: widget.projectId,
         projectInstrumentId: widget.projectInstrumentId,

@@ -45,6 +45,7 @@ class _ServicesTabState extends ConsumerState<ServicesTab> {
   void _showForm([Map<String, dynamic>? item]) {
     showSafeDialog(
       context: context,
+      fullscreenOnMobile: true,
       builder: (context) => ServiceDialog(serviceToEdit: item),
     ).then((success) {
       if (success == true) _loadData();
@@ -164,6 +165,7 @@ class _ServicesTabState extends ConsumerState<ServicesTab> {
   void _showThreshold(Map<String, dynamic> service) {
     showSafeDialog(
       context: context,
+      fullscreenOnMobile: true,
       builder: (context) => ThresholdConfigDialog(
         service: service,
         onSaved: _loadData,

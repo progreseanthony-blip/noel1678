@@ -42,6 +42,7 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
     final ctrl = TextEditingController();
     final result = await showSafeDialog<Map<String, dynamic>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (ctx) {
         DateTime? dueDate;
         return StatefulBuilder(
@@ -156,6 +157,7 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
     final solutionCtrl = TextEditingController();
     final result = await showSafeDialog<Map<String, String>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (ctx) => AlertDialog(
         title: const Text('Resolve Incident'),
         content: Column(
@@ -205,6 +207,7 @@ class _IncidentDetailPageState extends ConsumerState<IncidentDetailPage> {
     final notesCtrl = TextEditingController();
     final notes = await showSafeDialog<String>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (ctx) => AlertDialog(
         title: const Text('Close Incident'),
         content: Column(

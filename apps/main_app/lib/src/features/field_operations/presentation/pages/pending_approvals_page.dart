@@ -20,6 +20,7 @@ class _PendingApprovalsPageState extends ConsumerState<PendingApprovalsPage> {
   List<Map<String, dynamic>> _reports = [];
   bool _isLoading = true;
   bool _isAdmin = false;
+  final _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
   void initState() {
@@ -149,12 +150,25 @@ class _PendingApprovalsPageState extends ConsumerState<PendingApprovalsPage> {
 
   Widget _buildMobileLayout(String userName, String userEmail) {
     return Scaffold(
+      key: _mobileScaffoldKey,
       backgroundColor: AppTheme.backgroundLight,
+      drawer: Drawer(
+        backgroundColor: const Color(0xFF0F172A),
+        child: Sidebar(
+          userName: userName,
+          userEmail: userEmail,
+          currentPath: '/daily-reports/pending',
+          onLogout: () async {
+            await Supabase.instance.client.auth.signOut();
+            if (context.mounted) context.go('/signin');
+          },
+        ),
+      ),
       appBar: AppBar(
         title: Text('Pending Approvals', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          icon: const Icon(Icons.menu),
+          onPressed: () => _mobileScaffoldKey.currentState?.openDrawer(),
         ),
       ),
       body: _buildContent(),
@@ -206,57 +220,80 @@ class _PendingApprovalsPageState extends ConsumerState<PendingApprovalsPage> {
             borderRadius: BorderRadius.circular(12),
             child: Padding(
             padding: const EdgeInsets.all(20),
-            child: Row(children: [
-              Container(
+            child: LayoutBuilder(builder: (ctx, constraints) {
+              final info = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(projectTitle, style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Report: ${_formatDate(r['report_date'])}',
+                    style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500),
+                  ),
+                  if (r['weather_condition'] != null)
+                    Text(
+                      'Weather: ${r['weather_condition']}',
+                      style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate400),
+                    ),
+                ],
+              );
+
+              final iconBox = Container(
                 width: 48, height: 48,
                 decoration: BoxDecoration(
                   color: Colors.blue.withAlpha(25),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.assignment, color: Colors.blue, size: 22),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
+              );
+
+              final buttons = Row(mainAxisSize: MainAxisSize.min, children: [
+                FilledButton.icon(
+                  onPressed: () => _approve(r['id'] as String),
+                  icon: const Icon(Icons.check, size: 18),
+                  label: const Text('Approve'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.primaryGreen,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  onPressed: () => _reject(r['id'] as String),
+                  icon: const Icon(Icons.close, size: 18),
+                  label: const Text('Reject'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.errorRed,
+                    side: const BorderSide(color: AppTheme.errorRed),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                ),
+              ]);
+
+              if (constraints.maxWidth < 480) {
+                return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(projectTitle, style: GoogleFonts.manrope(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Report: ${_formatDate(r['report_date'])}',
-                      style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500),
-                    ),
-                    if (r['weather_condition'] != null)
-                      Text(
-                        'Weather: ${r['weather_condition']}',
-                        style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate400),
-                      ),
+                    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      iconBox,
+                      const SizedBox(width: 16),
+                      Expanded(child: info),
+                    ]),
+                    const SizedBox(height: 12),
+                    buttons,
                   ],
-                ),
-              ),
-              FilledButton.icon(
-                onPressed: () => _approve(r['id'] as String),
-                icon: const Icon(Icons.check, size: 18),
-                label: const Text('Approve'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.primaryGreen,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: () => _reject(r['id'] as String),
-                icon: const Icon(Icons.close, size: 18),
-                label: const Text('Reject'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.errorRed,
-                  side: const BorderSide(color: AppTheme.errorRed),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                ),
-              ),
-            ]),
+                );
+              }
+              return Row(children: [
+                iconBox,
+                const SizedBox(width: 16),
+                Expanded(child: info),
+                const SizedBox(width: 8),
+                buttons,
+              ]);
+            }),
           ),
           ),
         );

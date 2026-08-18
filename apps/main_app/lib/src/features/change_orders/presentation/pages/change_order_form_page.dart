@@ -272,6 +272,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
 
     final selected = await showSafeDialog<Map<String, dynamic>>(
       context: context,
+      fullscreenOnMobile: true,
       barrierColor: Colors.black.withOpacity(0.2),
       builder: (ctx) {
         String query = '';
@@ -370,6 +371,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
 
       final result = await showSafeDialog<Map<String, dynamic>>(
         context: context,
+        fullscreenOnMobile: true,
         builder: (ctx) => ServiceEstimationDialog(
           service: {
             'id': null,
@@ -676,6 +678,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
 
       final result = await showSafeDialog<Map<String, dynamic>>(
         context: context,
+        fullscreenOnMobile: true,
         builder: (ctx) => ServiceEstimationDialog(
           service: {
             'id': null,
@@ -762,6 +765,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
 
     final result = await showSafeDialog<Map<String, dynamic>>(
       context: context,
+      fullscreenOnMobile: true,
       barrierColor: Colors.black.withOpacity(0.2),
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1579,6 +1583,7 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
 
     final selected = await showSafeDialog<Map<String, dynamic>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (ctx) {
         String query = '';
         return StatefulBuilder(

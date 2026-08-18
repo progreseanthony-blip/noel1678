@@ -352,6 +352,7 @@ class _CustomersListPageState extends ConsumerState<CustomersListPage> {
   void _showCustomerForm([Map<String, dynamic>? customer]) {
     showSafeDialog(
       context: context,
+      fullscreenOnMobile: true,
       builder: (context) => CustomerFormDialog(customerToEdit: customer),
     ).then((updated) {
       if (updated == true) _loadCustomers();

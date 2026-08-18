@@ -1380,6 +1380,7 @@ class _ServiceEstimationDialogState
   Future<void> _showMachinerySelector({required String? forPrimaryId}) async {
     final result = await showSafeDialog<List<Map<String, dynamic>>>(
       context: context,
+      fullscreenOnMobile: true,
       builder: (context) => MachinerySelectionDialog(
         serviceId: widget.service['id']?.toString() ?? widget.service['catalog_service_id']?.toString() ?? '',
       ),
@@ -1769,6 +1770,7 @@ class _ServiceEstimationDialogState
   void _showMaterialSelector() {
     showSafeDialog(
       context: context,
+      fullscreenOnMobile: true,
       builder: (ctx) {
         String query = '';
         return StatefulBuilder(
