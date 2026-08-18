@@ -56,6 +56,16 @@ dev_dependencies:
   build_runner: ^2.4.14
   riverpod_generator: ^2.6.5
 
+# Pin known-good versions: Flutter 3.47+ re-resolves these to versions that hang
+# riverpod_generator on fresh codegen. Keep in sync with pubspec.lock.
+dependency_overrides:
+  analyzer: 7.6.0
+  riverpod_generator: 2.6.5
+  riverpod: 2.6.1
+  riverpod_annotation: 2.6.1
+  flutter_riverpod: 2.6.1
+  build_runner: 2.4.14
+
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
 
