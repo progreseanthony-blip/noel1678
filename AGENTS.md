@@ -11,11 +11,11 @@ packages/data/              # noel_data: Supabase client, Riverpod services
 packages/ui_components/     # noel_ui_components: shared widgets (stub)
 ```
 
-## Melos 7 migration complete
-- Project uses Dart pub workspaces (`workspace:` key in root `pubspec.yaml`)
+## Melos 7 monorepo setup
+- Project uses a **Melos-managed monorepo** (NOT Dart pub workspaces — root `pubspec.yaml` has no `workspace:` key)
 - All Melos config lives under `melos:` key in root `pubspec.yaml` (no more `melos.yaml`)
-- All packages have `resolution: workspace` in their `pubspec.yaml`
-- Local package deps use `any` version constraint (workspace resolution handles linking)
+- Local package deps use `path:` constraints (e.g., `path: ../../packages/data`)
+- Each package has its own `pubspec.lock` with pinned versions
 
 ## Required command order
 Always run in this sequence:

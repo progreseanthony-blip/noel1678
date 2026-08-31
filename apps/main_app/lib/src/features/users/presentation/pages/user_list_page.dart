@@ -1298,23 +1298,27 @@ class _UserRowState extends State<_UserRow> {
               child: AnimatedOpacity(
                 duration: const Duration(milliseconds: 200),
                 opacity: _hovered ? 1.0 : 0.0,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    _HoverIcon(
-                      icon: Icons.edit_outlined,
-                      onTap: widget.onEdit,
-                      hoverBg: AppTheme.slate200,
-                      color: const Color(0xFF475569),
-                    ),
-                    const SizedBox(width: 4),
-                    _HoverIcon(
-                      icon: Icons.delete_outline,
-                      onTap: widget.onDelete,
-                      hoverBg: const Color(0xFFFEF2F2),
-                      color: AppTheme.errorRed,
-                    ),
-                  ],
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _HoverIcon(
+                        icon: Icons.edit_outlined,
+                        onTap: widget.onEdit,
+                        hoverBg: AppTheme.slate200,
+                        color: const Color(0xFF475569),
+                      ),
+                      const SizedBox(width: 4),
+                      _HoverIcon(
+                        icon: Icons.delete_outline,
+                        onTap: widget.onDelete,
+                        hoverBg: const Color(0xFFFEF2F2),
+                        color: AppTheme.errorRed,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
