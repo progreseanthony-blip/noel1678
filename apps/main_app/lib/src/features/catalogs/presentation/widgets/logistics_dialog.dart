@@ -192,7 +192,9 @@ class _LogisticsDialogState extends ConsumerState<LogisticsDialog> {
                   padding: const EdgeInsets.all(32),
                   child: Form(
                     key: _formKey,
-                    child: Column(
+          child: Material(
+            type: MaterialType.transparency,
+            child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         _buildTextInput(
@@ -207,9 +209,10 @@ class _LogisticsDialogState extends ConsumerState<LogisticsDialog> {
                         _buildApplicationTags(),
                         const SizedBox(height: 32),
                         _buildImagePicker(),
-                      ],
-                    ),
-                  ),
+            ],
+           ),
+           ),
+         ),
                 ),
               ),
               _buildFooter(),
@@ -227,22 +230,26 @@ class _LogisticsDialogState extends ConsumerState<LogisticsDialog> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.1), shape: BoxShape.circle),
-                child: Center(child: Icon(_isEditing ? Icons.edit_outlined : Icons.add_circle_outline, color: AppTheme.primaryGreen, size: 20)),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_isEditing ? 'Edit Logistics' : 'Add Logistics', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
-                  Text('Registration of tools and logistics equipment', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500)),
-                ],
-              ),
-            ],
+          Expanded(
+            child: Row(
+              children: [
+                Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.1), shape: BoxShape.circle),
+                  child: Center(child: Icon(_isEditing ? Icons.edit_outlined : Icons.add_circle_outline, color: AppTheme.primaryGreen, size: 20)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_isEditing ? 'Edit Logistics' : 'Add Logistics', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900), overflow: TextOverflow.ellipsis, maxLines: 1),
+                      Text('Registration of tools and logistics equipment', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500), overflow: TextOverflow.ellipsis, maxLines: 1),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: AppTheme.slate400)),
         ],
@@ -306,15 +313,17 @@ class _LogisticsDialogState extends ConsumerState<LogisticsDialog> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppTheme.slate200),
             ),
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: _allServices.length,
-              separatorBuilder: (context, index) => const Divider(height: 1, color: AppTheme.slate200),
-              itemBuilder: (context, index) {
-                final svc = _allServices[index];
-                final id = svc['id'].toString();
-                final isSelected = _selectedServiceIds.contains(id);
-                return CheckboxListTile(
+            child: Material(
+              type: MaterialType.transparency,
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: _allServices.length,
+                separatorBuilder: (context, index) => const Divider(height: 1, color: AppTheme.slate200),
+                itemBuilder: (context, index) {
+                  final svc = _allServices[index];
+                  final id = svc['id'].toString();
+                  final isSelected = _selectedServiceIds.contains(id);
+                  return CheckboxListTile(
                   value: isSelected,
                   dense: true,
                   visualDensity: VisualDensity.compact,
@@ -329,6 +338,7 @@ class _LogisticsDialogState extends ConsumerState<LogisticsDialog> {
                   },
                 );
               },
+            ),
             ),
           ),
       ],

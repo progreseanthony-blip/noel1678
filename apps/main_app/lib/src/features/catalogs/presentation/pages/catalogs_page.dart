@@ -201,6 +201,7 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
                       MaterialsTab(),
                       LogisticsTab(),
                       ServicesTab(),
+                      IncidentCategoriesTab(),
                     ],
                   ),
                 ),
@@ -246,12 +247,16 @@ class _CatalogsPageState extends ConsumerState<CatalogsPage> with SingleTickerPr
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            'Global Golf',
-            style: GoogleFonts.manrope(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.slate900,
+          Flexible(
+            child: Text(
+              'Global Golf',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.manrope(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.slate900,
+              ),
             ),
           ),
           const Spacer(),

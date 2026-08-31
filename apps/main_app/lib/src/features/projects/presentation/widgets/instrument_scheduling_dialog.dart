@@ -306,32 +306,71 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
                           children: [
                             Text('1. SELECT UNITS AND PROGRAM DATES', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500, letterSpacing: 1)),
                             const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: InkWell(
-                                    onTap: _selectBatchStartDate,
-                                    child: _buildDateBox('Start Date', _batchStartDate),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: InkWell(
-                                    onTap: _selectBatchEndDate,
-                                    child: _buildDateBox('End Date', _batchEndDate),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                ElevatedButton(
-                                  onPressed: _applyBatchDates,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.purple,
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                  child: Text('Apply to Selected', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
-                                ),
-                              ],
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final isNarrow = constraints.maxWidth < 480;
+                                if (isNarrow) {
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: InkWell(
+                                              onTap: _selectBatchStartDate,
+                                              child: _buildDateBox('Start Date', _batchStartDate),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: InkWell(
+                                              onTap: _selectBatchEndDate,
+                                              child: _buildDateBox('End Date', _batchEndDate),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 12),
+                                      ElevatedButton(
+                                        onPressed: _applyBatchDates,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.purple,
+                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                        ),
+                                        child: Text('Apply to Selected', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
+                                      ),
+                                    ],
+                                  );
+                                }
+                                return Row(
+                                  children: [
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: _selectBatchStartDate,
+                                        child: _buildDateBox('Start Date', _batchStartDate),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: InkWell(
+                                        onTap: _selectBatchEndDate,
+                                        child: _buildDateBox('End Date', _batchEndDate),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    ElevatedButton(
+                                      onPressed: _applyBatchDates,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.purple,
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                      child: Text('Apply to Selected', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -341,58 +380,66 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
                       
                       Text('2. SELECT UNITS (${_selectedUnits.length} SELECTED)', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500, letterSpacing: 1)),
                       const SizedBox(height: 12),
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          childAspectRatio: 3.5,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                        ),
-                        itemCount: widget.expectedQuantity,
-                        itemBuilder: (context, index) {
-                          final uIdx = index + 1;
-                          final isSelected = _selectedUnits.contains(uIdx);
-                          final plan = _unitPlans[uIdx];
-                          final hasPlan = plan != null && plan['start'] != null;
-                          
-                          return InkWell(
-                            onTap: () {
-                              setState(() {
-                                if (isSelected) _selectedUnits.remove(uIdx);
-                                else _selectedUnits.add(uIdx);
-                              });
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
-                              decoration: BoxDecoration(
-                                color: isSelected ? Colors.purple.withOpacity(0.05) : Colors.white,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: isSelected ? Colors.purple : AppTheme.slate200),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(isSelected ? Icons.check_circle : Icons.circle_outlined, size: 18, color: isSelected ? Colors.purple : AppTheme.slate400),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('Unit $uIdx', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
-                                        Text(
-                                          hasPlan 
-                                            ? '${plan['start'].toString().split(' ')[0]} to ${plan['end'].toString().split(' ')[0]}'
-                                            : 'Not Scheduled',
-                                          style: GoogleFonts.manrope(fontSize: 10, color: hasPlan ? Colors.purple : AppTheme.slate400),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final cellWidth = (constraints.maxWidth - 12) / 2;
+                          final cellHeight = (cellWidth / 3.5).clamp(56.0, 200.0);
+                          return GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 2,
+                              mainAxisExtent: cellHeight,
+                              crossAxisSpacing: 12,
+                              mainAxisSpacing: 12,
                             ),
+                            itemCount: widget.expectedQuantity,
+                            itemBuilder: (context, index) {
+                              final uIdx = index + 1;
+                              final isSelected = _selectedUnits.contains(uIdx);
+                              final plan = _unitPlans[uIdx];
+                              final hasPlan = plan != null && plan['start'] != null;
+
+                              return InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    if (isSelected) _selectedUnits.remove(uIdx);
+                                    else _selectedUnits.add(uIdx);
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                                  decoration: BoxDecoration(
+                                    color: isSelected ? Colors.purple.withOpacity(0.05) : Colors.white,
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: isSelected ? Colors.purple : AppTheme.slate200),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(isSelected ? Icons.check_circle : Icons.circle_outlined, size: 18, color: isSelected ? Colors.purple : AppTheme.slate400),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text('Unit $uIdx', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+                                            Text(
+                                              hasPlan
+                                                ? '${plan['start'].toString().split(' ')[0]} to ${plan['end'].toString().split(' ')[0]}'
+                                                : 'Not Scheduled',
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: GoogleFonts.manrope(fontSize: 10, color: hasPlan ? Colors.purple : AppTheme.slate400),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
                           );
                         },
                       ),
@@ -480,12 +527,19 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
         children: [
           const Icon(Icons.calendar_today, size: 16, color: Colors.purple),
           const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.slate400, letterSpacing: 0.5)),
-              Text(date != null ? date.toString().split(' ')[0] : 'Choose...', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
-            ],
+          Flexible(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.slate400, letterSpacing: 0.5)),
+                Text(
+                  date != null ? date.toString().split(' ')[0] : 'Choose...',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900),
+                ),
+              ],
+            ),
           ),
         ],
       ),

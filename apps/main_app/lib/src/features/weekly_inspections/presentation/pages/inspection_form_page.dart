@@ -470,9 +470,14 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
               icon: Icons.info_outline,
               children: [
                 const SizedBox(height: 12),
-                _buildDatePicker(),
-                const SizedBox(height: 16),
-                _buildMethodDropdown(),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: _buildDatePicker()),
+                    const SizedBox(width: 12),
+                    Expanded(child: _buildMethodDropdown()),
+                  ],
+                ),
                 const SizedBox(height: 16),
                 _buildNotesField(),
               ],
@@ -705,20 +710,27 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
     );
   }
 
+  Widget _fieldLabel(String text) {
+    return Text(
+      text,
+      style: GoogleFonts.manrope(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: AppTheme.slate200,
+      ),
+    );
+  }
+
   Widget _buildDatePicker() {
     final dateStr =
         '${_selectedDate.year}-${_selectedDate.month.toString().padLeft(2, '0')}-${_selectedDate.day.toString().padLeft(2, '0')}';
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Date:',
-          style: GoogleFonts.manrope(
-            fontSize: 13,
-            color: AppTheme.slate200,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
+        _fieldLabel('Date'),
+        const SizedBox(height: 6),
+        SizedBox(
+          width: double.infinity,
           child: OutlinedButton.icon(
             onPressed: _pickDate,
             icon: const Icon(Icons.calendar_today, size: 16),
@@ -729,7 +741,11 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.white,
               side: const BorderSide(color: AppTheme.slate600),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              alignment: Alignment.centerLeft,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(6),
+              ),
             ),
           ),
         ),
@@ -738,63 +754,58 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
   }
 
   Widget _buildMethodDropdown() {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          'Method:',
-          style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate200),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: DropdownButtonFormField<String>(
-            value: _method,
-            dropdownColor: Colors.white,
-            style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
-            decoration: const InputDecoration(
-              filled: true,
-              fillColor: Colors.white,
-              border: OutlineInputBorder(),
-              floatingLabelBehavior: FloatingLabelBehavior.always,
-              contentPadding:
-                  EdgeInsets.fromLTRB(16, 30, 16, 12),
-              labelStyle: TextStyle(color: Color(0xFF475569), fontSize: 13),
-              hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-              floatingLabelStyle: TextStyle(color: Color(0xFF475569), fontSize: 11),
-            ),
-            items: const [
-              DropdownMenuItem(value: 'drone', child: Text('Drone', style: TextStyle(color: Color(0xFF0F172A)))),
-              DropdownMenuItem(value: 'gps', child: Text('GPS', style: TextStyle(color: Color(0xFF0F172A)))),
-              DropdownMenuItem(
-                  value: 'total_station', child: Text('Total Station', style: TextStyle(color: Color(0xFF0F172A)))),
-              DropdownMenuItem(value: 'other', child: Text('Other', style: TextStyle(color: Color(0xFF0F172A)))),
-            ],
-            onChanged: (v) {
-              if (v != null) setState(() => _method = v);
-            },
+        _fieldLabel('Method'),
+        const SizedBox(height: 6),
+        DropdownButtonFormField<String>(
+          value: _method,
+          isExpanded: true,
+          dropdownColor: Colors.white,
+          style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+          decoration: const InputDecoration(
+            filled: true,
+            fillColor: Colors.white,
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            border: OutlineInputBorder(),
           ),
+          items: const [
+            DropdownMenuItem(value: 'drone', child: Text('Drone', style: TextStyle(color: Color(0xFF0F172A)))),
+            DropdownMenuItem(value: 'gps', child: Text('GPS', style: TextStyle(color: Color(0xFF0F172A)))),
+            DropdownMenuItem(
+                value: 'total_station', child: Text('Total Station', style: TextStyle(color: Color(0xFF0F172A)))),
+            DropdownMenuItem(value: 'other', child: Text('Other', style: TextStyle(color: Color(0xFF0F172A)))),
+          ],
+          onChanged: (v) {
+            if (v != null) setState(() => _method = v);
+          },
         ),
       ],
     );
   }
 
   Widget _buildNotesField() {
-    return TextFormField(
-      controller: _notesController,
-      maxLines: 3,
-      decoration: const InputDecoration(
-        filled: true,
-        fillColor: Colors.white,
-        labelText: 'General Notes',
-        hintText: 'Observations, weather conditions, etc.',
-        border: OutlineInputBorder(),
-        alignLabelWithHint: true,
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-        contentPadding: EdgeInsets.fromLTRB(16, 32, 16, 12),
-        labelStyle: TextStyle(color: Color(0xFF475569), fontSize: 13),
-        hintStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
-        floatingLabelStyle: TextStyle(color: Color(0xFF475569), fontSize: 11),
-      ),
-      style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _fieldLabel('General Notes'),
+        const SizedBox(height: 6),
+        TextFormField(
+          controller: _notesController,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            filled: true,
+            fillColor: Colors.white,
+            hintText: 'Observations, weather conditions, etc.',
+            border: OutlineInputBorder(),
+            isDense: true,
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          ),
+          style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+        ),
+      ],
     );
   }
 
@@ -837,38 +848,46 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
             children: [
               Expanded(
                 flex: 2,
-                child: TextFormField(
-                  controller: _quantityControllers[id],
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                  decoration: InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white,
-                    floatingLabelBehavior: FloatingLabelBehavior.always,
-                    labelText: 'Measured Quantity ($unit)',
-                    border: const OutlineInputBorder(),
-                    contentPadding: const EdgeInsets.fromLTRB(14, 30, 14, 12),
-                    labelStyle: const TextStyle(color: Color(0xFF475569), fontSize: 12),
-                    floatingLabelStyle: const TextStyle(color: Color(0xFF475569), fontSize: 11),
-                  ),
-                  style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _fieldLabel('Measured Quantity ($unit)'),
+                    const SizedBox(height: 6),
+                    TextFormField(
+                      controller: _quantityControllers[id],
+                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(),
+                      ),
+                      style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 flex: 3,
-                child: TextFormField(
-                  controller: _detailNotesControllers[id],
-                  decoration: const InputDecoration(
-                    filled: true,
-                    fillColor: Colors.white,
-                    floatingLabelBehavior: FloatingLabelBehavior.always,
-                    labelText: 'Notes (optional)',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.fromLTRB(14, 30, 14, 12),
-                    labelStyle: TextStyle(color: Color(0xFF475569), fontSize: 12),
-                    floatingLabelStyle: TextStyle(color: Color(0xFF475569), fontSize: 11),
-                  ),
-                  style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _fieldLabel('Notes (optional)'),
+                    const SizedBox(height: 6),
+                    TextFormField(
+                      controller: _detailNotesControllers[id],
+                      decoration: const InputDecoration(
+                        filled: true,
+                        fillColor: Colors.white,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                        border: OutlineInputBorder(),
+                      ),
+                      style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate900),
+                    ),
+                  ],
                 ),
               ),
             ],

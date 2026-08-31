@@ -137,6 +137,7 @@ class _WorkerFormDialogState extends ConsumerState<WorkerFormDialog> {
                   data: (roles) {
                     return DropdownButtonFormField<String>(
                       value: _selectedRoleId,
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Role / Position',
                         border: OutlineInputBorder(),
@@ -144,7 +145,7 @@ class _WorkerFormDialogState extends ConsumerState<WorkerFormDialog> {
                       ),
                       items: roles.map((r) => DropdownMenuItem(
                         value: r['id'] as String,
-                        child: Text(r['description']),
+                        child: Text(r['description'], overflow: TextOverflow.ellipsis),
                       )).toList(),
                       onChanged: (val) {
                         setState(() {

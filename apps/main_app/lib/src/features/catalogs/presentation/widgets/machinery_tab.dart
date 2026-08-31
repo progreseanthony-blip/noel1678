@@ -102,11 +102,12 @@ class _MachineryTabState extends ConsumerState<MachineryTab> {
           ),
           const SizedBox(height: 12),
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
+            child: Material(
+              color: Colors.white,
+              clipBehavior: Clip.antiAlias,
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.slate200),
+                side: BorderSide(color: AppTheme.slate200),
               ),
               child: ListView.separated(
                 itemCount: _machinery.length,

@@ -60,8 +60,10 @@ class _LogisticsTabState extends ConsumerState<LogisticsTab> {
     if (_isLoading) return const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen));
     if (_error != null) return Center(child: Text('Error: $_error'));
 
+    final isMobile = MediaQuery.of(context).size.width < 768;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 32, vertical: 16),
       child: Column(
         children: [
           Row(
@@ -127,71 +129,90 @@ class _LogisticsTabState extends ConsumerState<LogisticsTab> {
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: IntrinsicHeight(
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Container(
-                            width: 120,
-                            decoration: BoxDecoration(
-                              color: AppTheme.slate50,
-                              border: Border(right: BorderSide(color: AppTheme.slate200)),
-                            ),
-                            child: (photoUrl != null && photoUrl.toString().isNotEmpty)
-                                ? Image.network(photoUrl.toString(), fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.inventory_2_outlined, color: AppTheme.slate400, size: 32)))
-                                : const Center(child: Icon(Icons.inventory_2_outlined, color: AppTheme.slate400, size: 32)),
-                          ),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.all(20),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Expanded(
-                                        child: Text(
-                                          item['description'] ?? 'No Description',
-                                          style: GoogleFonts.manrope(fontWeight: FontWeight.w800, color: AppTheme.slate900, fontSize: 16),
-                                        ),
-                                      ),
-                                      Row(
-                                        children: [
-                                          IconButton(onPressed: () => _showForm(item), icon: const Icon(Icons.edit_outlined, color: AppTheme.slate400, size: 20), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
-                                          const SizedBox(width: 12),
-                                          IconButton(onPressed: () => _deleteItem(item['id']), icon: const Icon(Icons.delete_outline, color: AppTheme.errorRed, size: 20), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 16),
-                                  Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    children: [
-                                      ...serviceIds.map((id) {
-                                        final svc = _allServices.firstWhere((s) => s['id'].toString() == id.toString(), orElse: () => {'description': 'Unknown'});
-                                        return Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                          decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
-                                          child: Text(svc['description'].toString().toUpperCase(), style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
-                                        );
-                                      }),
-                                      ...apps.map((app) => Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(6)),
-                                        child: Text(app.toString().toUpperCase(), style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
-                                      )),
-                                    ],
-                                  ),
-                                ],
+                    child: isMobile
+                        ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                height: 140,
+                                color: AppTheme.slate50,
+                                child: (photoUrl != null && photoUrl.toString().isNotEmpty)
+                                    ? Image.network(photoUrl.toString(), fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.inventory_2_outlined, color: AppTheme.slate400, size: 32)))
+                                    : const Center(child: Icon(Icons.inventory_2_outlined, color: AppTheme.slate400, size: 32)),
                               ),
+                              Padding(
+                                padding: const EdgeInsets.all(20),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            item['description'] ?? 'No Description',
+                                            style: GoogleFonts.manrope(fontWeight: FontWeight.w800, color: AppTheme.slate900, fontSize: 16),
+                                          ),
+                                        ),
+                                        IconButton(onPressed: () => _showForm(item), icon: const Icon(Icons.edit_outlined, color: AppTheme.slate400, size: 20), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+                                        const SizedBox(width: 8),
+                                        IconButton(onPressed: () => _deleteItem(item['id']), icon: const Icon(Icons.delete_outline, color: AppTheme.errorRed, size: 20), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+                                    _buildChipsWrap(serviceIds, apps),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          )
+                        : IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Container(
+                                  width: 120,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.slate50,
+                                    border: Border(right: BorderSide(color: AppTheme.slate200)),
+                                  ),
+                                  child: (photoUrl != null && photoUrl.toString().isNotEmpty)
+                                      ? Image.network(photoUrl.toString(), fit: BoxFit.contain, errorBuilder: (_, __, ___) => const Center(child: Icon(Icons.inventory_2_outlined, color: AppTheme.slate400, size: 32)))
+                                      : const Center(child: Icon(Icons.inventory_2_outlined, color: AppTheme.slate400, size: 32)),
+                                ),
+                                Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                item['description'] ?? 'No Description',
+                                                style: GoogleFonts.manrope(fontWeight: FontWeight.w800, color: AppTheme.slate900, fontSize: 16),
+                                              ),
+                                            ),
+                                            Row(
+                                              children: [
+                                                IconButton(onPressed: () => _showForm(item), icon: const Icon(Icons.edit_outlined, color: AppTheme.slate400, size: 20), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+                                                const SizedBox(width: 12),
+                                                IconButton(onPressed: () => _deleteItem(item['id']), icon: const Icon(Icons.delete_outline, color: AppTheme.errorRed, size: 20), padding: EdgeInsets.zero, constraints: const BoxConstraints()),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 16),
+                                        _buildChipsWrap(serviceIds, apps),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
-                    ),
                   ),
                 );
               },
@@ -199,6 +220,28 @@ class _LogisticsTabState extends ConsumerState<LogisticsTab> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildChipsWrap(List<dynamic> serviceIds, List<dynamic> apps) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        ...serviceIds.map((id) {
+          final svc = _allServices.firstWhere((s) => s['id'].toString() == id.toString(), orElse: () => {'description': 'Unknown'});
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+            child: Text(svc['description'].toString().toUpperCase(), style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+          );
+        }),
+        ...apps.map((app) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(6)),
+          child: Text(app.toString().toUpperCase(), style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.slate500)),
+        )),
+      ],
     );
   }
 

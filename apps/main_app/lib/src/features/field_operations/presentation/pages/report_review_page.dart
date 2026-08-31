@@ -238,17 +238,21 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))]),
             child: Row(children: [
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _metaRow('Date', _formatDate(r['report_date'])),
-                const SizedBox(height: 6),
-                _metaRow('Status', (r['status'] as String?)?.toUpperCase() ?? ''),
-              ]),
-              const SizedBox(width: 48),
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _metaRow('Weather', r['weather_condition'] ?? '-'),
-                const SizedBox(height: 6),
-                _metaRow('Supervisor', r['supervisor_id']?.toString()?.substring(0, 8) ?? '-'),
-              ]),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _metaRow('Date', _formatDate(r['report_date'])),
+                  const SizedBox(height: 6),
+                  _metaRow('Status', (r['status'] as String?)?.toUpperCase() ?? ''),
+                ]),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  _metaRow('Weather', r['weather_condition'] ?? '-'),
+                  const SizedBox(height: 6),
+                  _metaRow('Supervisor', r['supervisor_id']?.toString()?.substring(0, 8) ?? '-'),
+                ]),
+              ),
             ]),
           ),
           const SizedBox(height: 20),
@@ -463,10 +467,16 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
 
   Widget _metaRow(String label, String value) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
         Text('$label: ', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 13, fontWeight: FontWeight.w600)),
-        Text(value, style: GoogleFonts.manrope(color: AppTheme.slate900, fontSize: 13, fontWeight: FontWeight.w700)),
+        Flexible(
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.manrope(color: AppTheme.slate900, fontSize: 13, fontWeight: FontWeight.w700),
+          ),
+        ),
       ],
     );
   }

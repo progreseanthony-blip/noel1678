@@ -233,12 +233,16 @@ class _QuotesListPageState extends ConsumerState<QuotesListPage> {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            'Global Golf',
-            style: GoogleFonts.manrope(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.slate900,
+          Flexible(
+            child: Text(
+              'Global Golf',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: GoogleFonts.manrope(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.slate900,
+              ),
             ),
           ),
           const Spacer(),

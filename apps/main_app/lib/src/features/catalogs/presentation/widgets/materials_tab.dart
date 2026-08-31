@@ -102,11 +102,12 @@ class _MaterialsTabState extends ConsumerState<MaterialsTab> {
           ),
           const SizedBox(height: 12),
           Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
+            child: Material(
+              color: Colors.white,
+              clipBehavior: Clip.antiAlias,
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.slate200),
+                side: BorderSide(color: AppTheme.slate200),
               ),
               child: _materials.isEmpty 
                 ? Center(child: Text('No materials found in catalog', style: GoogleFonts.manrope(color: AppTheme.slate500)))
@@ -126,16 +127,17 @@ class _MaterialsTabState extends ConsumerState<MaterialsTab> {
                         ),
                         title: Text(item['description'], style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: AppTheme.slate900, fontSize: 13)),
                         subtitle: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text('Unit: ${item['unit']}', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 11)),
+                            Flexible(child: Text('Unit: ${item['unit']}', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 11), overflow: TextOverflow.ellipsis)),
                             const SizedBox(width: 8),
                             Container(width: 4, height: 4, decoration: const BoxDecoration(color: AppTheme.slate400, shape: BoxShape.circle)),
                             const SizedBox(width: 8),
-                            Text('Yield: ${item['yield_factor'] ?? 1.0}', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 11)),
+                            Flexible(child: Text('Yield: ${item['yield_factor'] ?? 1.0}', style: GoogleFonts.manrope(color: AppTheme.slate500, fontSize: 11), overflow: TextOverflow.ellipsis)),
                             const SizedBox(width: 8),
                             Container(width: 4, height: 4, decoration: const BoxDecoration(color: AppTheme.slate400, shape: BoxShape.circle)),
                             const SizedBox(width: 8),
-                            Text('$serviceCount services', style: GoogleFonts.manrope(color: AppTheme.primaryGreen, fontSize: 11, fontWeight: FontWeight.w700)),
+                            Flexible(child: Text('$serviceCount services', style: GoogleFonts.manrope(color: AppTheme.primaryGreen, fontSize: 11, fontWeight: FontWeight.w700), overflow: TextOverflow.ellipsis)),
                           ],
                         ),
                         trailing: Row(
@@ -148,8 +150,8 @@ class _MaterialsTabState extends ConsumerState<MaterialsTab> {
                       );
                     },
                   ),
+              ),
             ),
-          ),
         ],
       ),
     );

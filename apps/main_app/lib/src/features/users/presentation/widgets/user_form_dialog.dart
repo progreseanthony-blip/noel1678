@@ -620,8 +620,11 @@ class _UserFormDialogState extends State<UserFormDialog> {
         color: Color(0xFFF8FAFC),
         border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
+      child: Wrap(
+        alignment: WrapAlignment.end,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 12,
         children: [
           // Cancel
           MouseRegion(
@@ -642,7 +645,6 @@ class _UserFormDialogState extends State<UserFormDialog> {
               ),
             ),
           ),
-          const SizedBox(width: 12),
           // Save / Add
           MouseRegion(
             cursor: SystemMouseCursors.click,

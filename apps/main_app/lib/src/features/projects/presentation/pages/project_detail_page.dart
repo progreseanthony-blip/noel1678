@@ -1206,9 +1206,13 @@ currentPath: '/projects/${widget.projectId}',
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '${serviceNames.length} service(s) · ${_machinery.length} machine(s)',
-                style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate500),
+              Flexible(
+                child: Text(
+                  '${serviceNames.length} service(s) · ${_machinery.length} machine(s)',
+                  style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate500),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
               ),
               Row(
                 children: [

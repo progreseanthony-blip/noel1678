@@ -168,22 +168,26 @@ class _MaterialDialogState extends ConsumerState<MaterialDialog> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.1), shape: BoxShape.circle),
-                child: Center(child: Icon(_isEditing ? Icons.edit_outlined : Icons.add_circle_outline, color: AppTheme.primaryGreen, size: 20)),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_isEditing ? 'Edit Material' : 'Add Material', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
-                  Text('Define the item and associate it with services', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500)),
-                ],
-              ),
-            ],
+          Expanded(
+            child: Row(
+              children: [
+                Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.1), shape: BoxShape.circle),
+                  child: Center(child: Icon(_isEditing ? Icons.edit_outlined : Icons.add_circle_outline, color: AppTheme.primaryGreen, size: 20)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_isEditing ? 'Edit Material' : 'Add Material', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900), overflow: TextOverflow.ellipsis, maxLines: 1),
+                      Text('Define the item and associate it with services', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500), overflow: TextOverflow.ellipsis, maxLines: 1),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: AppTheme.slate400)),
         ],
@@ -249,29 +253,32 @@ class _MaterialDialogState extends ConsumerState<MaterialDialog> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: AppTheme.slate200),
             ),
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              itemCount: _allServices.length,
-              separatorBuilder: (context, index) => const Divider(height: 1, color: AppTheme.slate200),
-              itemBuilder: (context, index) {
-                final svc = _allServices[index];
-                final id = svc['id'].toString();
-                final isSelected = _selectedServiceIds.contains(id);
-                return CheckboxListTile(
-                  value: isSelected,
-                  dense: true,
-                  visualDensity: VisualDensity.compact,
-                  title: Text(svc['description'] ?? '', style: GoogleFonts.manrope(fontSize: 13, fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500, color: isSelected ? AppTheme.slate900 : AppTheme.slate500)),
-                  activeColor: AppTheme.primaryGreen,
-                  checkboxShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                  onChanged: (val) {
-                    setState(() {
-                      if (val == true) _selectedServiceIds.add(id);
-                      else _selectedServiceIds.remove(id);
-                    });
-                  },
-                );
-              },
+            child: Material(
+              type: MaterialType.transparency,
+              child: ListView.separated(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                itemCount: _allServices.length,
+                separatorBuilder: (context, index) => const Divider(height: 1, color: AppTheme.slate200),
+                itemBuilder: (context, index) {
+                  final svc = _allServices[index];
+                  final id = svc['id'].toString();
+                  final isSelected = _selectedServiceIds.contains(id);
+                  return CheckboxListTile(
+                    value: isSelected,
+                    dense: true,
+                    visualDensity: VisualDensity.compact,
+                    title: Text(svc['description'] ?? '', style: GoogleFonts.manrope(fontSize: 13, fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500, color: isSelected ? AppTheme.slate900 : AppTheme.slate500)),
+                    activeColor: AppTheme.primaryGreen,
+                    checkboxShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    onChanged: (val) {
+                      setState(() {
+                        if (val == true) _selectedServiceIds.add(id);
+                        else _selectedServiceIds.remove(id);
+                      });
+                    },
+                  );
+                },
+              ),
             ),
           ),
       ],

@@ -794,116 +794,144 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
   }
 
   Widget _buildTopHeader(String userName, bool isMobile, bool isSubmitted, bool isNew) {
+    final List<Widget> actionButtons = [
+      if (_invoice?['status'] == 'submitted') ...[
+        ElevatedButton.icon(
+          onPressed: _isCompleted ? null : _markAsPaid,
+          icon: const Icon(Icons.check_circle_outline, size: 18, color: Colors.white),
+          label: Text('Mark as Paid', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryGreen,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            elevation: 0,
+          ),
+        ),
+        const SizedBox(width: 8),
+      ],
+      if (!isSubmitted) ...[
+        ElevatedButton.icon(
+          onPressed: _isCompleted || _isSaving ? null : _save,
+          icon: _isSaving
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+              : const Icon(Icons.save, size: 18, color: Colors.white),
+          label: Text('Save Draft', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primaryGreen,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            elevation: 0,
+          ),
+        ),
+        const SizedBox(width: 8),
+        ElevatedButton.icon(
+          onPressed: _isCompleted || _isSaving ? null : _submit,
+          icon: const Icon(Icons.send, size: 18, color: Colors.white),
+          label: Text('Submit', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF0D9488),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            elevation: 0,
+          ),
+        ),
+        const SizedBox(width: 8),
+      ],
+      if (!isNew) ...[
+        OutlinedButton.icon(
+          onPressed: _isSaving ? null : _refreshFromReports,
+          icon: const Icon(Icons.refresh, size: 16),
+          label: Text('Refresh', style: GoogleFonts.manrope(fontWeight: FontWeight.w600)),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.primaryGreen,
+            side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          ),
+        ),
+        const SizedBox(width: 8),
+      ],
+      OutlinedButton.icon(
+        onPressed: _printPdf,
+        icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+        label: Text('PDF', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppTheme.primaryGreen,
+          side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+      const SizedBox(width: 8),
+      OutlinedButton.icon(
+        onPressed: _downloadExcel,
+        icon: const Icon(Icons.table_chart_outlined, size: 16),
+        label: Text('Excel', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppTheme.primaryGreen,
+          side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+    ];
+
     return Container(
-      height: 72,
       padding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 32),
       decoration: BoxDecoration(color: Colors.white, border: Border(bottom: BorderSide(color: AppTheme.slate200))),
-      child: Row(
-        children: [
-          if (isMobile)
-            Builder(builder: (ctx) => IconButton(
-              icon: const Icon(Icons.menu, color: AppTheme.slate700),
-              onPressed: () => Scaffold.of(ctx).openDrawer(),
-            )),
-          MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: () => context.go('/projects/${widget.projectId}/billing'),
-              child: const Icon(Icons.arrow_back, size: 18, color: AppTheme.slate500),
+      child: isMobile
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Builder(builder: (ctx) => IconButton(
+                      icon: const Icon(Icons.menu, color: AppTheme.slate700),
+                      onPressed: () => Scaffold.of(ctx).openDrawer(),
+                    )),
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => context.go('/projects/${widget.projectId}/billing'),
+                        child: const Icon(Icons.arrow_back, size: 18, color: AppTheme.slate500),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      isNew ? 'New Pay Application' : _invoice?['invoice_number'] ?? '',
+                      style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900),
+                    ),
+                  ],
+                ),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: actionButtons),
+                ),
+                const SizedBox(height: 4),
+              ],
+            )
+          : Row(
+              children: [
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => context.go('/projects/${widget.projectId}/billing'),
+                    child: const Icon(Icons.arrow_back, size: 18, color: AppTheme.slate500),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text('Billing', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Icon(Icons.chevron_right, size: 16, color: AppTheme.slate400),
+                ),
+                Text(isNew ? 'New Pay Application' : _invoice?['invoice_number'] ?? '',
+                    style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+                const Spacer(),
+                ...actionButtons,
+              ],
             ),
-          ),
-          if (!isMobile) ...[
-            const SizedBox(width: 8),
-            Text('Billing', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500)),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Icon(Icons.chevron_right, size: 16, color: AppTheme.slate400),
-            ),
-            Text(isNew ? 'New Pay Application' : _invoice?['invoice_number'] ?? '',
-                style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
-          ],
-          const Spacer(),
-          if (_invoice?['status'] == 'submitted') ...[
-            ElevatedButton.icon(
-              onPressed: _isCompleted ? null : _markAsPaid,
-              icon: const Icon(Icons.check_circle_outline, size: 18, color: Colors.white),
-              label: Text('Mark as Paid', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryGreen,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                elevation: 0,
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          if (!isSubmitted) ...[
-            ElevatedButton.icon(
-              onPressed: _isCompleted || _isSaving ? null : _save,
-              icon: _isSaving
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                  : const Icon(Icons.save, size: 18, color: Colors.white),
-              label: Text('Save Draft', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryGreen,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                elevation: 0,
-              ),
-            ),
-            const SizedBox(width: 8),
-            ElevatedButton.icon(
-              onPressed: _isCompleted || _isSaving ? null : _submit,
-              icon: const Icon(Icons.send, size: 18, color: Colors.white),
-              label: Text('Submit', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF0D9488),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                elevation: 0,
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          if (!isNew) ...[
-            OutlinedButton.icon(
-              onPressed: _isSaving ? null : _refreshFromReports,
-              icon: const Icon(Icons.refresh, size: 16),
-              label: Text('Refresh', style: GoogleFonts.manrope(fontWeight: FontWeight.w600)),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: AppTheme.primaryGreen,
-                side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          OutlinedButton.icon(
-            onPressed: _printPdf,
-            icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
-            label: Text('PDF', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppTheme.primaryGreen,
-              side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            onPressed: _downloadExcel,
-            icon: const Icon(Icons.table_chart_outlined, size: 16),
-            label: Text('Excel', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppTheme.primaryGreen,
-              side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          ),
-        ],
-      ),
     );
   }
 

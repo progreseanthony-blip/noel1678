@@ -127,47 +127,53 @@ class _RoleManagementDialogState extends State<RoleManagementDialog> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: AppTheme.primaryGreen.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Center(
-                  child: Icon(
-                    Icons.admin_panel_settings_outlined,
-                    color: AppTheme.primaryGreen,
-                    size: 20,
+          Flexible(
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryGreen.withOpacity(0.1),
+                    shape: BoxShape.circle,
                   ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Manage Roles',
-                    style: GoogleFonts.manrope(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.slate900,
+                  child: const Center(
+                    child: Icon(
+                      Icons.admin_panel_settings_outlined,
+                      color: AppTheme.primaryGreen,
+                      size: 20,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Add, edit, or remove roles for your organization',
-                    style: GoogleFonts.manrope(
-                      fontSize: 14,
-                      color: AppTheme.slate500,
-                      height: 1.0,
-                    ),
+                ),
+                const SizedBox(width: 12),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Manage Roles',
+                        style: GoogleFonts.manrope(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.slate900,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Add, edit, or remove roles for your organization',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.manrope(
+                          fontSize: 14,
+                          color: AppTheme.slate500,
+                          height: 1.2,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
           MouseRegion(
             cursor: SystemMouseCursors.click,
@@ -228,8 +234,11 @@ class _RoleManagementDialogState extends State<RoleManagementDialog> {
         color: Color(0xFFF8FAFC),
         border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        spacing: 12,
+        runSpacing: 12,
         children: [
           Text(
             '${_roles.length} role${_roles.length == 1 ? '' : 's'}',

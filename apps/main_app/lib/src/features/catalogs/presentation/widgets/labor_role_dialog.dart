@@ -146,22 +146,26 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Row(
-            children: [
-              Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.1), shape: BoxShape.circle),
-                child: Center(child: Icon(_isEditing ? Icons.edit_outlined : Icons.add_circle_outline, color: AppTheme.primaryGreen, size: 20)),
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_isEditing ? 'Edit Labor Role' : 'Add Labor Role', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
-                  Text('Define the role and its hourly compensation', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500)),
-                ],
-              ),
-            ],
+          Expanded(
+            child: Row(
+              children: [
+                Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.1), shape: BoxShape.circle),
+                  child: Center(child: Icon(_isEditing ? Icons.edit_outlined : Icons.add_circle_outline, color: AppTheme.primaryGreen, size: 20)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_isEditing ? 'Edit Labor Role' : 'Add Labor Role', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900), overflow: TextOverflow.ellipsis, maxLines: 1),
+                      Text('Define the role and its hourly compensation', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500), overflow: TextOverflow.ellipsis, maxLines: 1),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
           IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: AppTheme.slate400)),
         ],
