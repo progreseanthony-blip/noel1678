@@ -2448,6 +2448,11 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
   double _baselineTotalCompressionSavings = 0;
   bool _baselineMetricsLoaded = false;
   List<Map<String, dynamic>> _disruptionBands = [];
+  // Maps change_order_id -> set of affected service ids (quote_service_id
+  // and/or project_service_id, via change_order_disruption_services +
+  // project_tasks). A CO absent from this map is treated as project-wide
+  // (legacy disruptions created before per-service linking existed).
+  Map<String, Set<String>> _disruptionServiceIds = {};
 
   @override
   void initState() {
@@ -2651,6 +2656,38 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         return copy;
       }).toList();
 
+      // Per-service affectation: change_order_disruption_services -> project_tasks.
+      // Only COs with explicit links are filtered; COs without links keep the
+      // legacy project-wide behavior.
+      try {
+        final rawLinks = await supabase
+            .from('change_order_disruption_services')
+            .select('change_order_id, project_tasks(quote_service_id, project_service_id)')
+            .in_('change_order_id', approvedCOIds);
+        final links = List<Map<String, dynamic>>.from(rawLinks ?? []);
+        final map = <String, Set<String>>{};
+        for (final link in links) {
+          final coId = link['change_order_id']?.toString();
+          if (coId == null) continue;
+          final task = link['project_tasks'];
+          final taskMap = task is List && task.isNotEmpty
+              ? task[0] as Map<String, dynamic>?
+              : task as Map<String, dynamic>?;
+          final ids = <String>{};
+          final qsId = taskMap?['quote_service_id']?.toString();
+          final psId = taskMap?['project_service_id']?.toString();
+          if (qsId != null && qsId.isNotEmpty) ids.add(qsId);
+          if (psId != null && psId.isNotEmpty) ids.add(psId);
+          if (ids.isNotEmpty) {
+            map.putIfAbsent(coId, () => <String>{}).addAll(ids);
+          }
+        }
+        _disruptionServiceIds = map;
+      } catch (e) {
+        debugPrint('[_loadDisruptions] service links unavailable, using project-wide bands: $e');
+        _disruptionServiceIds = {};
+      }
+
       debugPrint('Gantt disruptions loaded: ${_disruptionBands.length} bands for project ${widget.projectId}');
       if (mounted) setState(() {});
     } catch (e, st) {
@@ -2744,13 +2781,31 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
 
   // Segments of a resource bar that fall inside disruption periods (positioned
   // relative to the bar's own left edge). Used to visually mark disrupted days.
-  List<Widget> _buildBarDisruptionOverlays(DateTime barStart, DateTime barEnd, double dayWidth) {
+  List<Widget> _buildBarDisruptionOverlays(
+    DateTime barStart,
+    DateTime barEnd,
+    double dayWidth, [
+    Set<String>? rowServiceIds,
+  ]) {
     if (_disruptionBands.isEmpty) return const [];
 
     final barSpan = barEnd.difference(barStart).inDays + 1;
     final overlays = <Widget>[];
 
     for (final d in _disruptionBands) {
+      // Per-service filter: only paint the band on rows whose service is
+      // linked to the disruption's change order. COs without explicit
+      // service links keep the legacy project-wide behavior.
+      final coId = d['change_order_id']?.toString();
+      final affected = coId != null ? _disruptionServiceIds[coId] : null;
+      if (affected != null &&
+          affected.isNotEmpty &&
+          (rowServiceIds == null ||
+              rowServiceIds.isEmpty ||
+              rowServiceIds.intersection(affected).isEmpty)) {
+        continue;
+      }
+
       final startStr = d['start_date']?.toString();
       final endStr = d['end_date']?.toString();
       final dStart = startStr != null ? DateTime.tryParse(startStr) : null;
@@ -2944,6 +2999,44 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
       return service?['name']?.toString() ?? 'General / Unassigned';
     }
 
+    // Collects every service id that identifies the row's service, so
+    // disruption overlays can be filtered per service. Returns ids from
+    // the row itself (quote_service_id / project_service_id) and from the
+    // joined quote_services / project_services relations.
+    Set<String> getServiceIds(Map<String, dynamic> item, String relationName) {
+      final ids = <String>{};
+      void addId(dynamic v) {
+        final s = v?.toString();
+        if (s != null && s.isNotEmpty) ids.add(s);
+      }
+
+      addId(item['quote_service_id']);
+      addId(item['project_service_id']);
+      dynamic quoteService = item['quote_services'];
+      dynamic projectService = item['project_services'];
+      final data = item[relationName];
+      if (data != null) {
+        final dData = (data is List && data.isNotEmpty) ? data[0] : (data is Map ? data : null);
+        if (dData is Map<String, dynamic>) {
+          quoteService ??= dData['quote_services'];
+          addId(dData['quote_service_id']);
+          addId(dData['project_service_id']);
+        }
+      }
+      if (quoteService is List && quoteService.isNotEmpty) {
+        quoteService = quoteService[0];
+      }
+      if (quoteService is Map<String, dynamic>) addId(quoteService['id']);
+      if (projectService is List && projectService.isNotEmpty) {
+        projectService = projectService[0];
+      }
+      if (projectService is Map<String, dynamic>) {
+        addId(projectService['id']);
+        addId(projectService['quote_service_id']);
+      }
+      return ids;
+    }
+
     for (var m in widget.machinery) {
       final evm = _localCalculateEVM(m);
       final isPlanned = (m['quote_service_machineries'] != null &&
@@ -2954,6 +3047,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         'type': 'Machinery',
         'icon': Icons.precision_manufacturing,
         'service': getService(m, 'quote_service_machineries'),
+        'serviceIds': getServiceIds(m, 'quote_service_machineries'),
         'plannedStart': evm['plannedStart'] as DateTime?,
         'plannedEnd': evm['plannedEnd'] as DateTime?,
         'isUnplanned': !isPlanned || m['calculation_metadata']?['is_unplanned'] == true,
@@ -2973,6 +3067,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         'type': 'Labor',
         'icon': Icons.engineering,
         'service': getService(l, 'quote_service_labors'),
+        'serviceIds': getServiceIds(l, 'quote_service_labors'),
         'plannedStart': evm['plannedStart'] as DateTime?,
         'plannedEnd': evm['plannedEnd'] as DateTime?,
         'isUnplanned': !isPlanned || l['calculation_metadata']?['is_unplanned'] == true,
@@ -3013,6 +3108,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         'type': 'Instrument',
         'icon': Icons.handyman,
         'service': getService(i, 'quote_service_instruments'),
+        'serviceIds': getServiceIds(i, 'quote_service_instruments'),
         'plannedStart': plannedStart,
         'plannedEnd': plannedEnd,
         'isUnplanned': !isPlanned || i['calculation_metadata']?['is_unplanned'] == true,
@@ -3263,7 +3359,15 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                           style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white),
                         ),
                       ),
-                      ..._buildBarDisruptionOverlays(sMin, sMax, dayWidth),
+                      ..._buildBarDisruptionOverlays(
+                        sMin,
+                        sMax,
+                        dayWidth,
+                        {
+                          for (final it in serviceItems)
+                            ...(it['serviceIds'] as Set<String>? ?? const <String>{}),
+                        },
+                      ),
                     ],
                   ),
                 ),
@@ -3464,7 +3568,12 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                               style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
                             ),
                           ),
-                          ..._buildBarDisruptionOverlays(start, end, dayWidth),
+                          ..._buildBarDisruptionOverlays(
+                            start,
+                            end,
+                            dayWidth,
+                            (item['serviceIds'] as Set<String>?) ?? const <String>{},
+                          ),
                         ],
                       ),
                     ),
