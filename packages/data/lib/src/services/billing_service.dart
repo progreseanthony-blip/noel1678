@@ -756,15 +756,21 @@ class BillingService {
           }
         }
       } else if (lineType == 'new_service' && plans.isNotEmpty) {
-        // Reuse an existing project_service created for this CO (by the DB trigger
-        // or a previous run) to avoid duplicates.
+        // The client is the single writer of new_service project_services
+        // (the DB trigger no longer creates them). Reuse the row linked to
+        // this detail, or one left by a previous run for the same service
+        // name, to avoid duplicates. Lookup includes the service name so a
+        // CO with several new services never reuses the wrong row.
+        final serviceName = detail['service_name'] as String?;
         String? newServiceId = detail['project_service_id'] as String? ?? quoteServiceId;
-        if (newServiceId == null) {
+        if (newServiceId == null && serviceName != null) {
           final existing = await _supabase
               .from('project_services')
               .select('id')
               .eq('project_id', projectId)
               .eq('source_co_id', changeOrderId)
+              .eq('name', serviceName)
+              .limit(1)
               .maybeSingle();
           newServiceId = existing?['id'] as String?;
         }
@@ -773,7 +779,7 @@ class BillingService {
               .from('project_services')
               .insert({
                 'project_id': projectId,
-                'name': detail['service_name'] ?? 'New Service',
+                'name': serviceName ?? 'New Service',
                 'unit_of_measure': detail['unit_of_measure'] ?? 'und',
                 'quantity': (detail['quantity_change'] as num?)?.toDouble() ?? 1,
                 'direct_cost': 0,
