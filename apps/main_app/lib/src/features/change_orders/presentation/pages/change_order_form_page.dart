@@ -12,6 +12,7 @@ import '../widgets/standby_form_section.dart';
 import '../widgets/baseline_impact_section.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/completed_project_banner.dart';
+import '../../../../shared/widgets/desktop_required_notice.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 import '../../../../features/quotes/presentation/widgets/service_estimation_dialog.dart';
 
@@ -1039,6 +1040,14 @@ class _ChangeOrderFormPageState extends ConsumerState<ChangeOrderFormPage> {
     final userEmail = currentUser?.email ?? '';
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 1250;
+
+    if (screenWidth < 768) {
+      return const DesktopRequiredNotice(
+        title: 'Change Order Editor',
+        icon: Icons.request_quote_outlined,
+        message: 'The change order editor is designed for desktop. Open it from a desktop or laptop computer to build line items, impacts, and resource plans.',
+      );
+    }
 
     if (_loadingData) {
       return Scaffold(

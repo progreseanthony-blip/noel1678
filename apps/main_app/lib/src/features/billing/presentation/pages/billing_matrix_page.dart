@@ -16,6 +16,7 @@ import '../utils/invoice_pdf_generator.dart';
 import '../utils/invoice_excel_generator.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/completed_project_banner.dart';
+import '../../../../shared/widgets/desktop_required_notice.dart';
 
 class BillingMatrixPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -760,6 +761,14 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
     final isMobile = screenWidth < 1250;
     final isSubmitted = _invoice?['status'] == 'submitted' || _invoice?['status'] == 'paid';
     final isNew = widget.invoiceId == null;
+
+    if (screenWidth < 768) {
+      return const DesktopRequiredNotice(
+        title: 'Pay Application Editor',
+        icon: Icons.table_chart_outlined,
+        message: 'The pay application matrix requires a wide screen to edit values accurately. Open it from a desktop or laptop computer.',
+      );
+    }
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
