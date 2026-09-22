@@ -13,6 +13,7 @@ import '../providers/change_order_controller.dart';
 import '../utils/change_order_pdf_generator.dart';
 import '../widgets/resource_conflict_dialog.dart';
 import '../../../../shared/widgets/sidebar.dart';
+import '../../../../shared/widgets/desktop_required_notice.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 
 class ChangeOrderDetailPage extends ConsumerStatefulWidget {
@@ -253,6 +254,14 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
     final userEmail = currentUser?.email ?? '';
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 1250;
+
+    if (screenWidth < 768) {
+      return const DesktopRequiredNotice(
+        title: 'Change Order Detail',
+        icon: Icons.request_quote_outlined,
+        message: 'The change order breakdown table requires a wide screen. Open it from a desktop or laptop computer.',
+      );
+    }
 
     final coAsync = ref.watch(changeOrderDetailProvider(widget.coId));
 

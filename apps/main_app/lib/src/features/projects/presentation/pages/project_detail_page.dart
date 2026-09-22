@@ -689,67 +689,144 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16, top: 12),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: AppTheme.slate200,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Icon(
-              Icons.inventory_2_outlined,
-              size: 14,
-              color: AppTheme.slate400,
-            ),
-          ),
-          const SizedBox(width: 10),
-          Text(
-            name.toUpperCase(),
-            style: GoogleFonts.manrope(
-              fontSize: 11, 
-              fontWeight: FontWeight.w900, 
-              color: AppTheme.slate600,
-              letterSpacing: 1.5,
-            ),
-          ),
-          if (duration != null) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppTheme.slate200,
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(
-                '${duration} DAYS',
-                style: GoogleFonts.manrope(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.slate600,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth >= 420) {
+            return Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.slate200,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: const Icon(
+                    Icons.inventory_2_outlined,
+                    size: 14,
+                    color: AppTheme.slate400,
+                  ),
                 ),
+                const SizedBox(width: 10),
+                Text(
+                  name.toUpperCase(),
+                  style: GoogleFonts.manrope(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    color: AppTheme.slate600,
+                    letterSpacing: 1.5,
+                  ),
+                ),
+                if (duration != null) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.slate200,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${duration} DAYS',
+                      style: GoogleFonts.manrope(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.slate600,
+                      ),
+                    ),
+                  ),
+                ],
+                const SizedBox(width: 12),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.slate200,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    'PLANNING',
+                    style: GoogleFonts.manrope(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.slate500,
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.slate200,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Icon(
+                      Icons.inventory_2_outlined,
+                      size: 14,
+                      color: AppTheme.slate400,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      name.toUpperCase(),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                      style: GoogleFonts.manrope(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        color: AppTheme.slate600,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppTheme.slate200,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Text(
+                      'PLANNING',
+                      style: GoogleFonts.manrope(
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.slate500,
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-          const SizedBox(width: 12),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppTheme.slate200,
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Text(
-              'PLANNING',
-              style: GoogleFonts.manrope(
-                fontSize: 9,
-                fontWeight: FontWeight.w800,
-                color: AppTheme.slate500,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ),
-        ],
+              if (duration != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 32, top: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.slate200,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${duration} DAYS',
+                      style: GoogleFonts.manrope(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.slate600,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2975,9 +3052,8 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final List<Map<String, dynamic>> items = [];
+  List<Map<String, dynamic>> _buildTimelineItems() {
+    final items = <Map<String, dynamic>>[];
 
     String getService(Map<String, dynamic> item, String relationName) {
       dynamic service = item['quote_services'];
@@ -3116,6 +3192,249 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         'changeType': i['change_type'] ?? 'planning',
         'isCo': i['project_service_id'] != null,
       });
+    }
+
+    return items;
+  }
+
+  Widget _buildMobileScheduleList(List<Map<String, dynamic>> items) {
+    final filtered = _selectedServiceFilter == 'All Services'
+        ? items
+        : items.where((i) => i['service'] == _selectedServiceFilter).toList();
+
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final item in filtered) {
+      final service = (item['service'] as String?) ?? 'General / Unassigned';
+      if (!grouped.containsKey(service)) grouped[service] = [];
+      grouped[service]!.add(item);
+    }
+
+    final serviceNames = grouped.keys.toList()..sort();
+    final DateFormat fmt = DateFormat('MMM dd');
+
+    return Dialog.fullscreen(
+      backgroundColor: AppTheme.backgroundLight,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: const Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+              boxShadow: [
+                BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 2)),
+              ],
+            ),
+            child: SafeArea(
+              bottom: false,
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: AppTheme.slate700),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.project?['title'] ?? 'Resource Schedule',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.slate900),
+                        ),
+                        Text(
+                          'Scheduled Resources',
+                          style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_selectedServiceFilter != 'All Services')
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryGreen.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _selectedServiceFilter,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            child: filtered.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.query_builder, size: 56, color: Color(0xFFCBD5E1)),
+                        const SizedBox(height: 12),
+                        Text(
+                          'No resources scheduled for this selection.',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.manrope(color: AppTheme.slate500),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      for (final sName in serviceNames) ...[
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryGreen.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            sName.toUpperCase(),
+                            style: GoogleFonts.manrope(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.8,
+                              color: AppTheme.primaryGreen,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        for (final item in grouped[sName]!) ...[
+                          _buildMobileScheduleCard(item, fmt),
+                          const SizedBox(height: 8),
+                        ],
+                        const SizedBox(height: 12),
+                      ],
+                    ],
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMobileScheduleCard(Map<String, dynamic> item, DateFormat fmt) {
+    final start = item['plannedStart'] as DateTime?;
+    final end = item['plannedEnd'] as DateTime?;
+    final type = (item['type'] as String?) ?? 'Resource';
+    final isUnplanned = item['isUnplanned'] == true;
+    final isCo = item['isCo'] == true;
+
+    Color typeColor;
+    IconData icon;
+    switch (type) {
+      case 'Machinery':
+        typeColor = AppTheme.primaryGreen;
+        icon = Icons.precision_manufacturing;
+        break;
+      case 'Labor':
+        typeColor = Colors.blue;
+        icon = Icons.engineering;
+        break;
+      case 'Instrument':
+        typeColor = Colors.purple;
+        icon = Icons.handyman;
+        break;
+      default:
+        typeColor = AppTheme.slate500;
+        icon = Icons.inventory_2_outlined;
+    }
+
+    final rangeText = (start != null && end != null)
+        ? '${fmt.format(start)} – ${fmt.format(end)}'
+        : (start != null ? 'Starts ${fmt.format(start)}' : (end != null ? 'Until ${fmt.format(end)}' : 'Dates not set'));
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.slate200),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 6, offset: const Offset(0, 2))],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: typeColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 20, color: typeColor),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item['name']?.toString() ?? 'Unknown',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate900),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Icon(Icons.date_range, size: 12, color: typeColor),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        rangeText,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate600, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+                if (isUnplanned || isCo) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      if (isCo)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(12)),
+                          child: Text('CO', style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.slate600)),
+                        ),
+                      if (isUnplanned)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.orange.withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
+                          child: Text('EXTRA', style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: Colors.orange.shade800)),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Text(
+            type.toUpperCase(),
+            style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: typeColor),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isMobileTimeline = MediaQuery.of(context).size.width < 768;
+    final List<Map<String, dynamic>> items = _buildTimelineItems();
+    if (isMobileTimeline) {
+      return _buildMobileScheduleList(items);
     }
 
     // Dynamic timeline compression logic
