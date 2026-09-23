@@ -41,6 +41,11 @@ jobs:
           test -f build/web/main.dart.js || exit 1
         timeout-minutes: 30
 
+      - name: Add Static Site Pages (privacy, support)
+        run: |
+          cp site/privacy.html site/support.html apps/main_app/build/web/
+          test -f apps/main_app/build/web/privacy.html || exit 1
+
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
