@@ -1,4 +1,4 @@
-package com.example.noel_app
+package com.globalgolf.projectapp
 
 import io.flutter.embedding.android.FlutterActivity
 

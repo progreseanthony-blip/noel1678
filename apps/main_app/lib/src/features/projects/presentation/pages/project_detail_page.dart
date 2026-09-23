@@ -1421,7 +1421,7 @@ currentPath: '/projects/${widget.projectId}',
       ),
       const SizedBox(height: 6),
       Text(
-        'Received: $received / $expected unidades',
+        'Received: $received / $expected units',
         style: GoogleFonts.manrope(
           fontSize: 13,
           fontWeight: FontWeight.w600,
@@ -2467,7 +2467,7 @@ currentPath: '/projects/${widget.projectId}',
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error al guardar planificación: $e'),
+            content: Text('Error saving planning: $e'),
             backgroundColor: Colors.red,
           ),
         );

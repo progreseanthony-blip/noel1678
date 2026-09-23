@@ -576,7 +576,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Received: $received / $expected unidades',
+                      'Received: $received / $expected units',
                       style: GoogleFonts.manrope(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,

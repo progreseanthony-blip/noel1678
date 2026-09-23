@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:html' as html;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,6 +12,7 @@ import '../../../../shared/widgets/top_header.dart';
 import '../../../../shared/widgets/completed_project_banner.dart';
 import '../utils/payroll_pdf_generator.dart';
 import '../utils/payroll_excel_generator.dart';
+import '../utils/save_bytes.dart';
 import '../utils/worker_signoff_pdf_generator.dart';
 import '../utils/worker_individual_report_pdf_generator.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
@@ -246,13 +246,11 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
         totalCost: _totalCost,
         totalWorkers: _totalWorkers,
       );
-      final blob = html.Blob([bytes], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      final url = html.Url.createObjectUrlFromBlob(blob);
-      final anchor = html.document.createElement('a') as html.AnchorElement
-        ..href = url
-        ..download = '${_exportName}.xlsx'
-        ..click();
-      html.Url.revokeObjectUrl(url);
+      await saveBytes(
+        bytes,
+        '${_exportName}.xlsx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Excel error: $e')));

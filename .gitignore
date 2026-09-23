@@ -10,6 +10,16 @@ build/
 # Environment
 .env.development
 !.env.production
+.env.local
+
+# Signing keys — NEVER commit (ver doc/STORE_DEPLOYMENT_GUIDE.md §5)
+*.keystore
+*.jks
+key.properties
+*.p8
+
+# Melos-generated overrides (contiene paths absolutos del sistema)
+pubspec_overrides.yaml
 
 # IDEs
 .idea/

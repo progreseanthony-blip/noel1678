@@ -1,0 +1,54 @@
+workflows:
+  ios-build:
+    name: iOS Build & TestFlight
+    instance_type: mac_mini_m2
+    working_directory: apps/main_app
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        automatic:
+          app_store_connect:
+            auth_type: api_key
+            api_key_id: $APPLEKEYID
+            api_key_issuer_id: $APPLEISSUERID
+            api_key: $APPLEAPIKEY
+      vars:
+        APP_ID: com.globalgolf.projectapp
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+          source: true
+    scripts:
+      - name: Install Melos
+        script: |
+          dart pub global activate melos
+      - name: Bootstrap Melos
+        script: |
+          cd ../..
+          melos bootstrap
+      - name: Generate Code
+        script: |
+          cd ../..
+          melos run gen
+      - name: Build iOS IPA
+        script: |
+          cd apps/main_app
+          flutter clean
+          flutter build ipa --release \
+            --export-method=app-store \
+            --build-number=$(grep '^version:' pubspec.yaml | sed 's/.*+//')
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/ipa/*.dSYM.zip
+    publishing:
+      app_store_connect:
+        auth_type: api_key
+        api_key_id: $APPLEKEYID
+        api_key_issuer_id: $APPLEISSUERID
+        api_key: $APPLEAPIKEY
+        submit_to_testflight: true
