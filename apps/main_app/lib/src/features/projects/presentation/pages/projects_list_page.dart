@@ -56,7 +56,8 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
       final Map<String, Map<String, dynamic>> allCompletions = {};
 
       try {
-        portfolioSummary = await service.getPortfolioSummary();
+        portfolioSummary =
+            await service.getPortfolioSummaryLight(projectsPrefetched: projects);
         final summaries = List<Map<String, dynamic>>.from(
           portfolioSummary['project_summaries'] ?? [],
         );

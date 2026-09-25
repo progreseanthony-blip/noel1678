@@ -754,13 +754,269 @@ class ProductionMeasurementService {
     };
   }
 
-  Future<Map<String, dynamic>> getPortfolioSummary() async {
-    final projectsResult = await _supabase
-        .from('projects')
-        .select('id, title, status')
-        .in_('status', ['active', 'on_hold', 'completed']);
+  /// Lightweight batched portfolio loader.
+  ///
+  /// Computes the full portfolio aggregates with a fixed handful of queries
+  /// (batched with `in_` filters + one [Future.wait]) instead of a full
+  /// [getProjectMeasurement] per project (~12-16 sequential round-trips
+  /// each). Totals match the per-project measurement because the
+  /// Original/CO row split there is a partition that preserves sums;
+  /// service-completion counting replicates the split proration so the
+  /// per-project `completed_services`/`total_services` match as well.
+  Future<Map<String, dynamic>> getPortfolioSummaryLight({
+    List<Map<String, dynamic>>? projectsPrefetched,
+  }) async {
+    List<Map<String, dynamic>> projects;
+    if (projectsPrefetched != null) {
+      projects = projectsPrefetched
+          .where((p) =>
+              ['active', 'on_hold', 'completed'].contains(p['status']))
+          .map((p) => Map<String, dynamic>.from(p))
+          .toList();
+    } else {
+      final projectsResult = await _supabase
+          .from('projects')
+          .select('id, title, status, quote_id, start_date, end_date, baseline_end_date')
+          .in_('status', ['active', 'on_hold', 'completed']);
+      projects = List<Map<String, dynamic>>.from(projectsResult ?? []);
+    }
 
-    final projects = List<Map<String, dynamic>>.from(projectsResult ?? []);
+    Map<String, dynamic> emptySummary() => {
+          'total_planned_cost': 0.0,
+          'total_actual_cost': 0.0,
+          'total_earned_value': 0.0,
+          'portfolio_cpi': 1.0,
+          'portfolio_progress': 0.0,
+          'total_alerts': 0,
+          'projects_at_risk': 0,
+          'total_projects': 0,
+          'completed_services': 0,
+          'total_services': 0,
+          'project_summaries': <Map<String, dynamic>>[],
+        };
+    if (projects.isEmpty) return emptySummary();
+
+    final ids = projects.map((p) => p['id'].toString()).toList();
+    final quoteIds = projects
+        .map((p) => p['quote_id']?.toString())
+        .where((q) => q != null && q.isNotEmpty)
+        .cast<String>()
+        .toSet()
+        .toList();
+
+    final results = await Future.wait<dynamic>([
+      _supabase
+          .from('project_services')
+          .select('id, project_id, name, quantity, unit_of_measure, direct_cost, source_co_id, quote_service_id')
+          .in_('project_id', ids),
+      quoteIds.isEmpty
+          ? Future.value(const [])
+          : _supabase
+              .from('quote_services')
+              .select('id, quote_id, name, quantity, unit_of_measure, direct_cost')
+              .in_('quote_id', quoteIds),
+      _supabase.from('report_machinery_logs').select('''
+            production_value, total_hours, fuel_added, project_machinery_id,
+            machinery!inner(capacity_yards),
+            project_machinery!inner(quote_service_id, project_id, id),
+            daily_reports!inner(status)
+          ''').in_('project_machinery.project_id', ids).in_(
+          'daily_reports.status', ['submitted', 'approved']),
+      _supabase.from('report_labor_logs').select('''
+            regular_hours, overtime_hours,
+            project_labor!inner(quote_service_id, project_id),
+            daily_reports!inner(status),
+            workers!inner(role_id, labor_roles!inner(hourly_rate))
+          ''').in_('project_labor.project_id', ids).in_(
+          'daily_reports.status', ['submitted', 'approved']),
+      _supabase.from('report_material_usage').select('''
+            quantity_used, project_material_id,
+            project_materials!inner(quote_service_id, project_id, id),
+            daily_reports!inner(status)
+          ''').in_('project_materials.project_id', ids).in_(
+          'daily_reports.status', ['submitted', 'approved']),
+      _supabase
+          .from('project_machinery')
+          .select('id, quote_service_machineries(monthly_rent_cost, gallon_cost)')
+          .in_('project_id', ids),
+      _supabase
+          .from('project_materials')
+          .select('id, quote_service_materials(unit_price)')
+          .in_('project_id', ids),
+      _supabase
+          .from('project_non_working_days')
+          .select('project_id, date, partial_ratio')
+          .in_('project_id', ids),
+    ]);
+
+    List<Map<String, dynamic>> asMaps(dynamic v) =>
+        List<Map<String, dynamic>>.from((v as List?) ?? []);
+    final psRows = asMaps(results[0]);
+    final qsRows = asMaps(results[1]);
+    final machLogs = asMaps(results[2]);
+    final laborLogs = asMaps(results[3]);
+    final matLogs = asMaps(results[4]);
+    final machCostRows = asMaps(results[5]);
+    final matPriceRows = asMaps(results[6]);
+    final nwRows = asMaps(results[7]);
+
+    // Index rows per project.
+    final psByProject = <String, List<Map<String, dynamic>>>{};
+    for (final r in psRows) {
+      final pid = r['project_id']?.toString() ?? '';
+      (psByProject[pid] ??= []).add(r);
+    }
+    final qsByQuote = <String, List<Map<String, dynamic>>>{};
+    for (final r in qsRows) {
+      final qid = r['quote_id']?.toString() ?? '';
+      (qsByQuote[qid] ??= []).add(r);
+    }
+    final machByProject = <String, List<Map<String, dynamic>>>{};
+    for (final l in machLogs) {
+      final pid = l['project_machinery']?['project_id']?.toString() ?? '';
+      if (pid.isEmpty) continue;
+      (machByProject[pid] ??= []).add(l);
+    }
+    final laborByProject = <String, List<Map<String, dynamic>>>{};
+    for (final l in laborLogs) {
+      final pid = l['project_labor']?['project_id']?.toString() ?? '';
+      if (pid.isEmpty) continue;
+      (laborByProject[pid] ??= []).add(l);
+    }
+    final matByProject = <String, List<Map<String, dynamic>>>{};
+    for (final l in matLogs) {
+      final pid = l['project_materials']?['project_id']?.toString() ?? '';
+      if (pid.isEmpty) continue;
+      (matByProject[pid] ??= []).add(l);
+    }
+    final machCostMap = <String, Map<String, dynamic>>{};
+    for (final row in machCostRows) {
+      final pmId = row['id']?.toString();
+      final qsm = row['quote_service_machineries'];
+      if (pmId != null && qsm is Map<String, dynamic>) {
+        machCostMap[pmId] = {
+          'monthly_rent_cost':
+              (qsm['monthly_rent_cost'] as num?)?.toDouble() ?? 0,
+          'gallon_cost': (qsm['gallon_cost'] as num?)?.toDouble() ?? 0,
+        };
+      }
+    }
+    final matPriceMap = <String, double>{};
+    for (final row in matPriceRows) {
+      final pmId = row['id']?.toString();
+      final qsm = row['quote_service_materials'];
+      if (pmId != null && qsm is Map<String, dynamic>) {
+        matPriceMap[pmId] = (qsm['unit_price'] as num?)?.toDouble() ?? 0;
+      }
+    }
+    final nwByProject = <String, Map<String, double>>{};
+    for (final nw in nwRows) {
+      final pid = nw['project_id']?.toString() ?? '';
+      final dateStr = nw['date'] as String?;
+      if (pid.isEmpty || dateStr == null) continue;
+      final ratio = (nw['partial_ratio'] as num?)?.toDouble() ?? 0;
+      (nwByProject[pid] ??= {})[dateStr.split('T')[0]] = ratio;
+    }
+
+    // Approved scope_change CO quantities per quote_service_id (for the
+    // Original/CO split proration used in completion counting).
+    final allQsIds = <String>{
+      for (final r in qsRows) r['id'].toString(),
+      for (final r in psRows)
+        if (r['quote_service_id'] != null)
+          r['quote_service_id'].toString(),
+    }.where((id) => id.isNotEmpty).toList();
+    final coTotals = <String, Map<String, double>>{};
+    if (allQsIds.isNotEmpty) {
+      try {
+        final coDetails = await _supabase
+            .from('change_order_details')
+            .select('quote_service_id, quantity_change, total_change, change_order_id')
+            .in_('quote_service_id', allQsIds)
+            .eq('line_type', 'existing_service')
+            .gt('quantity_change', 0);
+        final details = asMaps(coDetails);
+        if (details.isNotEmpty) {
+          final coIds = details
+              .map((r) => r['change_order_id']?.toString())
+              .where((id) => id != null)
+              .cast<String>()
+              .toSet();
+          Set<String> approvedIds = {};
+          if (coIds.isNotEmpty) {
+            final approvedCOs = await _supabase
+                .from('change_orders')
+                .select('id')
+                .in_('id', coIds.toList())
+                .eq('status', 'approved');
+            approvedIds = {
+              for (final c in asMaps(approvedCOs)) c['id'].toString()
+            };
+          }
+          for (final d in details) {
+            final coId = d['change_order_id']?.toString();
+            final qsId = d['quote_service_id']?.toString();
+            if (coId == null || qsId == null || !approvedIds.contains(coId)) {
+              continue;
+            }
+            final entry = coTotals[qsId] ??= {'qty': 0.0, 'cost': 0.0};
+            entry['qty'] =
+                entry['qty']! + ((d['quantity_change'] as num?)?.toDouble() ?? 0);
+            entry['cost'] =
+                entry['cost']! + ((d['total_change'] as num?)?.toDouble() ?? 0);
+          }
+        }
+      } catch (_) {}
+    }
+
+    // Equipment prorating needs per-service elapsed days of its project.
+    final qsIdToProject = <String, String>{};
+    for (final p in projects) {
+      final pid = p['id'].toString();
+      for (final ps in psByProject[pid] ?? []) {
+        qsIdToProject[ps['id'].toString()] = pid;
+        if (ps['quote_service_id'] != null) {
+          qsIdToProject[ps['quote_service_id'].toString()] = pid;
+        }
+      }
+      final qid = p['quote_id']?.toString();
+      if (qid != null) {
+        for (final qs in qsByQuote[qid] ?? []) {
+          qsIdToProject[qs['id'].toString()] = pid;
+        }
+      }
+    }
+    final elapsedByProject = <String, double>{};
+    for (final p in projects) {
+      final pid = p['id'].toString();
+      final start = DateTime.tryParse(p['start_date']?.toString() ?? '');
+      elapsedByProject[pid] = start == null
+          ? 0.0
+          : _effectiveDays(nwByProject[pid] ?? {}, start, DateTime.now());
+    }
+    final equipCostByService = <String, double>{};
+    if (qsIdToProject.isNotEmpty) {
+      try {
+        final rows = await _supabase
+            .from('quote_service_instruments')
+            .select('quote_service_id, total_cost, days')
+            .in_('quote_service_id', qsIdToProject.keys.toList());
+        for (final row in asMaps(rows)) {
+          final qsId = row['quote_service_id']?.toString();
+          if (qsId == null) continue;
+          final pid = qsIdToProject[qsId];
+          if (pid == null) continue;
+          final totalCost = (row['total_cost'] as num?)?.toDouble() ?? 0;
+          final instrumentDays = (row['days'] as num?)?.toDouble() ?? 1;
+          equipCostByService[qsId] = (equipCostByService[qsId] ?? 0) +
+              computeProratedEquipmentCost(
+                totalCost: totalCost,
+                instrumentDays: instrumentDays,
+                elapsedDays: elapsedByProject[pid] ?? 0,
+              );
+        }
+      } catch (_) {}
+    }
 
     double totalPlannedCost = 0;
     double totalActualCost = 0;
@@ -771,43 +1027,171 @@ class ProductionMeasurementService {
     int projectsAtRisk = 0;
     int completedServices = 0;
     int totalServices = 0;
-
-    final List<Map<String, dynamic>> projectSummaries = [];
+    final projectSummaries = <Map<String, dynamic>>[];
 
     for (final p in projects) {
-      final projectId = p['id'] as String;
-      final measurement = await getProjectMeasurement(projectId);
-      if (measurement.containsKey('error')) continue;
+      final pid = p['id'].toString();
+      final projectServices = psByProject[pid] ?? [];
+      final mirroredQsIds = projectServices
+          .where((ps) => ps['quote_service_id'] != null)
+          .map((ps) => ps['quote_service_id'].toString())
+          .toSet();
+      final plannedServices = <Map<String, dynamic>>[
+        ...projectServices,
+        for (final qs in qsByQuote[p['quote_id']?.toString()] ?? [])
+          if (!mirroredQsIds.contains(qs['id'].toString())) qs,
+      ];
+      final serviceUnits = {
+        for (final s in plannedServices)
+          s['id'].toString():
+              (s['unit_of_measure'] as String?)?.toLowerCase() ?? ''
+      };
 
-      final plannedCost = (measurement['total_planned_cost'] as num?)?.toDouble() ?? 0;
-      final actualCost = (measurement['total_actual_cost'] as num?)?.toDouble() ?? 0;
-      final ev = (measurement['total_earned_value'] as num?)?.toDouble() ?? 0;
-      final plannedUnits = (measurement['total_planned_units'] as num?)?.toDouble() ?? 0;
-      final actualUnits = (measurement['total_actual_units'] as num?)?.toDouble() ?? 0;
-      final cpi = (measurement['cpi'] as num?)?.toDouble() ?? 1;
-      final spi = (measurement['spi'] as num?)?.toDouble() ?? 1;
-      final progress = (measurement['overall_progress'] as num?)?.toDouble() ?? 0;
-      final alerts = List<Map<String, dynamic>>.from(measurement['alerts'] ?? []);
-      final services = List<Map<String, dynamic>>.from(measurement['services'] ?? []);
+      final actualProduction = <String, double>{};
+      final actualMachCost = <String, double>{};
+      final actualLaborCost = <String, double>{};
+      final matCostByService = <String, double>{};
+
+      for (final log in machByProject[pid] ?? []) {
+        final qsId = log['project_machinery']?['quote_service_id']?.toString();
+        if (qsId == null) continue;
+        final cap =
+            (log['machinery']?['capacity_yards'] as num?)?.toDouble() ?? 0;
+        final prod = (log['production_value'] as num?)?.toDouble() ?? 0;
+        final hrs = (log['total_hours'] as num?)?.toDouble() ?? 0;
+        actualProduction[qsId] = (actualProduction[qsId] ?? 0) +
+            computeEffectiveProduction(prod, cap, serviceUnits[qsId] ?? '');
+        final pmId = log['project_machinery_id']?.toString();
+        final costInfo = pmId != null ? machCostMap[pmId] : null;
+        if (costInfo != null) {
+          final fuelAdded = (log['fuel_added'] as num?)?.toDouble() ?? 0;
+          actualMachCost[qsId] = (actualMachCost[qsId] ?? 0) +
+              computeMachineryCost(
+                hours: hrs,
+                monthlyRent: costInfo['monthly_rent_cost'] as double,
+                fuelAdded: fuelAdded,
+                gallonCost: costInfo['gallon_cost'] as double,
+              );
+        }
+      }
+      for (final log in laborByProject[pid] ?? []) {
+        final qsId = log['project_labor']?['quote_service_id']?.toString();
+        if (qsId == null) continue;
+        final regHrs = (log['regular_hours'] as num?)?.toDouble() ?? 0;
+        final otHrs = (log['overtime_hours'] as num?)?.toDouble() ?? 0;
+        final rate = (log['workers']?['labor_roles']?['hourly_rate'] as num?)
+                ?.toDouble() ??
+            0;
+        actualLaborCost[qsId] = (actualLaborCost[qsId] ?? 0) +
+            computeLaborCost(
+                regularHours: regHrs,
+                overtimeHours: otHrs,
+                hourlyRate: rate);
+      }
+      for (final log in matByProject[pid] ?? []) {
+        final qsId = log['project_materials']?['quote_service_id']?.toString();
+        if (qsId == null) continue;
+        final qty = (log['quantity_used'] as num?)?.toDouble() ?? 0;
+        final pmId = log['project_material_id']?.toString();
+        final unitPrice = pmId != null ? (matPriceMap[pmId] ?? 0) : 0;
+        matCostByService[qsId] =
+            (matCostByService[qsId] ?? 0) + qty * unitPrice;
+      }
+
+      double plannedCost = 0;
+      double actualCost = 0;
+      double ev = 0;
+      double plannedUnits = 0;
+      double actualUnits = 0;
+      int svcCompleted = 0;
+      int svcTotal = 0;
+      int alertsCount = 0;
+
+      for (final ps in plannedServices) {
+        final qsId = ps['id']?.toString() ?? '';
+        final plannedQty = (ps['quantity'] as num?)?.toDouble() ?? 0;
+        final directCost = (ps['direct_cost'] as num?)?.toDouble() ?? 0;
+        final actualProd = actualProduction[qsId] ?? 0;
+        final progress = computeProgress(actualProd, plannedQty);
+        final unitCost = plannedQty > 0 ? directCost / plannedQty : 0;
+        final earned = actualProd * unitCost;
+        final cost = (actualLaborCost[qsId] ?? 0) +
+            (actualMachCost[qsId] ?? 0) +
+            (matCostByService[qsId] ?? 0) +
+            (equipCostByService[qsId] ?? 0);
+
+        plannedCost += directCost;
+        actualCost += cost;
+        ev += earned;
+        plannedUnits += plannedQty;
+        actualUnits += actualProd;
+        alertsCount += generateServiceAlerts(
+          serviceName: ps['name'] ?? '',
+          serviceId: qsId,
+          plannedQuantity: plannedQty,
+          directCost: directCost,
+          earnedValue: earned,
+          actualCost: cost,
+          progress: progress,
+        ).length;
+
+        // Completion counting replicates the Original/CO split proration.
+        final co = coTotals[qsId];
+        if (co != null) {
+          final originalQty =
+              (plannedQty - co['qty']!).clamp(0, double.infinity);
+          final originalActual = actualProd.clamp(0, originalQty);
+          final coActual =
+              (actualProd - originalActual).clamp(0, double.infinity);
+          final originalProgress = originalQty > 0
+              ? (originalActual / originalQty * 100).clamp(0, 100)
+              : 0.0;
+          final coProgress = co['qty']! > 0
+              ? (coActual / co['qty']! * 100).clamp(0, 100)
+              : 0.0;
+          if (originalProgress >= 100) svcCompleted++;
+          if (coProgress >= 100) svcCompleted++;
+          svcTotal += 2;
+        } else {
+          if (progress >= 100) svcCompleted++;
+          svcTotal += 1;
+        }
+      }
+
+      final cpi = computeCPI(ev, actualCost);
+      double spi = 1.0;
+      final start = DateTime.tryParse(p['start_date']?.toString() ?? '');
+      if (start != null) {
+        final baselineEndStr = p['baseline_end_date']?.toString();
+        final currentEndStr = p['end_date']?.toString();
+        final endStr = baselineEndStr != null && baselineEndStr.isNotEmpty
+            ? baselineEndStr
+            : currentEndStr;
+        final end = endStr != null ? DateTime.tryParse(endStr) : null;
+        if (end != null && end.isAfter(start)) {
+          final ratios = nwByProject[pid] ?? {};
+          final totalDays = _effectiveDays(ratios, start, end);
+          final elapsed = _effectiveDays(ratios, start, DateTime.now());
+          if (totalDays > 0 && elapsed > 0) {
+            spi = computeSPI(ev, (elapsed / totalDays) * plannedCost);
+          }
+        }
+      }
+      final progress =
+          plannedUnits > 0 ? (actualUnits / plannedUnits * 100).clamp(0.0, 100.0) : 0.0;
 
       totalPlannedCost += plannedCost;
       totalActualCost += actualCost;
       totalEarnedValue += ev;
       totalPlannedUnits += plannedUnits;
       totalActualUnits += actualUnits;
-      totalAlerts += alerts.length;
-
-      int svcCompleted = 0;
-      for (final s in services) {
-        if (((s['progress'] as num?)?.toDouble() ?? 0) >= 100) svcCompleted++;
-      }
+      totalAlerts += alertsCount;
       completedServices += svcCompleted;
-      totalServices += services.length;
-
+      totalServices += svcTotal;
       if (cpi < 0.95 || spi < 0.9) projectsAtRisk++;
 
       projectSummaries.add({
-        'project_id': projectId,
+        'project_id': pid,
         'project_name': p['title'] ?? '',
         'status': p['status'] ?? '',
         'progress': progress,
@@ -816,23 +1200,20 @@ class ProductionMeasurementService {
         'planned_cost': plannedCost,
         'actual_cost': actualCost,
         'earned_value': ev,
-        'alerts_count': alerts.length,
+        'alerts_count': alertsCount,
         'completed_services': svcCompleted,
-        'total_services': services.length,
+        'total_services': svcTotal,
       });
     }
-
-    final portfolioCPI = computeCPI(totalEarnedValue, totalActualCost);
-    final portfolioProgress = totalPlannedUnits > 0
-        ? (totalActualUnits / totalPlannedUnits * 100).clamp(0.0, 100.0)
-        : 0.0;
 
     return {
       'total_planned_cost': totalPlannedCost,
       'total_actual_cost': totalActualCost,
       'total_earned_value': totalEarnedValue,
-      'portfolio_cpi': portfolioCPI,
-      'portfolio_progress': portfolioProgress,
+      'portfolio_cpi': computeCPI(totalEarnedValue, totalActualCost),
+      'portfolio_progress': totalPlannedUnits > 0
+          ? (totalActualUnits / totalPlannedUnits * 100).clamp(0.0, 100.0)
+          : 0.0,
       'total_alerts': totalAlerts,
       'projects_at_risk': projectsAtRisk,
       'total_projects': projects.length,
@@ -842,6 +1223,23 @@ class ProductionMeasurementService {
     };
   }
 
+  /// Local replica of `DailyReportService.getEffectiveElapsedDays` over
+  /// prefetched non-working-day ratios (no extra query).
+  double _effectiveDays(
+      Map<String, double> ratios, DateTime start, DateTime end) {
+    double effectiveDays = 0;
+    for (var d = start; !d.isAfter(end); d = d.add(const Duration(days: 1))) {
+      final key =
+          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      final nwRatio = ratios[key] ?? 0;
+      if (nwRatio >= 1.0) continue;
+      if (d.weekday == DateTime.sunday) continue;
+      final dayWeight = d.weekday == DateTime.saturday ? 0.5 : 1.0;
+      effectiveDays += dayWeight * (1.0 - nwRatio);
+    }
+    return effectiveDays.clamp(0, 999999);
+  }
+
   Future<List<Map<String, dynamic>>> _fetchMachineryLogs(
     String projectId,
     Map<String, String> serviceUnits,
@@ -849,7 +1247,7 @@ class ProductionMeasurementService {
     final result = await _supabase
         .from('report_machinery_logs')
         .select('''
-          production_value, total_hours, fuel_added,
+          production_value, total_hours, fuel_added, project_machinery_id,
           machinery!inner(capacity_yards),
           project_machinery!inner(quote_service_id, project_id, id),
           daily_reports!inner(status)
@@ -877,7 +1275,7 @@ class ProductionMeasurementService {
     final result = await _supabase
         .from('report_material_usage')
         .select('''
-          quantity_used,
+          quantity_used, project_material_id,
           project_materials!inner(quote_service_id, project_id, id),
           daily_reports!inner(status)
         ''')
