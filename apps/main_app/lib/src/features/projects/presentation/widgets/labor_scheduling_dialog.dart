@@ -26,6 +26,8 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
   bool _isSaving = false;
   DateTime? _startDate;
   DateTime? _endDate;
+  DateTime? _estStart;
+  DateTime? _estEnd;
   double? _stipulatedDays;
   Map<String, double> _nonWorkingDays = {};
 
@@ -126,6 +128,12 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
               if (d != null) {
                 _stipulatedDays = (d as num).toDouble();
               }
+              if (estStart != null) {
+                _estStart = DateTime.tryParse(estStart.toString());
+              }
+              if (estEnd != null) {
+                _estEnd = DateTime.tryParse(estEnd.toString());
+              }
               if (_startDate == null && estStart != null) {
                 _startDate = DateTime.tryParse(estStart.toString());
               }
@@ -216,7 +224,7 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
               children: [
                 if (widget.serviceName.isNotEmpty) ...[
                   Container(
-                    margin: const EdgeInsets.only(bottom: 16),
+                    margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: AppTheme.primaryGreen.withOpacity(0.1),
@@ -228,6 +236,7 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
                     ),
                   ),
                 ],
+                _buildEstimationReference(),
                           if (_stipulatedDays != null)
                             Padding(
                               padding: const EdgeInsets.only(bottom: 16),
@@ -304,6 +313,79 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
                   ],
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEstimationReference() {
+    final hasEst = _estStart != null && _estEnd != null;
+    String rangeText;
+    if (hasEst) {
+      final days = _stipulatedDays != null
+          ? ' · ${_stipulatedDays!.toStringAsFixed(0)} working days'
+          : '';
+      rangeText =
+          '${_estStart.toString().split(' ')[0]} → ${_estEnd.toString().split(' ')[0]}$days';
+    } else {
+      rangeText = 'No estimation dates for this service';
+    }
+    String? deviation;
+    if (hasEst && _startDate != null) {
+      final diff = _startDate!.difference(_estStart!).inDays;
+      if (diff != 0) {
+        deviation = diff > 0
+            ? 'Starts $diff day${diff == 1 ? '' : 's'} after estimate'
+            : 'Starts ${-diff} day${diff == -1 ? '' : 's'} before estimate';
+      }
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.primaryGreen, width: 1.2),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.calendar_month, size: 18, color: AppTheme.primaryGreen),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ESTIMATED PERIOD (REFERENCE)',
+                  style: GoogleFonts.manrope(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.primaryGreen,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  rangeText,
+                  style: GoogleFonts.manrope(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                if (deviation != null)
+                  Text(
+                    deviation,
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.orange,
+                    ),
+                  ),
+              ],
             ),
           ),
         ],

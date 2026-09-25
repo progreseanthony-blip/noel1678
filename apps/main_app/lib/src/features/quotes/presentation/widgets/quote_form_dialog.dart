@@ -2256,75 +2256,118 @@ String _nonEmptyStr(dynamic value) {
                           // Work Projection Button (only for non-LS/non-staffing)
                           if (svc.unitOfMeasure.toLowerCase() != 'ls' && !svc.isStaffingRole) ...[
                             const SizedBox(width: 10),
-                            Tooltip(
-                              message: 'Work Projection',
-                              child: MouseRegion(
-                                cursor: SystemMouseCursors.click,
-                                child: GestureDetector(
-                                  onDoubleTap: () {},
-                                  onTapDown: (_) => setState(
-                                    () => _activeServiceIndex = serviceIndex,
-                                  ),
-                                  onTap: () async {
-                                    final result = await showSafeDialog(
-                                      context: context,
-                                      fullscreenOnMobile: true,
-                                      builder: (_) => ServiceEstimationDialog(
-                                        service: {
-                                          'id': null,
-                                          'catalog_service_id': svc.catalogId,
-                                          'name': svc.name,
-                                          'quantity': svc.quantity,
-                                          'unit': svc.unitOfMeasure,
-                                          'estimationData': svc.estimationData,
-                                        },
+                            Builder(
+                              builder: (context) {
+                                final hasProjection = svc.estimationData != null;
+                                return Tooltip(
+                                  message: hasProjection
+                                      ? 'Work Projection — already projected (tap to edit)'
+                                      : 'Work Projection',
+                                  child: MouseRegion(
+                                    cursor: SystemMouseCursors.click,
+                                    child: GestureDetector(
+                                      onDoubleTap: () {},
+                                      onTapDown: (_) => setState(
+                                        () => _activeServiceIndex = serviceIndex,
                                       ),
-                                    );
+                                      onTap: () async {
+                                        final result = await showSafeDialog(
+                                          context: context,
+                                          fullscreenOnMobile: true,
+                                          builder: (_) => ServiceEstimationDialog(
+                                            service: {
+                                              'id': null,
+                                              'catalog_service_id': svc.catalogId,
+                                              'name': svc.name,
+                                              'quantity': svc.quantity,
+                                              'unit': svc.unitOfMeasure,
+                                              'estimationData': svc.estimationData,
+                                            },
+                                          ),
+                                        );
 
-                                    if (result != null &&
-                                        result is Map &&
-                                        result['applied'] == true) {
-                                      setState(() {
-                                        svc.quantity =
-                                            (result['total_cy_loose'] as num)
-                                                .toDouble();
-                                        svc.estimationData =
-                                            Map<String, dynamic>.from(
-                                              result as Map,
+                                        if (result != null &&
+                                            result is Map &&
+                                            result['applied'] == true) {
+                                          setState(() {
+                                            svc.quantity =
+                                                (result['total_cy_loose'] as num)
+                                                    .toDouble();
+                                            svc.estimationData =
+                                                Map<String, dynamic>.from(
+                                                  result as Map,
+                                                );
+                                            _syncMachineryFromEstimation(
+                                              svc,
+                                              result as Map<String, dynamic>,
                                             );
-                                        _syncMachineryFromEstimation(
-                                          svc,
-                                          result as Map<String, dynamic>,
-                                        );
-                                        _syncMaterialsFromEstimation(
-                                          svc,
-                                          result as Map<String, dynamic>,
-                                        );
-                                        _syncInstrumentsFromEstimation(
-                                          svc,
-                                          result as Map<String, dynamic>,
-                                        );
-                                      });
-                                    }
-                                  },
-                                  child: Container(
-                                    margin: const EdgeInsets.only(bottom: 2),
-                                    padding: const EdgeInsets.all(8),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.primaryGreen.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: AppTheme.primaryGreen.withOpacity(0.3),
+                                            _syncMaterialsFromEstimation(
+                                              svc,
+                                              result as Map<String, dynamic>,
+                                            );
+                                            _syncInstrumentsFromEstimation(
+                                              svc,
+                                              result as Map<String, dynamic>,
+                                            );
+                                          });
+                                        }
+                                      },
+                                      child: Container(
+                                        margin: const EdgeInsets.only(bottom: 2),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 10,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: hasProjection
+                                              ? AppTheme.slate900
+                                              : AppTheme.primaryGreen,
+                                          borderRadius: BorderRadius.circular(10),
+                                          border: Border.all(
+                                            color: AppTheme.primaryGreen,
+                                            width: 1.5,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: hasProjection
+                                                  ? Colors.black.withOpacity(0.25)
+                                                  : AppTheme.primaryGreen
+                                                      .withOpacity(0.4),
+                                              blurRadius: 8,
+                                              offset: const Offset(0, 2),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              hasProjection
+                                                  ? Icons.check_circle
+                                                  : Icons.calculate_outlined,
+                                              color: hasProjection
+                                                  ? AppTheme.primaryGreen
+                                                  : const Color(0xFF0F172A),
+                                              size: 16,
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              'Work Projection',
+                                              style: GoogleFonts.manrope(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w800,
+                                                color: hasProjection
+                                                    ? Colors.white
+                                                    : const Color(0xFF0F172A),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                    child: const Icon(
-                                      Icons.analytics_outlined,
-                                      color: AppTheme.primaryGreen,
-                                      size: 16,
-                                    ),
                                   ),
-                                ),
-                              ),
+                                );
+                              },
                             ),
                           ],
 

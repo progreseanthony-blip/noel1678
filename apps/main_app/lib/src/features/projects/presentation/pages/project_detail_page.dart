@@ -14,6 +14,7 @@ import '../widgets/worker_assignment_dialog.dart';
 import '../widgets/machinery_scheduling_dialog.dart';
 import '../widgets/instrument_scheduling_dialog.dart';
 import '../widgets/labor_scheduling_dialog.dart';
+import '../widgets/standard_period_picker_dialog.dart';
 import 'package:flutter/gestures.dart';
 import 'package:printing/printing.dart';
 import '../utils/timeline_pdf_generator.dart';
@@ -34,6 +35,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
   List<Map<String, dynamic>> _instruments = [];
   Map<String, String?> _machineryPhotos = {};
   Map<String, double?> _serviceDurations = {};
+  Map<String, Map<String, DateTime?>> _serviceEstRanges = {};
   bool _isLoading = true;
   String? _error;
   late TabController _tabController;
@@ -89,24 +91,24 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
       // 2. Load Machinery
       final mResult = await supabase
           .from('project_machinery')
-          .select('*, quote_services(name, unit_of_measure, quote_service_estimations(total_working_days)), project_services(name), project_machinery_assignments(*), quote_service_machineries(quote_services(name, unit_of_measure, quote_service_estimations(total_working_days))), machinery_inspections(*)')
+          .select('*, quote_services(name, unit_of_measure, quote_service_estimations(total_working_days, start_date, end_date)), project_services(name), project_machinery_assignments(*), quote_service_machineries(quote_services(name, unit_of_measure, quote_service_estimations(total_working_days, start_date, end_date))), machinery_inspections(*)')
           .eq('project_id', widget.projectId)
           .order('machinery_name');
 
       // 3. Materials
-      final matResult = await supabase.from('project_materials').select('*, quote_services(name, quote_service_estimations(total_working_days)), project_services(name), quote_service_materials(quote_services(name, quote_service_estimations(total_working_days)))').eq('project_id', widget.projectId).order('material_name');
+      final matResult = await supabase.from('project_materials').select('*, quote_services(name, quote_service_estimations(total_working_days, start_date, end_date)), project_services(name), quote_service_materials(quote_services(name, quote_service_estimations(total_working_days, start_date, end_date)))').eq('project_id', widget.projectId).order('material_name');
 
       // 4. Load Instruments
       final iResult = await supabase
           .from('project_instruments')
-          .select('*, quote_services(name, quote_service_estimations(total_working_days)), project_services(name), project_instrument_assignments(*), quote_service_instruments(quote_services(name, quote_service_estimations(total_working_days)))')
+          .select('*, quote_services(name, quote_service_estimations(total_working_days, start_date, end_date)), project_services(name), project_instrument_assignments(*), quote_service_instruments(quote_services(name, quote_service_estimations(total_working_days, start_date, end_date)))')
           .eq('project_id', widget.projectId)
           .order('instrument_name');
 
       // 5. Labor
       final labResult = await supabase
           .from('project_labor')
-          .select('*, quote_services(name, quote_service_estimations(total_working_days)), project_services(name), quote_service_labors(quote_services(name, quote_service_estimations(total_working_days))), project_labor_assignments(start_date, end_date, workers(full_name))')
+          .select('*, quote_services(name, quote_service_estimations(total_working_days, start_date, end_date)), project_services(name), quote_service_labors(quote_services(name, quote_service_estimations(total_working_days, start_date, end_date))), project_labor_assignments(start_date, end_date, workers(full_name))')
           .eq('project_id', widget.projectId)
           .order('role_name');
 
@@ -129,6 +131,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
         final allServices = <String>{'All Services'};
         
         final serviceDurations = <String, double?>{};
+        final serviceEstRanges = <String, Map<String, DateTime?>>{};
         
         void addServiceSafely(dynamic list, String relationName) {
           if (list == null || list is! List) return;
@@ -159,16 +162,28 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                   if (name != null) {
                     allServices.add(name);
                     
-                    // Extract duration
+                    // Extract duration + estimation period
                     final est = sData['quote_service_estimations'];
-                    dynamic duration;
+                    dynamic firstEst;
                     if (est is List && est.isNotEmpty) {
-                      duration = est[0]['total_working_days'];
+                      firstEst = est[0];
                     } else if (est is Map) {
-                      duration = est['total_working_days'];
+                      firstEst = est;
                     }
-                    if (duration != null) {
-                      serviceDurations[name] = (duration as num).toDouble();
+                    if (firstEst != null) {
+                      final duration = firstEst['total_working_days'];
+                      if (duration != null) {
+                        serviceDurations[name] = (duration as num).toDouble();
+                      }
+                      final estStart = firstEst['start_date'] != null
+                          ? DateTime.tryParse(firstEst['start_date'].toString())
+                          : null;
+                      final estEnd = firstEst['end_date'] != null
+                          ? DateTime.tryParse(firstEst['end_date'].toString())
+                          : null;
+                      if (estStart != null || estEnd != null) {
+                        serviceEstRanges[name] = {'start': estStart, 'end': estEnd};
+                      }
                     }
                   }
                 }
@@ -238,6 +253,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
           _materialUsage = matUsage;
           _machineryProduction = machProd;
           _serviceDurations = serviceDurations;
+          _serviceEstRanges = serviceEstRanges;
           _projectServices = allServices.toList()..sort((a, b) {
             if (a == 'All Services') return -1;
             if (b == 'All Services') return 1;
@@ -686,6 +702,16 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
 
   Widget _buildServiceHeader(String name, {String? serviceId}) {
     final duration = _serviceDurations[name];
+    final estRange = _serviceEstRanges[name];
+    final estStart = estRange?['start'];
+    final estEnd = estRange?['end'];
+    String? estLabel;
+    if (estStart != null && estEnd != null) {
+      estLabel =
+          'EST: ${estStart.toString().split(' ')[0]} → ${estEnd.toString().split(' ')[0]}';
+    } else if (estStart != null) {
+      estLabel = 'EST START: ${estStart.toString().split(' ')[0]}';
+    }
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16, top: 12),
@@ -707,13 +733,17 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                   ),
                 ),
                 const SizedBox(width: 10),
-                Text(
-                  name.toUpperCase(),
-                  style: GoogleFonts.manrope(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w900,
-                    color: AppTheme.slate600,
-                    letterSpacing: 1.5,
+                Flexible(
+                  child: Text(
+                    name.toUpperCase(),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      color: AppTheme.slate600,
+                      letterSpacing: 1.5,
+                    ),
                   ),
                 ),
                 if (duration != null) ...[
@@ -730,6 +760,28 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
                         color: AppTheme.slate600,
+                      ),
+                    ),
+                  ),
+                ],
+                if (estLabel != null) ...[
+                  const SizedBox(width: 8),
+                  Tooltip(
+                    message: 'Original estimation period (reference)',
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F172A),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppTheme.primaryGreen, width: 1),
+                      ),
+                      child: Text(
+                        estLabel,
+                        style: GoogleFonts.manrope(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
@@ -820,6 +872,26 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
                         color: AppTheme.slate600,
+                      ),
+                    ),
+                  ),
+                ),
+              if (estLabel != null)
+                Padding(
+                  padding: const EdgeInsets.only(left: 32, top: 6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF0F172A),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: AppTheme.primaryGreen, width: 1),
+                    ),
+                    child: Text(
+                      estLabel,
+                      style: GoogleFonts.manrope(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -1556,7 +1628,7 @@ currentPath: '/projects/${widget.projectId}',
                 for (final row in rows)
                   TableRow(
                     children: [
-                      _tableCell(row['service']?.toString() ?? ''),
+                      _tableServiceCell(row['service']?.toString() ?? ''),
                       _tableCell(row['machinery']?['machinery_name']?.toString() ?? '', bold: true),
                       _tableCell((row['machinery']?['expected_quantity'] as num?)?.toInt().toString() ?? ''),
                       _tableCell(row['machinery']?['start_date'] != null ? fmt.format(DateTime.parse(row['machinery']['start_date'].toString())) : '—'),
@@ -1566,7 +1638,7 @@ currentPath: '/projects/${widget.projectId}',
                         child: Padding(
                           padding: const EdgeInsets.all(12),
                           child: TextButton.icon(
-                            onPressed: () => _openTableDatePicker(row['machinery'], fmt),
+                            onPressed: () => _openTableDatePicker(row['machinery'], fmt, serviceName: row['service']?.toString()),
                             icon: const Icon(Icons.event, size: 14, color: AppTheme.primaryGreen),
                             label: Text('Set dates', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
                           ),
@@ -1616,15 +1688,60 @@ currentPath: '/projects/${widget.projectId}',
     );
   }
 
-  Future<void> _openTableDatePicker(Map<String, dynamic> m, DateFormat fmt) async {
+  TableCell _tableServiceCell(String serviceName) {
+    final estRange = _serviceEstRanges[serviceName];
+    final estStart = estRange?['start'];
+    final estEnd = estRange?['end'];
+    String? estLabel;
+    if (estStart != null && estEnd != null) {
+      estLabel =
+          'Est: ${estStart.toString().split(' ')[0]} → ${estEnd.toString().split(' ')[0]}';
+    } else if (estStart != null) {
+      estLabel = 'Est: ${estStart.toString().split(' ')[0]}';
+    }
+    return TableCell(
+      verticalAlignment: TableCellVerticalAlignment.middle,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(serviceName,
+                style: GoogleFonts.manrope(
+                    fontSize: 12, fontWeight: FontWeight.w400, color: AppTheme.slate700)),
+            if (estLabel != null) ...[
+              const SizedBox(height: 4),
+              Text(estLabel,
+                  style: GoogleFonts.manrope(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      fontStyle: FontStyle.italic,
+                      color: AppTheme.slate500)),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openTableDatePicker(Map<String, dynamic> m, DateFormat fmt, {String? serviceName}) async {
     final initialStart = m['start_date'] != null ? DateTime.parse(m['start_date'].toString()) : DateTime.now();
-    final picked = await showDateRangePicker(
+    final initialEnd = m['end_date'] != null
+        ? DateTime.parse(m['end_date'].toString())
+        : initialStart.add(const Duration(days: 7));
+    final estRange = serviceName != null ? _serviceEstRanges[serviceName] : null;
+    final picked = await showSafeDialog<DateTimeRange>(
       context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      initialDateRange: DateTimeRange(
-        start: initialStart,
-        end: m['end_date'] != null ? DateTime.parse(m['end_date'].toString()) : initialStart.add(const Duration(days: 7)),
+      fullscreenOnMobile: true,
+      builder: (_) => StandardPeriodPickerDialog(
+        title: 'Set Dates',
+        subtitle: serviceName,
+        initialStart: initialStart,
+        initialEnd: initialEnd,
+        referenceLabel: 'ESTIMATED PERIOD (REFERENCE)',
+        referenceStart: estRange?['start'],
+        referenceEnd: estRange?['end'],
       ),
     );
     if (picked == null) return;
@@ -1637,11 +1754,25 @@ currentPath: '/projects/${widget.projectId}',
 
   Future<void> _openBatchDateRange(List<String> serviceNames, DateFormat fmt) async {
     final first = DateTime.now();
-    final picked = await showDateRangePicker(
+    final bool singleService = serviceNames.length == 1;
+    final estRange = singleService ? _serviceEstRanges[serviceNames.first] : null;
+    final picked = await showSafeDialog<DateTimeRange>(
       context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2100),
-      initialDateRange: DateTimeRange(start: first, end: first.add(const Duration(days: 7))),
+      fullscreenOnMobile: true,
+      builder: (_) => StandardPeriodPickerDialog(
+        title: 'Schedule Period',
+        subtitle: singleService
+            ? serviceNames.first
+            : '${serviceNames.length} services (applies to unscheduled only)',
+        initialStart: first,
+        initialEnd: first.add(const Duration(days: 7)),
+        referenceLabel: 'ESTIMATED PERIOD (REFERENCE)',
+        referenceStart: estRange?['start'],
+        referenceEnd: estRange?['end'],
+        referenceFallback: singleService
+            ? 'No estimation dates for this service'
+            : 'Multiple services — see EST badges per service',
+      ),
     );
     if (picked == null) return;
     var count = 0;

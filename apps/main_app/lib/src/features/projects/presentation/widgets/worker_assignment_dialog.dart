@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
+import 'standard_period_picker_dialog.dart';
 
 class WorkerAssignmentDialog extends StatefulWidget {
   final String projectLaborId;
@@ -316,11 +317,18 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
     final DateTime initialStart = DateTime.parse(current['start']!);
     final DateTime initialEnd = DateTime.parse(current['end']!);
 
-    final DateTimeRange? picked = await showDateRangePicker(
+    final DateTimeRange? picked = await showSafeDialog<DateTimeRange>(
       context: context,
-      firstDate: DateTime.now().subtract(const Duration(days: 365)),
-      lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
-      initialDateRange: DateTimeRange(start: initialStart, end: initialEnd),
+      fullscreenOnMobile: true,
+      builder: (_) => StandardPeriodPickerDialog(
+        title: 'Edit Dates',
+        subtitle: widget.roleName,
+        initialStart: initialStart,
+        initialEnd: initialEnd,
+        firstDate: DateTime.now().subtract(const Duration(days: 365)),
+        lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+        referenceFallback: 'No reference dates for this role',
+      ),
     );
 
     if (picked != null) {

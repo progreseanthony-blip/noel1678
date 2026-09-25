@@ -26,6 +26,8 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
   bool _isLoading = true;
   double? _stipulatedDays;
   String? _quoteServiceId;
+  DateTime? _estStart;
+  DateTime? _estEnd;
   Map<String, double> _nonWorkingDays = {};
   
   final Map<int, Map<String, dynamic>> _unitPlans = {};
@@ -76,7 +78,7 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
       final projectId = mRes['project_id'];
       
       dynamic duration;
-      String? _estStartDate, _estEndDate;
+      String? estStartStr, estEndStr;
       try {
         final qsi = mRes['quote_service_instruments'];
         if (qsi != null) {
@@ -91,8 +93,8 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
             }
             if (firstEst != null) {
               duration = firstEst['total_working_days'];
-              _estStartDate = firstEst['start_date']?.toString();
-              _estEndDate = firstEst['end_date']?.toString();
+              estStartStr = firstEst['start_date']?.toString();
+              estEndStr = firstEst['end_date']?.toString();
             }
           }
         }
@@ -100,6 +102,8 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
         debugPrint('Error parsing duration: $e');
       }
       _stipulatedDays = duration != null ? (duration as num).toDouble() : null;
+      _estStart = estStartStr != null ? DateTime.tryParse(estStartStr) : null;
+      _estEnd = estEndStr != null ? DateTime.tryParse(estEndStr) : null;
 
       final assignments = await supabase
           .from('project_instrument_assignments')
@@ -109,10 +113,10 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
 
       // Default dates: estimation dates first, then other resources
       if (assignments.isEmpty && _quoteServiceId != null) {
-        if (_estStartDate != null) {
-          _batchStartDate = DateTime.tryParse(_estStartDate!);
-          if (_batchStartDate != null && _estEndDate != null) {
-            _batchEndDate = DateTime.tryParse(_estEndDate!);
+        if (estStartStr != null) {
+          _batchStartDate = DateTime.tryParse(estStartStr);
+          if (_batchStartDate != null && estEndStr != null) {
+            _batchEndDate = DateTime.tryParse(estEndStr);
           }
         }
         if (_batchStartDate == null) {
@@ -286,7 +290,7 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
               children: [
                 if (widget.serviceName.isNotEmpty) ...[
                   Container(
-                    margin: const EdgeInsets.only(bottom: 16),
+                    margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
                       color: AppTheme.primaryGreen.withOpacity(0.1),
@@ -298,6 +302,7 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
                     ),
                   ),
                 ],
+                _buildEstimationReference(),
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(color: AppTheme.slate50, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200)),
@@ -513,6 +518,79 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEstimationReference() {
+    final hasEst = _estStart != null && _estEnd != null;
+    String rangeText;
+    if (hasEst) {
+      final days = _stipulatedDays != null
+          ? ' · ${_stipulatedDays!.toStringAsFixed(0)} working days'
+          : '';
+      rangeText =
+          '${_estStart.toString().split(' ')[0]} → ${_estEnd.toString().split(' ')[0]}$days';
+    } else {
+      rangeText = 'No estimation dates for this service';
+    }
+    String? deviation;
+    if (hasEst && _batchStartDate != null) {
+      final diff = _batchStartDate!.difference(_estStart!).inDays;
+      if (diff != 0) {
+        deviation = diff > 0
+            ? 'Starts $diff day${diff == 1 ? '' : 's'} after estimate'
+            : 'Starts ${-diff} day${diff == -1 ? '' : 's'} before estimate';
+      }
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.primaryGreen, width: 1.2),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.calendar_month, size: 18, color: AppTheme.primaryGreen),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'ESTIMATED PERIOD (REFERENCE)',
+                  style: GoogleFonts.manrope(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.primaryGreen,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  rangeText,
+                  style: GoogleFonts.manrope(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                if (deviation != null)
+                  Text(
+                    deviation,
+                    style: GoogleFonts.manrope(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      fontStyle: FontStyle.italic,
+                      color: Colors.orange,
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),

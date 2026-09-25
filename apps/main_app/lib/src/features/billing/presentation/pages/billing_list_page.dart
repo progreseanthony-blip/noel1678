@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
+import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
@@ -10,6 +11,7 @@ import 'package:pdf/pdf.dart';
 import '../providers/billing_providers.dart';
 import '../utils/invoice_pdf_generator.dart';
 import '../utils/invoice_excel_generator.dart';
+import '../../../projects/presentation/widgets/standard_period_picker_dialog.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import '../../../../shared/widgets/sidebar.dart';
@@ -32,16 +34,19 @@ class _BillingListPageState extends ConsumerState<BillingListPage> {
   }
 
   Future<void> _newInvoice() async {
-    DateTimeRange? range = await showDateRangePicker(
+    final DateTimeRange? range = await showSafeDialog<DateTimeRange>(
       context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-      initialDateRange: DateTimeRange(start: DateTime.now().subtract(const Duration(days: 30)), end: DateTime.now()),
-      builder: (ctx, child) => Theme(
-        data: Theme.of(ctx).copyWith(
-          colorScheme: ColorScheme.fromSeed(seedColor: AppTheme.primaryGreen, brightness: Brightness.light),
-        ),
-        child: child!,
+      fullscreenOnMobile: true,
+      builder: (_) => StandardPeriodPickerDialog(
+        title: 'New Pay Application',
+        subtitle: 'Billing period',
+        initialStart: DateTime.now().subtract(const Duration(days: 30)),
+        initialEnd: DateTime.now(),
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2030),
+        referenceLabel: 'DEFAULT PERIOD',
+        referenceFallback: 'Default: last 30 days',
+        confirmLabel: 'Continue',
       ),
     );
 
