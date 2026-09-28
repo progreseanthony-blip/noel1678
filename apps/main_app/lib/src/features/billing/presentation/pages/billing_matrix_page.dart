@@ -11,10 +11,12 @@ import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import '../providers/billing_controller.dart';
 import '../utils/invoice_pdf_generator.dart';
 import '../utils/invoice_excel_generator.dart';
 import '../../../../shared/widgets/sidebar.dart';
+import '../../../../shared/widgets/send_email_dialog.dart';
 import '../../../../shared/widgets/completed_project_banner.dart';
 import '../../../../shared/widgets/desktop_required_notice.dart';
 
@@ -699,8 +701,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
     }
   }
 
-  Future<void> _printPdf() async {
-    if (_invoice == null) return;
+  Future<({Uint8List bytes, String name})> _buildPdfBytes() async {
     final project = await Supabase.instance.client
         .from('projects')
         .select('title, client_name')
@@ -720,10 +721,57 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
       machineryDeductions: allDeductions,
     );
 
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdfBytes,
+    return (
+      bytes: pdfBytes,
       name: 'PayApp_${_invoice?['invoice_number'] ?? 'draft'}',
     );
+  }
+
+  Future<void> _printPdf() async {
+    if (_invoice == null) return;
+    final doc = await _buildPdfBytes();
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => doc.bytes,
+      name: doc.name,
+    );
+  }
+
+  Future<void> _emailPdf() async {
+    if (_invoice == null) return;
+    try {
+      final doc = await _buildPdfBytes();
+      if (!mounted) return;
+      final number = _invoice?['invoice_number']?.toString() ?? '';
+      final sent = await showSafeDialog(
+        context: context,
+        fullscreenOnMobile: true,
+        builder: (_) => SendEmailDialog(
+          dialogTitle: 'Send Pay Application',
+          subject: 'Pay Application $number',
+          body:
+              'Hello,\n\nPlease find attached pay application $number.\n\nBest regards,',
+          fileName: '${doc.name}.pdf',
+          pdfBytes: doc.bytes,
+          docType: 'pay_application',
+          projectId: widget.projectId,
+          invoiceId: _invoice?['id']?.toString(),
+        ),
+      );
+      if (sent == true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pay application sent by email'),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Email error: $e')));
+      }
+    }
   }
 
   Future<void> _downloadExcel() async {
@@ -864,6 +912,18 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         onPressed: _printPdf,
         icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
         label: Text('PDF', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppTheme.primaryGreen,
+          side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      ),
+      const SizedBox(width: 8),
+      OutlinedButton.icon(
+        onPressed: _emailPdf,
+        icon: const Icon(Icons.email_outlined, size: 16),
+        label: Text('Email', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
         style: OutlinedButton.styleFrom(
           foregroundColor: AppTheme.primaryGreen,
           side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),

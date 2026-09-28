@@ -8,10 +8,12 @@ import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
+import 'dart:typed_data';
 import '../../../projects/services/project_service.dart';
 import '../widgets/quote_form_dialog.dart';
 import '../widgets/service_estimation_dialog.dart';
 import '../../../../shared/widgets/sidebar.dart';
+import '../../../../shared/widgets/send_email_dialog.dart';
 import '../utils/quote_pdf_generator.dart';
 
 class QuoteDetailPage extends ConsumerStatefulWidget {
@@ -93,12 +95,11 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
       if (mounted) setState(() { _error = e.toString(); _isLoading = false; });
     }
   }
-  Future<void> _generateAndPrintPdf() async {
-    if (_quote == null) return;
-
+  Future<({Uint8List bytes, String name})> _buildPdf() async {
+    final quote = _quote!;
     double grandTotal = 0;
     Map<String, Map<String, double>> serviceTotals = {};
-    
+
     for (final svc in _services) {
       final t = _svcTotals(svc['id'], svc);
       serviceTotals[svc['id']] = t;
@@ -106,16 +107,63 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
     }
 
     final pdfBytes = await QuotePdfGenerator.generate(
-      quote: _quote!,
+      quote: quote,
       services: _services,
       serviceTotals: serviceTotals,
       grandTotal: grandTotal,
     );
+    return (
+      bytes: pdfBytes,
+      name: 'Estimate_${quote['id'].toString().substring(0, 8)}',
+    );
+  }
+
+  Future<void> _generateAndPrintPdf() async {
+    if (_quote == null) return;
+
+    final doc = await _buildPdf();
 
     await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdfBytes,
-      name: 'Estimate_${_quote?['id'].toString().substring(0, 8) ?? '0000'}',
+      onLayout: (PdfPageFormat format) async => doc.bytes,
+      name: doc.name,
     );
+  }
+
+  Future<void> _emailPdf() async {
+    if (_quote == null) return;
+    try {
+      final doc = await _buildPdf();
+      if (!mounted) return;
+      final title = _quote?['title']?.toString() ?? '';
+      final client = _quote?['client_name']?.toString() ?? '';
+      final sent = await showSafeDialog(
+        context: context,
+        fullscreenOnMobile: true,
+        builder: (_) => SendEmailDialog(
+          dialogTitle: 'Send Estimate',
+          subject: 'Estimate — $title',
+          body:
+              'Hello${client.isNotEmpty ? ' $client' : ''},\n\nPlease find attached our estimate "$title".\n\nBest regards,',
+          fileName: '${doc.name}.pdf',
+          pdfBytes: doc.bytes,
+          docType: 'estimate',
+          quoteId: widget.quoteId,
+        ),
+      );
+      if (sent == true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Estimate sent by email'),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Email error: $e')));
+      }
+    }
   }
 
   Future<void> _confirmDelete() async {
@@ -550,6 +598,20 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                           ),
                         ),
                         const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _emailPdf(),
+                            icon: const Icon(Icons.email_outlined, size: 16),
+                            label: Text('Email', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppTheme.primaryGreen,
+                              side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         IconButton(
                           onPressed: () => _confirmDelete(),
                           icon: const Icon(Icons.delete_outline, color: AppTheme.errorRed, size: 20),
@@ -729,6 +791,39 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
                                           const SizedBox(width: 8),
                                           Text(
                                             'PDF',
+                                            style: GoogleFonts.manrope(
+                                              color: AppTheme.primaryGreen,
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Email Button
+                              Expanded(
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: GestureDetector(
+                                    onTap: () => _emailPdf(),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryGreen.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(10),
+                                        border: Border.all(color: AppTheme.primaryGreen.withOpacity(0.2)),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          const Icon(Icons.email_outlined, color: AppTheme.primaryGreen, size: 16),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            'Email',
                                             style: GoogleFonts.manrope(
                                               color: AppTheme.primaryGreen,
                                               fontWeight: FontWeight.w700,

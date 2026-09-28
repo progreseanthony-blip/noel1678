@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -8,6 +9,7 @@ import 'package:noel_data/noel_data.dart';
 import 'package:pdf/pdf.dart';
 import 'package:printing/printing.dart';
 import '../../../../shared/widgets/sidebar.dart';
+import '../../../../shared/widgets/send_email_dialog.dart';
 import '../../../../shared/widgets/top_header.dart';
 import '../../../../shared/widgets/completed_project_banner.dart';
 import '../utils/payroll_pdf_generator.dart';
@@ -207,27 +209,84 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
   num get _totalCost => (_isVirtual ? _virtualTotals['total_cost'] : _period?['total_cost'] ?? 0) as num;
   num get _totalWorkers => (_isVirtual ? _virtualTotals['total_workers'] : _period?['total_workers'] ?? 0) as num;
 
+  Future<({Uint8List bytes, String name})?> _buildPeriodPdf() async {
+    if (!_hasEntries) return null;
+    final bytes = await PayrollPdfGenerator.generate(
+      projectTitle: _projectTitle,
+      periodName: _period?['name'] ?? '',
+      startDate: _displayStart,
+      endDate: _displayEnd,
+      entries: _currentEntries,
+      totalReg: _totalReg,
+      totalOT: _totalOT,
+      totalCost: _totalCost,
+      totalWorkers: _totalWorkers,
+    );
+    return (bytes: bytes, name: _exportName);
+  }
+
   Future<void> _exportPdf() async {
     if (!_hasEntries) return;
     try {
-      final bytes = await PayrollPdfGenerator.generate(
-        projectTitle: _projectTitle,
-        periodName: _period?['name'] ?? '',
-        startDate: _displayStart,
-        endDate: _displayEnd,
-        entries: _currentEntries,
-        totalReg: _totalReg,
-        totalOT: _totalOT,
-        totalCost: _totalCost,
-        totalWorkers: _totalWorkers,
-      );
+      final doc = await _buildPeriodPdf();
+      if (doc == null) return;
       await Printing.layoutPdf(
-        onLayout: (PdfPageFormat format) async => bytes,
-        name: _exportName,
+        onLayout: (PdfPageFormat format) async => doc.bytes,
+        name: doc.name,
       );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PDF error: $e')));
+      }
+    }
+  }
+
+  Future<void> _openEmailDialog({
+    required List<int> bytes,
+    required String fileName,
+    required String subject,
+    required String body,
+    String initialTo = '',
+  }) async {
+    final sent = await showSafeDialog(
+      context: context,
+      fullscreenOnMobile: true,
+      builder: (_) => SendEmailDialog(
+        dialogTitle: 'Send Payroll Report',
+        initialTo: initialTo,
+        subject: subject,
+        body: body,
+        fileName: fileName,
+        pdfBytes: bytes,
+        docType: 'payroll',
+        projectId: widget.projectId,
+      ),
+    );
+    if (sent == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Payroll report sent by email'),
+          backgroundColor: AppTheme.primaryGreen,
+        ),
+      );
+    }
+  }
+
+  Future<void> _emailPeriodPdf() async {
+    if (!_hasEntries) return;
+    try {
+      final doc = await _buildPeriodPdf();
+      if (doc == null || !mounted) return;
+      await _openEmailDialog(
+        bytes: doc.bytes,
+        fileName: '${doc.name}.pdf',
+        subject: 'Payroll ${_period?['name'] ?? ''} — $_projectTitle',
+        body:
+            'Hello,\n\nPlease find attached the payroll report for ${_period?['name'] ?? ''} ($_displayStart — $_displayEnd).\n\nBest regards,',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Email error: $e')));
       }
     }
   }
@@ -258,37 +317,44 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
     }
   }
 
+  Future<({Uint8List bytes, String name})?> _buildSignoffPdf() async {
+    if (!_hasEntries) return null;
+    final service = ref.read(payrollServiceProvider);
+    final result = await service.getWorkerDetailedLogs(
+      widget.periodId,
+      startDate: _virtualStart,
+      endDate: _virtualEnd,
+    );
+    final workers = List<Map<String, dynamic>>.from(result['workers'] as List);
+    if (workers.isEmpty) return null;
+    final bytes = await WorkerSignoffPdfGenerator.generate(
+      projectTitle: _projectTitle,
+      periodName: _period?['name'] ?? '',
+      startDate: _displayStart,
+      endDate: _displayEnd,
+      workers: workers,
+      totalReg: result['total_regular_hours'] as num,
+      totalOT: result['total_overtime_hours'] as num,
+      totalHours: result['total_hours'] as num,
+      totalWorkers: result['total_workers'] as num,
+    );
+    return (bytes: bytes, name: '${_exportName}_SignOff');
+  }
+
   Future<void> _exportWorkerSignoffPdf() async {
     if (!_hasEntries) return;
     setState(() => _isSignoffLoading = true);
     try {
-      final service = ref.read(payrollServiceProvider);
-      final result = await service.getWorkerDetailedLogs(
-        widget.periodId,
-        startDate: _virtualStart,
-        endDate: _virtualEnd,
-      );
-      final workers = List<Map<String, dynamic>>.from(result['workers'] as List);
-      if (workers.isEmpty) {
+      final doc = await _buildSignoffPdf();
+      if (doc == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No workers found for this period.')));
         }
         return;
       }
-      final bytes = await WorkerSignoffPdfGenerator.generate(
-        projectTitle: _projectTitle,
-        periodName: _period?['name'] ?? '',
-        startDate: _displayStart,
-        endDate: _displayEnd,
-        workers: workers,
-        totalReg: result['total_regular_hours'] as num,
-        totalOT: result['total_overtime_hours'] as num,
-        totalHours: result['total_hours'] as num,
-        totalWorkers: result['total_workers'] as num,
-      );
       await Printing.layoutPdf(
-        onLayout: (PdfPageFormat format) async => bytes,
-        name: '${_exportName}_SignOff',
+        onLayout: (PdfPageFormat format) async => doc.bytes,
+        name: doc.name,
       );
     } catch (e) {
       if (mounted) {
@@ -299,45 +365,115 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
     }
   }
 
+  Future<void> _emailSignoffPdf() async {
+    if (!_hasEntries) return;
+    setState(() => _isSignoffLoading = true);
+    try {
+      final doc = await _buildSignoffPdf();
+      if (doc == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No workers found for this period.')));
+        }
+        return;
+      }
+      if (!mounted) return;
+      await _openEmailDialog(
+        bytes: doc.bytes,
+        fileName: '${doc.name}.pdf',
+        subject: 'Payroll Sign-off ${_period?['name'] ?? ''} — $_projectTitle',
+        body:
+            'Hello,\n\nPlease find attached the worker sign-off sheet for ${_period?['name'] ?? ''}.\n\nBest regards,',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Email error: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSignoffLoading = false);
+    }
+  }
+
+  Future<({Uint8List bytes, String name, String workerName, String workerEmail})?>
+      _buildIndividualPdf(Map<String, dynamic> workerEntry) async {
+    final service = ref.read(payrollServiceProvider);
+    final workerId = workerEntry['worker_id'] as String;
+    final result = await service.getDailyLogsForWorker(
+      widget.periodId,
+      workerId,
+      startDate: _virtualStart,
+      endDate: _virtualEnd,
+    );
+
+    if (result['worker'] == null) return null;
+    final worker = result['worker'] as Map<String, dynamic>;
+
+    final bytes = await WorkerIndividualReportPdfGenerator.generate(
+      projectTitle: _projectTitle,
+      periodName: _period?['name'] ?? '',
+      startDate: _displayStart,
+      endDate: _displayEnd,
+      worker: worker,
+      dailyLogs: List<Map<String, dynamic>>.from(result['daily_logs'] as List),
+      totalReg: result['total_regular_hours'] as num,
+      totalOT: result['total_overtime_hours'] as num,
+      totalHours: result['total_hours'] as num,
+    );
+
+    final workerName = worker['full_name']?.toString() ?? 'Worker';
+    return (
+      bytes: bytes,
+      name: '${_exportName}_${workerName.replaceAll(' ', '_')}',
+      workerName: workerName,
+      workerEmail: worker['email']?.toString() ?? workerEntry['email']?.toString() ?? '',
+    );
+  }
+
   Future<void> _exportIndividualReport(Map<String, dynamic> workerEntry) async {
     setState(() => _isIndividualLoading = true);
     try {
-      final service = ref.read(payrollServiceProvider);
-      final workerId = workerEntry['worker_id'] as String;
-      final result = await service.getDailyLogsForWorker(
-        widget.periodId,
-        workerId,
-        startDate: _virtualStart,
-        endDate: _virtualEnd,
-      );
-
-      if (result['worker'] == null) {
+      final doc = await _buildIndividualPdf(workerEntry);
+      if (doc == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No logs found for this worker.')));
         }
         return;
       }
 
-      final bytes = await WorkerIndividualReportPdfGenerator.generate(
-        projectTitle: _projectTitle,
-        periodName: _period?['name'] ?? '',
-        startDate: _displayStart,
-        endDate: _displayEnd,
-        worker: result['worker'] as Map<String, dynamic>,
-        dailyLogs: List<Map<String, dynamic>>.from(result['daily_logs'] as List),
-        totalReg: result['total_regular_hours'] as num,
-        totalOT: result['total_overtime_hours'] as num,
-        totalHours: result['total_hours'] as num,
-      );
-
-      final workerName = (result['worker'] as Map<String, dynamic>)['full_name'] ?? 'Worker';
       await Printing.layoutPdf(
-        onLayout: (PdfPageFormat format) async => bytes,
-        name: '${_exportName}_${workerName.toString().replaceAll(' ', '_')}',
+        onLayout: (PdfPageFormat format) async => doc.bytes,
+        name: doc.name,
       );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Individual report error: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isIndividualLoading = false);
+    }
+  }
+
+  Future<void> _emailIndividualReport(Map<String, dynamic> workerEntry) async {
+    setState(() => _isIndividualLoading = true);
+    try {
+      final doc = await _buildIndividualPdf(workerEntry);
+      if (doc == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No logs found for this worker.')));
+        }
+        return;
+      }
+      if (!mounted) return;
+      await _openEmailDialog(
+        bytes: doc.bytes,
+        fileName: '${doc.name}.pdf',
+        initialTo: doc.workerEmail,
+        subject: 'Pay Statement ${_period?['name'] ?? ''} — ${doc.workerName}',
+        body:
+            'Hello ${doc.workerName},\n\nPlease find attached your pay statement for ${_period?['name'] ?? ''} ($_displayStart — $_displayEnd).\n\nBest regards,',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Email error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isIndividualLoading = false);
@@ -731,12 +867,19 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
                     if (_hasEntries) ...[
                       if (_isSignoffLoading)
                         const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryGreen))
-                      else
+                      else ...[
                         _exportButton(
                           icon: Icons.fact_check_outlined,
                           label: 'Sign-off',
                           onTap: _exportWorkerSignoffPdf,
                         ),
+                        const SizedBox(width: 8),
+                        _exportButton(
+                          icon: Icons.email_outlined,
+                          label: 'Email Sign-off',
+                          onTap: _emailSignoffPdf,
+                        ),
+                      ],
                       const SizedBox(width: 8),
                       _exportButton(
                         icon: Icons.download,
@@ -748,6 +891,12 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
                         icon: Icons.picture_as_pdf_outlined,
                         label: 'PDF',
                         onTap: _exportPdf,
+                      ),
+                      const SizedBox(width: 8),
+                      _exportButton(
+                        icon: Icons.email_outlined,
+                        label: 'Email',
+                        onTap: _emailPeriodPdf,
                       ),
                     ],
                   ];
@@ -818,7 +967,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
                         child: Center(child: Text('No labor logs found for this period.')),
                       )
                     else ...[
-                      ...(_isVirtual ? _virtualEntries : _entries).map((e) => _buildMobileWorkerCard(e, onTap: _isIndividualLoading ? null : () => _exportIndividualReport(e))),
+                      ...(_isVirtual ? _virtualEntries : _entries).map((e) => _buildMobileWorkerCard(e, onTap: _isIndividualLoading ? null : () => _exportIndividualReport(e), onEmail: _isIndividualLoading ? null : () => _emailIndividualReport(e))),
                       _buildMobileTotalCard(),
                     ],
                   ],
@@ -851,7 +1000,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
                         child: Center(child: Text('No labor logs found for this period.')),
                       )
                     else
-                      ...(_isVirtual ? _virtualEntries : _entries).map((e) => _buildRow(e, onTap: _isIndividualLoading ? null : () => _exportIndividualReport(e))),
+                      ...(_isVirtual ? _virtualEntries : _entries).map((e) => _buildRow(e, onTap: _isIndividualLoading ? null : () => _exportIndividualReport(e), onEmail: _isIndividualLoading ? null : () => _emailIndividualReport(e))),
                     // Grand total row
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -937,7 +1086,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
     );
   }
 
-  Widget _buildMobileWorkerCard(Map<String, dynamic> e, {VoidCallback? onTap}) {
+  Widget _buildMobileWorkerCard(Map<String, dynamic> e, {VoidCallback? onTap, VoidCallback? onEmail}) {
     final reg = (e['regular_hours'] ?? 0).toDouble();
     final ot = (e['overtime_hours'] ?? 0).toDouble();
     final rate = (e['hourly_rate'] ?? 0).toDouble();
@@ -959,6 +1108,16 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
             ),
             const SizedBox(width: 8),
             Text(_fmt(totalCost), style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
+            if (onEmail != null) ...[
+              const SizedBox(width: 4),
+              IconButton(
+                tooltip: 'Email individual report',
+                onPressed: onEmail,
+                icon: const Icon(Icons.email_outlined, size: 18, color: AppTheme.primaryGreen),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
           ]),
           const SizedBox(height: 4),
           Container(
@@ -1021,7 +1180,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
     );
   }
 
-  Widget _buildRow(Map<String, dynamic> e, {VoidCallback? onTap}) {
+  Widget _buildRow(Map<String, dynamic> e, {VoidCallback? onTap, VoidCallback? onEmail}) {
     final reg = (e['regular_hours'] ?? 0).toDouble();
     final ot = (e['overtime_hours'] ?? 0).toDouble();
     final rate = (e['hourly_rate'] ?? 0).toDouble();
@@ -1065,6 +1224,18 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
           _fmt(totalCost),
           style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen),
         )),
+        SizedBox(
+          width: 32,
+          child: onEmail == null
+              ? null
+              : IconButton(
+                  tooltip: 'Email individual report',
+                  onPressed: onEmail,
+                  icon: const Icon(Icons.email_outlined, size: 18, color: AppTheme.primaryGreen),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+        ),
       ],
     );
 

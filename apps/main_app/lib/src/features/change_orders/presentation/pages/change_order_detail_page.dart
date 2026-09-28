@@ -8,11 +8,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
+import 'dart:typed_data';
 import '../providers/change_order_providers.dart';
 import '../providers/change_order_controller.dart';
 import '../utils/change_order_pdf_generator.dart';
 import '../widgets/resource_conflict_dialog.dart';
 import '../../../../shared/widgets/sidebar.dart';
+import '../../../../shared/widgets/send_email_dialog.dart';
 import '../../../../shared/widgets/desktop_required_notice.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 
@@ -61,7 +63,7 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
   final Map<String, String?> _reasonMap = {};
   bool _reapplyingSchedule = false;
 
-  Future<void> _printPdf(
+  Future<({Uint8List bytes, String name})> _buildPdfBytes(
     Map<String, dynamic> co,
     List<Map<String, dynamic>> details,
   ) async {
@@ -80,10 +82,60 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
       disruptionRecords: _cachedDisruptions,
     );
 
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdfBytes,
+    return (
+      bytes: pdfBytes,
       name: 'CO_${co['co_number'] ?? widget.coId}',
     );
+  }
+
+  Future<void> _printPdf(
+    Map<String, dynamic> co,
+    List<Map<String, dynamic>> details,
+  ) async {
+    final doc = await _buildPdfBytes(co, details);
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => doc.bytes,
+      name: doc.name,
+    );
+  }
+
+  Future<void> _emailPdf(
+    Map<String, dynamic> co,
+    List<Map<String, dynamic>> details,
+  ) async {
+    try {
+      final doc = await _buildPdfBytes(co, details);
+      if (!mounted) return;
+      final coNumber = co['co_number']?.toString() ?? '';
+      final sent = await showSafeDialog(
+        context: context,
+        fullscreenOnMobile: true,
+        builder: (_) => SendEmailDialog(
+          dialogTitle: 'Send Change Order',
+          subject: 'Change Order $coNumber',
+          body:
+              'Hello,\n\nPlease find attached change order $coNumber.\n\nBest regards,',
+          fileName: '${doc.name}.pdf',
+          pdfBytes: doc.bytes,
+          docType: 'change_order',
+          projectId: widget.projectId,
+        ),
+      );
+      if (sent == true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Change order sent by email'),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Email error: $e')));
+      }
+    }
   }
 
   Future<void> _loadDisruptions() async {
@@ -407,6 +459,25 @@ class _ChangeOrderDetailPageState extends ConsumerState<ChangeOrderDetailPage> {
             icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
             label: Text(
               'PDF',
+              style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
+            ),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.primaryGreen,
+              side: BorderSide(color: AppTheme.primaryGreen.withOpacity(0.3)),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
+            onPressed: () {
+              if (_cachedCo != null) _emailPdf(_cachedCo!, _cachedDetails);
+            },
+            icon: const Icon(Icons.email_outlined, size: 16),
+            label: Text(
+              'Email',
               style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
             ),
             style: OutlinedButton.styleFrom(

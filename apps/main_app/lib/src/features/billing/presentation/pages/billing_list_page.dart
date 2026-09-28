@@ -11,10 +11,12 @@ import 'package:pdf/pdf.dart';
 import '../providers/billing_providers.dart';
 import '../utils/invoice_pdf_generator.dart';
 import '../utils/invoice_excel_generator.dart';
-import '../../../projects/presentation/widgets/standard_period_picker_dialog.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import '../../../../shared/widgets/sidebar.dart';
+import '../../../../shared/widgets/send_email_dialog.dart';
+import '../../../projects/presentation/widgets/standard_period_picker_dialog.dart';
 
 class BillingListPage extends ConsumerStatefulWidget {
   final String projectId;
@@ -58,7 +60,8 @@ class _BillingListPageState extends ConsumerState<BillingListPage> {
     }
   }
 
-  Future<void> _printPdf(Map<String, dynamic> invoice) async {
+  Future<({Uint8List bytes, String name})> _buildInvoicePdf(
+      Map<String, dynamic> invoice) async {
     final details = (invoice['details'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
     final project = await Supabase.instance.client
         .from('projects')
@@ -73,10 +76,55 @@ class _BillingListPageState extends ConsumerState<BillingListPage> {
       clientName: project['client_name'] ?? '',
     );
 
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdfBytes,
+    return (
+      bytes: pdfBytes,
       name: 'Invoice_${invoice['invoice_number'] ?? invoice['id']}',
     );
+  }
+
+  Future<void> _printPdf(Map<String, dynamic> invoice) async {
+    final doc = await _buildInvoicePdf(invoice);
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => doc.bytes,
+      name: doc.name,
+    );
+  }
+
+  Future<void> _emailInvoice(Map<String, dynamic> invoice) async {
+    try {
+      final doc = await _buildInvoicePdf(invoice);
+      if (!mounted) return;
+      final number = invoice['invoice_number']?.toString() ?? '';
+      final sent = await showSafeDialog(
+        context: context,
+        fullscreenOnMobile: true,
+        builder: (_) => SendEmailDialog(
+          dialogTitle: 'Send Pay Application',
+          subject: 'Pay Application $number',
+          body:
+              'Hello,\n\nPlease find attached pay application $number.\n\nBest regards,',
+          fileName: '${doc.name}.pdf',
+          pdfBytes: doc.bytes,
+          docType: 'pay_application',
+          projectId: widget.projectId,
+          invoiceId: invoice['id']?.toString(),
+        ),
+      );
+      if (sent == true && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pay application sent by email'),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Email error: $e')));
+      }
+    }
   }
 
   Future<void> _downloadExcel(Map<String, dynamic> invoice) async {
@@ -262,6 +310,15 @@ class _BillingListPageState extends ConsumerState<BillingListPage> {
             const SizedBox(width: 8),
             Expanded(
               child: OutlinedButton.icon(
+                onPressed: () => _emailInvoice(inv),
+                icon: const Icon(Icons.email_outlined, size: 14),
+                label: const Text('Email'),
+                style: OutlinedButton.styleFrom(foregroundColor: AppTheme.primaryGreen),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
                 onPressed: () => _downloadExcel(inv),
                 icon: const Icon(Icons.table_chart_outlined, size: 14),
                 label: const Text('Excel'),
@@ -311,9 +368,20 @@ class _BillingListPageState extends ConsumerState<BillingListPage> {
                   DataCell(_statusBadge(status)),
                   DataCell(Text('\$${_fmt.format(due)}', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700))),
                   DataCell(Text('\$${_fmt.format(bal)}', style: GoogleFonts.manrope(fontSize: 12))),
-                  DataCell(IconButton(
-                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 18, color: AppTheme.primaryGreen),
-                    onPressed: () => _printPdf(inv),
+                  DataCell(Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.picture_as_pdf_outlined, size: 18, color: AppTheme.primaryGreen),
+                        tooltip: 'Print PDF',
+                        onPressed: () => _printPdf(inv),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.email_outlined, size: 18, color: AppTheme.primaryGreen),
+                        tooltip: 'Send by email',
+                        onPressed: () => _emailInvoice(inv),
+                      ),
+                    ],
                   )),
                   DataCell(IconButton(
                     icon: const Icon(Icons.table_chart_outlined, size: 18, color: AppTheme.primaryGreen),
