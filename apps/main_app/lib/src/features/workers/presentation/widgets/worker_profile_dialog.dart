@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../controllers/workers_controller.dart';
 import '../../../catalogs/presentation/controllers/catalogs_controller.dart';
 import 'worker_form_dialog.dart';
+import 'searchable_role_field.dart';
 
 class WorkerProfileDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic> worker;
@@ -118,20 +119,13 @@ class _WorkerProfileDialogState extends ConsumerState<WorkerProfileDialog> {
                     } catch (_) {}
                   }
 
-                  return DropdownButtonFormField<String>(
-                    value: _selectedRoleId,
-                    decoration: const InputDecoration(
-                      labelText: 'Role / Position',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: roles.map((r) => DropdownMenuItem(
-                      value: r['id'] as String,
-                      child: Text(r['description']),
-                    )).toList(),
-                    onChanged: (val) {
+                  return SearchableRoleField(
+                    roles: roles,
+                    initialRoleId: _selectedRoleId,
+                    onChanged: (role) {
                       setState(() {
-                        _selectedRoleId = val;
-                        _selectedRoleData = roles.firstWhere((r) => r['id'] == val);
+                        _selectedRoleId = role?['id'] as String?;
+                        _selectedRoleData = role;
                       });
                     },
                   );

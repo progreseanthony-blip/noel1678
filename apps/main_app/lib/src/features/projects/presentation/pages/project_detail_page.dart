@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -18,6 +19,53 @@ import '../widgets/standard_period_picker_dialog.dart';
 import 'package:flutter/gestures.dart';
 import 'package:printing/printing.dart';
 import '../utils/timeline_pdf_generator.dart';
+
+/// Merges sibling `project_labor` rows (same quote service + role) into one
+/// row per group, combining all assignments. Shared by the labor tab and the
+/// timeline so both show the same scheduled span per role.
+List<Map<String, dynamic>> _aggregateLaborRows(List<dynamic> items) {
+  final Map<String, Map<String, dynamic>> merged = {};
+  final Map<String, List<Map<String, dynamic>>> groups = {};
+
+  for (final item in items) {
+    final qsId = item['quote_service_id']?.toString() ?? '_';
+    final role = item['role_name']?.toString() ?? 'General Worker';
+    final key = '${qsId}_$role';
+    (groups[key] ??= []).add(item);
+  }
+
+  for (final entry in groups.entries) {
+    final rows = entry.value;
+    final first = Map<String, dynamic>.from(rows.first);
+    final allAssignments = <Map<String, dynamic>>[];
+    int activeCount = 0;
+
+    for (final row in rows) {
+      final assignments = row['project_labor_assignments'];
+      if (assignments != null && assignments is List) {
+        allAssignments.addAll(assignments.cast<Map<String, dynamic>>());
+      }
+      if (((row['active_employees'] as num?)?.toInt() ?? 0) > 0) {
+        activeCount++;
+      }
+    }
+
+    first['expected_employees'] = rows.length;
+    first['active_employees'] = activeCount;
+    first['project_labor_assignments'] = allAssignments;
+    merged[entry.key] = first;
+  }
+
+  return merged.values.toList();
+}
+
+/// Result of a baseline lock action: the active version and whether a new
+/// snapshot was created (false when planning was unchanged).
+class BaselineLockResult {
+  final int version;
+  final bool created;
+  const BaselineLockResult({required this.version, required this.created});
+}
 
 class ProjectDetailPage extends StatefulWidget {
   final String projectId;
@@ -52,6 +100,17 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
 
   final GlobalKey<ScaffoldState> _mobileScaffoldKey = GlobalKey<ScaffoldState>();
 
+  // Persistent scroll controllers so list position survives data refreshes.
+  final ScrollController _machineryScrollCtrl = ScrollController();
+  final ScrollController _machineryTableScrollCtrl = ScrollController();
+  final ScrollController _materialsScrollCtrl = ScrollController();
+  final ScrollController _instrumentsScrollCtrl = ScrollController();
+  final ScrollController _laborScrollCtrl = ScrollController();
+
+  // '$tab|$serviceName' of the last edited group, highlighted briefly on return.
+  String? _highlightGroupKey;
+  Timer? _highlightTimer;
+
   @override
   void initState() {
     super.initState();
@@ -70,15 +129,78 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
   @override
   void dispose() {
     _tabController.dispose();
+    _machineryScrollCtrl.dispose();
+    _machineryTableScrollCtrl.dispose();
+    _materialsScrollCtrl.dispose();
+    _instrumentsScrollCtrl.dispose();
+    _laborScrollCtrl.dispose();
+    _highlightTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadProjectData() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-      _error = null;
+  List<ScrollController> get _tabScrollCtrls => [
+        _machineryScrollCtrl,
+        _machineryTableScrollCtrl,
+        _materialsScrollCtrl,
+        _instrumentsScrollCtrl,
+        _laborScrollCtrl,
+      ];
+
+  /// Captures current scroll offsets so they can be restored after a reload
+  /// that remounts the lists (e.g. tab-count change).
+  Map<ScrollController, double> _captureScrollOffsets() {
+    final offsets = <ScrollController, double>{};
+    for (final c in _tabScrollCtrls) {
+      if (c.hasClients) offsets[c] = c.offset;
+    }
+    return offsets;
+  }
+
+  void _restoreScrollOffsets(Map<ScrollController, double> offsets) {
+    if (offsets.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final entry in offsets.entries) {
+        final c = entry.key;
+        if (c.hasClients) {
+          final target = entry.value.clamp(0.0, c.position.maxScrollExtent);
+          if ((c.offset - target).abs() > 1) c.jumpTo(target);
+        }
+      }
     });
+  }
+
+  String _groupKey(String tab, String service) => '$tab|$service';
+  bool _isHighlighted(String tab, String service) =>
+      _highlightGroupKey == _groupKey(tab, service);
+
+  void _flashHighlight(String tab, String service) {
+    _highlightTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _highlightGroupKey = _groupKey(tab, service));
+    _highlightTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _highlightGroupKey = null);
+    });
+  }
+
+  /// Reloads data without swapping the content for a spinner (lists stay
+  /// mounted, so scroll position is kept), then flashes the edited group.
+  Future<void> _refreshAfterEdit(String tab, String? service) async {
+    await _loadProjectData(silent: true);
+    if (service != null) _flashHighlight(tab, service);
+  }
+
+  Future<void> _loadProjectData({bool silent = false}) async {
+    if (!mounted) return;
+    final savedOffsets = _captureScrollOffsets();
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    } else {
+      _error = null;
+    }
     
     try {
       final supabase = Supabase.instance.client;
@@ -280,6 +402,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
           
           _isLoading = false;
         });
+        _restoreScrollOffsets(savedOffsets);
       }
     } catch (e) {
       debugPrint('CRITICAL ERROR in _loadProjectData: $e');
@@ -290,42 +413,6 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
         });
       }
     }
-  }
-
-  List<Map<String, dynamic>> _aggregateLaborRows(List<Map<String, dynamic>> items) {
-    final Map<String, Map<String, dynamic>> merged = {};
-    final Map<String, List<Map<String, dynamic>>> groups = {};
-
-    for (final item in items) {
-      final qsId = item['quote_service_id']?.toString() ?? '_';
-      final role = item['role_name']?.toString() ?? 'General Worker';
-      final key = '${qsId}_$role';
-      (groups[key] ??= []).add(item);
-    }
-
-    for (final entry in groups.entries) {
-      final rows = entry.value;
-      final first = Map<String, dynamic>.from(rows.first);
-      final allAssignments = <Map<String, dynamic>>[];
-      int activeCount = 0;
-
-      for (final row in rows) {
-        final assignments = row['project_labor_assignments'];
-        if (assignments != null && assignments is List) {
-          allAssignments.addAll(assignments.cast<Map<String, dynamic>>());
-        }
-        if (((row['active_employees'] as num?)?.toInt() ?? 0) > 0) {
-          activeCount++;
-        }
-      }
-
-      first['expected_employees'] = rows.length;
-      first['active_employees'] = activeCount;
-      first['project_labor_assignments'] = allAssignments;
-      merged[entry.key] = first;
-    }
-
-    return merged.values.toList();
   }
 
   Map<String, List<Map<String, dynamic>>> _groupByService(List<Map<String, dynamic>> items, String relationName) {
@@ -1378,13 +1465,21 @@ currentPath: '/projects/${widget.projectId}',
           child: _machineryTableView
               ? _buildMachineryTable(grouped, serviceNames, isMobile)
               : ListView.builder(
+                  controller: _machineryScrollCtrl,
                   padding: EdgeInsets.all(isMobile ? 16 : 32),
                   itemCount: serviceNames.length,
                   itemBuilder: (context, sIndex) {
                     final sName = serviceNames[sIndex];
                     final groupItems = grouped[sName]!;
 
-                    return Column(
+                    return Container(
+                      decoration: _isHighlighted('machinery', sName)
+                          ? BoxDecoration(
+                              border: Border.all(color: AppTheme.primaryGreen, width: 2),
+                              borderRadius: BorderRadius.circular(12),
+                            )
+                          : null,
+                      child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildServiceHeader(sName, serviceId: _extractServiceId(groupItems.first, 'quote_service_machineries')),
@@ -1461,6 +1556,7 @@ currentPath: '/projects/${widget.projectId}',
                         }).toList(),
                         const SizedBox(height: 16),
                       ],
+                      ),
                     );
                   },
                 ),
@@ -1545,7 +1641,7 @@ currentPath: '/projects/${widget.projectId}',
             serviceName: serviceName,
           ),
         ).then((updated) {
-          if (updated == true) _loadProjectData();
+          if (updated == true) _refreshAfterEdit('machinery', serviceName);
         });
       },
       icon: const Icon(Icons.calendar_month, size: 16, color: Colors.white),
@@ -1592,6 +1688,7 @@ currentPath: '/projects/${widget.projectId}',
     }
 
     return SingleChildScrollView(
+      controller: _machineryTableScrollCtrl,
       padding: EdgeInsets.all(isMobile ? 16 : 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1627,6 +1724,9 @@ currentPath: '/projects/${widget.projectId}',
                 ),
                 for (final row in rows)
                   TableRow(
+                    decoration: _isHighlighted('machinery', row['service']?.toString() ?? '')
+                        ? BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.08))
+                        : null,
                     children: [
                       _tableServiceCell(row['service']?.toString() ?? ''),
                       _tableCell(row['machinery']?['machinery_name']?.toString() ?? '', bold: true),
@@ -1748,7 +1848,7 @@ currentPath: '/projects/${widget.projectId}',
     await _applyAssignments(m['id'] as String, picked.start, picked.end);
     if (mounted) {
       setState(() {});
-      _loadProjectData();
+      await _refreshAfterEdit('machinery', serviceName);
     }
   }
 
@@ -1789,7 +1889,7 @@ currentPath: '/projects/${widget.projectId}',
           backgroundColor: AppTheme.primaryGreen,
         ),
       );
-      _loadProjectData();
+      await _refreshAfterEdit('machinery', singleService ? serviceNames.first : null);
     }
   }
 
@@ -1894,13 +1994,21 @@ currentPath: '/projects/${widget.projectId}',
     }
 
     return ListView.builder(
+      controller: _materialsScrollCtrl,
       padding: EdgeInsets.all(isMobile ? 16 : 32),
       itemCount: serviceNames.length,
       itemBuilder: (context, sIndex) {
         final sName = serviceNames[sIndex];
         final groupItems = grouped[sName]!;
 
-        return Column(
+        return Container(
+          decoration: _isHighlighted('materials', sName)
+              ? BoxDecoration(
+                  border: Border.all(color: AppTheme.primaryGreen, width: 2),
+                  borderRadius: BorderRadius.circular(12),
+                )
+              : null,
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildServiceHeader(sName, serviceId: _extractServiceId(groupItems.first, 'quote_service_materials')),
@@ -1974,6 +2082,7 @@ currentPath: '/projects/${widget.projectId}',
             }).toList(),
             const SizedBox(height: 16),
           ],
+          ),
         );
       },
     );
@@ -2010,13 +2119,21 @@ currentPath: '/projects/${widget.projectId}',
     }
 
     return ListView.builder(
+      controller: _instrumentsScrollCtrl,
       padding: EdgeInsets.all(isMobile ? 16 : 32),
       itemCount: serviceNames.length,
       itemBuilder: (context, sIndex) {
         final sName = serviceNames[sIndex];
         final groupItems = grouped[sName]!;
 
-        return Column(
+        return Container(
+          decoration: _isHighlighted('instruments', sName)
+              ? BoxDecoration(
+                  border: Border.all(color: AppTheme.primaryGreen, width: 2),
+                  borderRadius: BorderRadius.circular(12),
+                )
+              : null,
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildServiceHeader(sName, serviceId: _extractServiceId(groupItems.first, 'quote_service_instruments')),
@@ -2090,7 +2207,7 @@ currentPath: '/projects/${widget.projectId}',
                             serviceName: sName,
                           ),
                         ).then((updated) {
-                          if (updated == true) _loadProjectData();
+                          if (updated == true) _refreshAfterEdit('instruments', sName);
                         });
                       },
                       icon: const Icon(Icons.calendar_month, color: Colors.purple),
@@ -2107,6 +2224,7 @@ currentPath: '/projects/${widget.projectId}',
             }).toList(),
             const SizedBox(height: 16),
           ],
+          ),
         );
       },
     );
@@ -2144,13 +2262,21 @@ currentPath: '/projects/${widget.projectId}',
     }
 
     return ListView.builder(
+      controller: _laborScrollCtrl,
       padding: EdgeInsets.all(isMobile ? 16 : 32),
       itemCount: serviceNames.length,
       itemBuilder: (context, sIndex) {
         final sName = serviceNames[sIndex];
         final groupItems = grouped[sName]!;
 
-        return Column(
+        return Container(
+          decoration: _isHighlighted('labor', sName)
+              ? BoxDecoration(
+                  border: Border.all(color: AppTheme.primaryGreen, width: 2),
+                  borderRadius: BorderRadius.circular(12),
+                )
+              : null,
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildServiceHeader(sName, serviceId: _extractServiceId(groupItems.first, 'quote_service_labors')),
@@ -2186,7 +2312,7 @@ currentPath: '/projects/${widget.projectId}',
                             children: [
                               _laborScheduleButton(projectLaborId: l['id'], roleName: roleName, serviceName: sName),
                               const SizedBox(width: 8),
-                              _laborAssignButton(projectLaborId: l['id'], roleName: roleName, expectedEmployees: expected),
+                              _laborAssignButton(projectLaborId: l['id'], roleName: roleName, expectedEmployees: expected, serviceName: sName),
                             ],
                           ),
                         ],
@@ -2199,7 +2325,7 @@ currentPath: '/projects/${widget.projectId}',
                           const SizedBox(width: 16),
                           _laborScheduleButton(projectLaborId: l['id'], roleName: roleName, serviceName: sName),
                           const SizedBox(width: 8),
-                          _laborAssignButton(projectLaborId: l['id'], roleName: roleName, expectedEmployees: expected),
+                          _laborAssignButton(projectLaborId: l['id'], roleName: roleName, expectedEmployees: expected, serviceName: sName),
                           const SizedBox(width: 8),
                         ],
                       ),
@@ -2207,6 +2333,7 @@ currentPath: '/projects/${widget.projectId}',
             }).toList(),
             const SizedBox(height: 16),
           ],
+          ),
         );
       },
     );
@@ -2289,7 +2416,7 @@ currentPath: '/projects/${widget.projectId}',
             serviceName: serviceName,
           ),
         ).then((updated) {
-          if (updated == true) _loadProjectData();
+          if (updated == true) _refreshAfterEdit('labor', serviceName);
         });
       },
       icon: const Icon(Icons.calendar_month, color: Colors.orange),
@@ -2301,7 +2428,7 @@ currentPath: '/projects/${widget.projectId}',
     );
   }
 
-  Widget _laborAssignButton({required String projectLaborId, required String roleName, required int expectedEmployees}) {
+  Widget _laborAssignButton({required String projectLaborId, required String roleName, required int expectedEmployees, required String serviceName}) {
     return IconButton(
       onPressed: () {
         showSafeDialog(
@@ -2313,7 +2440,7 @@ currentPath: '/projects/${widget.projectId}',
             expectedEmployees: expectedEmployees,
           ),
         ).then((updated) {
-          if (updated == true) _loadProjectData();
+          if (updated == true) _refreshAfterEdit('labor', serviceName);
         });
       },
       icon: const Icon(Icons.group_add, color: Colors.blue),
@@ -2444,16 +2571,80 @@ currentPath: '/projects/${widget.projectId}',
 
   bool _isSavingBaseline = false;
 
-  Future<void> _createNewBaselineRevision() async {
-    if (_project == null || _isSavingBaseline) return;
+  /// Canonical fingerprint of the current planning (resources + assignment
+  /// dates + burn rate). Used to skip creating a new baseline version when
+  /// nothing changed since the latest snapshot.
+  String _computePlanningFingerprint() {
+    String d(dynamic v) {
+      if (v == null) return '';
+      return v.toString().split(' ').first.split('T').first;
+    }
+
+    List<Map<String, dynamic>> norm(
+        List<dynamic> rows, String assignKey) {
+      final out = rows.map((r) {
+        final assigns = ((r[assignKey] as List?) ?? []).map((a) {
+          final who = a['worker_id']?.toString() ??
+              a['workers']?['full_name']?.toString() ??
+              a['quantity']?.toString() ??
+              '';
+          return [who, d(a['start_date']), d(a['end_date'])];
+        }).toList()
+          ..sort((a, b) => a.join('|').compareTo(b.join('|')));
+        return {
+          'id': r['id']?.toString() ?? '',
+          's': d(r['start_date']),
+          'e': d(r['end_date']),
+          'q': (r['expected_quantity'] ?? r['expected_employees'] ?? '').toString(),
+          'r': (r['received_quantity'] ?? '').toString(),
+          'a': assigns,
+        };
+      }).toList();
+      out.sort((a, b) => (a['id'] as String).compareTo(b['id'] as String));
+      return out;
+    }
+
+    return jsonEncode({
+      'm': norm(_machinery, 'project_machinery_assignments'),
+      'l': norm(_aggregateLaborRows(_labor), 'project_labor_assignments'),
+      'i': norm(_instruments, 'project_instrument_assignments'),
+      'burn': _dailyBurnRate.toString(),
+    });
+  }
+
+  Future<BaselineLockResult?> _createNewBaselineRevision() async {
+    if (_project == null || _isSavingBaseline) return null;
     setState(() => _isSavingBaseline = true);
 
     try {
       final supabase = Supabase.instance.client;
+      final baselineService = BaselineService(supabase);
+      final fingerprint = _computePlanningFingerprint();
+
+      // Idempotency: same planning as the latest snapshot → keep version.
+      try {
+        final latest = await baselineService.getLatestSnapshot(widget.projectId);
+        final latestFp = latest?['calculation_metadata']?['planning_fingerprint']?.toString();
+        if (latest != null && latestFp != null && latestFp == fingerprint) {
+          final version = latest['version'] as int;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('No changes detected — still on Baseline v$version.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return BaselineLockResult(version: version, created: false);
+        }
+      } catch (e) {
+        debugPrint('Baseline fingerprint check failed, proceeding: $e');
+      }
+
       final currentMeta = Map<String, dynamic>.from(_project!['calculation_metadata'] ?? {});
       currentMeta['baseline_daily_burn_rate'] = _dailyBurnRate;
+      currentMeta['planning_fingerprint'] = fingerprint;
 
-      final baselineService = BaselineService(supabase);
       final snapshot = await baselineService.createSnapshot(
         projectId: widget.projectId,
         calculationMetadata: currentMeta,
@@ -2479,6 +2670,7 @@ currentPath: '/projects/${widget.projectId}',
           ),
         );
       }
+      return BaselineLockResult(version: snapshot['version'] as int, created: true);
     } catch (e) {
       debugPrint('Error creating revision: $e');
       if (mounted) {
@@ -2489,13 +2681,14 @@ currentPath: '/projects/${widget.projectId}',
           ),
         );
       }
+      return null;
     } finally {
       if (mounted) setState(() => _isSavingBaseline = false);
     }
   }
 
-  Future<void> _saveBaselinePlanning() async {
-    if (_project == null || _isSavingBaseline) return;
+  Future<BaselineLockResult?> _saveBaselinePlanning() async {
+    if (_project == null || _isSavingBaseline) return null;
     setState(() => _isSavingBaseline = true);
 
     try {
@@ -2568,6 +2761,28 @@ currentPath: '/projects/${widget.projectId}',
       currentMeta['baseline_total_days'] = totalDays;
       currentMeta['baseline_resources_count'] = _machinery.length + _labor.length + _instruments.length;
       final baselineService = BaselineService(supabase);
+      final fingerprint = _computePlanningFingerprint();
+
+      // Idempotency: same planning as the latest snapshot → keep version.
+      try {
+        final latest = await baselineService.getLatestSnapshot(widget.projectId);
+        final latestFp = latest?['calculation_metadata']?['planning_fingerprint']?.toString();
+        if (latest != null && latestFp != null && latestFp == fingerprint) {
+          final version = latest['version'] as int;
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('No changes detected — still on Baseline v$version.'),
+                backgroundColor: Colors.orange,
+              ),
+            );
+          }
+          return BaselineLockResult(version: version, created: false);
+        }
+      } catch (e) {
+        debugPrint('Baseline fingerprint check failed, proceeding: $e');
+      }
+      currentMeta['planning_fingerprint'] = fingerprint;
       final snapshot = await baselineService.createSnapshot(
         projectId: widget.projectId,
         calculationMetadata: currentMeta,
@@ -2593,6 +2808,7 @@ currentPath: '/projects/${widget.projectId}',
           ),
         );
       }
+      return BaselineLockResult(version: snapshot['version'] as int, created: true);
     } catch (e) {
       debugPrint('Error saving baseline: $e');
       if (mounted) {
@@ -2603,6 +2819,7 @@ currentPath: '/projects/${widget.projectId}',
           ),
         );
       }
+      return null;
     } finally {
       if (mounted) {
         setState(() => _isSavingBaseline = false);
@@ -2618,7 +2835,7 @@ class _FullscreenTimelineDialog extends StatefulWidget {
   final List<dynamic> labor;
   final List<dynamic> instruments;
   final String selectedServiceFilter;
-  final Future<void> Function() onSaveBaseline;
+  final Future<BaselineLockResult?> Function() onSaveBaseline;
   final bool isSavingBaseline;
   final int? baselineVersion;
 
@@ -2661,6 +2878,55 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
   // project_tasks). A CO absent from this map is treated as project-wide
   // (legacy disruptions created before per-service linking existed).
   Map<String, Set<String>> _disruptionServiceIds = {};
+  // Baseline locked from inside this dialog session (widget.baselineVersion
+  // is frozen at open time, so track it locally to update the UI).
+  int? _lockedVersion;
+  bool _lockCreated = true;
+  String? _lockMessage;
+
+  Future<void> _handleBaselineButton() async {
+    final res = await widget.onSaveBaseline();
+    if (!mounted) return;
+    if (res != null) {
+      setState(() {
+        _lockedVersion = res.version;
+        _lockCreated = res.created;
+        _lockMessage = res.created
+            ? 'Baseline v${res.version} locked ✓'
+            : 'No changes detected — still on Baseline v${res.version}';
+      });
+    }
+  }
+
+  Widget _buildLockBanner() {
+    final created = _lockCreated;
+    final color = created ? AppTheme.primaryGreen : Colors.orange;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Row(
+        children: [
+          Icon(created ? Icons.lock_outline : Icons.info_outline,
+              size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              _lockMessage ?? '',
+              style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.slate900),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -3264,7 +3530,9 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
       });
     }
 
-    for (var l in widget.labor) {
+    // Aggregate sibling rows (same service + role) so a role with several
+    // workers shows one scheduled span instead of 'Pending' ghost rows.
+    for (var l in _aggregateLaborRows(widget.labor)) {
       final evm = _localCalculateLaborEVM(l);
       final isPlanned = (l['quote_service_labors'] != null &&
               (l['quote_service_labors'] is! List || (l['quote_service_labors'] as List).isNotEmpty)) ||
@@ -3657,7 +3925,10 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
     }
 
     final List<String> serviceNames = groupedItems.keys.toList()..sort();
-    final isFrozen = widget.baselineVersion != null;
+    // widget.baselineVersion is frozen at dialog open; _lockedVersion tracks
+    // locks made from inside this session.
+    final effVersion = _lockedVersion ?? widget.baselineVersion;
+    final isFrozen = effVersion != null;
 
     final List<Widget> leftRows = [];
     final List<Widget> rightRows = [];
@@ -4089,7 +4360,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                'Baseline v${widget.baselineVersion} Locked ✓',
+                                'Baseline v$effVersion Locked ✓',
                                 style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen),
                               ),
                             ),
@@ -4160,9 +4431,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                   ElevatedButton.icon(
                     onPressed: widget.isSavingBaseline
                         ? null
-                        : () async {
-                            await widget.onSaveBaseline();
-                          },
+                        : _handleBaselineButton,
                     icon: widget.isSavingBaseline
                         ? const SizedBox(
                             width: 14, height: 14,
@@ -4183,9 +4452,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                   ElevatedButton.icon(
                     onPressed: widget.isSavingBaseline
                         ? null
-                        : () async {
-                            await widget.onSaveBaseline();
-                          },
+                        : _handleBaselineButton,
                     icon: widget.isSavingBaseline
                         ? const SizedBox(
                             width: 14, height: 14,
@@ -4207,6 +4474,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
           ),
           if (_baselineMetricsLoaded && _baselineTotalDaysSaved > 0)
             _buildBaselineSummaryLine(),
+          if (_lockMessage != null) _buildLockBanner(),
           Builder(builder: (context) {
             final int extraCount = items.where((i) => i['isUnplanned'] == true).length;
             final int plannedCount = items.length - extraCount;

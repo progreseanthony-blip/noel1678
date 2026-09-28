@@ -30,6 +30,8 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
   List<String> _siblingIds = [];
   
   double? _stipulatedDays;
+  DateTime? _estStart;
+  DateTime? _estEnd;
   DateTime? _startDate;
   DateTime? _endDate;
   Map<String, double> _nonWorkingDays = {};
@@ -60,8 +62,21 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
     }).toList();
   }
 
-  DateTime _calculateEndDate(DateTime start, double duration) {
-    DateTime current = start;
+  /// Deviation of the chosen team start vs the estimation reference period.
+  String? get _deviationText {
+    final ref = _estStart ?? _estEnd;
+    if (ref == null || _startDate == null) return null;
+    final refDay = DateTime(ref.year, ref.month, ref.day);
+    final startDay =
+        DateTime(_startDate!.year, _startDate!.month, _startDate!.day);
+    final diff = startDay.difference(refDay).inDays;
+    if (diff == 0) return null;
+    return diff > 0
+        ? 'Starts $diff day${diff == 1 ? '' : 's'} after estimate'
+        : 'Starts ${-diff} day${diff == -1 ? '' : 's'} before estimate';
+  }
+
+  DateTime _calculateEndDate(DateTime start, double duration) {    DateTime current = start;
     double remaining = duration;
     
     while (remaining > 0) {
@@ -89,7 +104,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       // 1. Get role, project, and siblings
       final laborData = await supabase
           .from('project_labor')
-          .select('project_id, role_id, role_name, quote_service_id, quote_service_labors(role_id, quote_services(quote_service_estimations(total_working_days)))')
+          .select('project_id, role_id, role_name, quote_service_id, quote_service_labors(role_id, quote_services(quote_service_estimations(total_working_days, start_date, end_date)))')
           .eq('id', widget.projectLaborId)
           .maybeSingle();
       
@@ -117,16 +132,28 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       final roleId = laborData['role_id'];
 
       dynamic duration;
+      DateTime? estStartValue;
+      DateTime? estEndValue;
       try {
         final qsl = laborData['quote_service_labors'];
         if (qsl != null) {
           final qs = qsl['quote_services'];
           if (qs != null) {
             final est = qs['quote_service_estimations'];
+            dynamic first;
             if (est is List && est.isNotEmpty) {
-              duration = est[0]['total_working_days'];
+              first = est[0];
             } else if (est is Map) {
-              duration = est['total_working_days'];
+              first = est;
+            }
+            if (first != null) {
+              duration = first['total_working_days'];
+              if (first['start_date'] != null) {
+                estStartValue = DateTime.tryParse(first['start_date'].toString());
+              }
+              if (first['end_date'] != null) {
+                estEndValue = DateTime.tryParse(first['end_date'].toString());
+              }
             }
           }
         }
@@ -245,6 +272,8 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       if (mounted) {
         setState(() {
           _stipulatedDays = durationValue;
+          _estStart = estStartValue;
+          _estEnd = estEndValue;
           _allWorkers = allWorkers;
           _assignedWorkerIds = assignedIds;
           _workerSlots.clear();
@@ -327,6 +356,9 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
         initialEnd: initialEnd,
         firstDate: DateTime.now().subtract(const Duration(days: 365)),
         lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+        referenceLabel: 'ESTIMATED PERIOD (REFERENCE)',
+        referenceStart: _estStart,
+        referenceEnd: _estEnd,
         referenceFallback: 'No reference dates for this role',
       ),
     );
@@ -385,11 +417,12 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
     for (final id in _siblingIds) {
       counts[id] = 0;
     }
+    // _workerSlots maps workerId -> siblingRowId: count occupants per slot
+    // so the new worker lands on the least-occupied sibling row.
     for (final wId in _assignedWorkerIds) {
-      for (final entry in _workerSlots.entries) {
-        if (entry.value == wId) {
-          counts[entry.key] = (counts[entry.key] ?? 0) + 1;
-        }
+      final slot = _workerSlots[wId];
+      if (slot != null && counts.containsKey(slot)) {
+        counts[slot] = (counts[slot] ?? 0) + 1;
       }
     }
     String best = _siblingIds.first;
@@ -515,6 +548,21 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
                                     _stipulatedDays != null ? '${_stipulatedDays} Working Days' : 'Not defined',
                                     style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.slate900),
                                   ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _estStart != null || _estEnd != null
+                                        ? 'Est: ${_estStart != null ? _estStart.toString().split(' ')[0] : '?'} → ${_estEnd != null ? _estEnd.toString().split(' ')[0] : '?'}'
+                                        : 'No estimation dates for this service',
+                                    style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, color: AppTheme.slate500),
+                                  ),
+                                  if (_deviationText != null)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: Text(
+                                        _deviationText!,
+                                        style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic, color: Colors.orange),
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),

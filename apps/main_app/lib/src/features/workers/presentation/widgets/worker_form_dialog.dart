@@ -6,6 +6,7 @@ import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import '../controllers/workers_controller.dart';
 import '../../../catalogs/presentation/controllers/catalogs_controller.dart';
+import 'searchable_role_field.dart';
 
 class WorkerFormDialog extends ConsumerStatefulWidget {
   final Map<String, dynamic>? worker;
@@ -24,6 +25,7 @@ class _WorkerFormDialogState extends ConsumerState<WorkerFormDialog> {
   
   String? _selectedRoleId;
   Map<String, dynamic>? _selectedRoleData;
+  String? _roleError;
 
   final _phoneFormatter = MaskTextInputFormatter(
     mask: '(###) ###-####',
@@ -135,25 +137,17 @@ class _WorkerFormDialogState extends ConsumerState<WorkerFormDialog> {
                 const SizedBox(height: 16),
                 rolesAsync.when(
                   data: (roles) {
-                    return DropdownButtonFormField<String>(
-                      value: _selectedRoleId,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Role / Position',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.work_outline),
-                      ),
-                      items: roles.map((r) => DropdownMenuItem(
-                        value: r['id'] as String,
-                        child: Text(r['description'], overflow: TextOverflow.ellipsis),
-                      )).toList(),
-                      onChanged: (val) {
+                    return SearchableRoleField(
+                      roles: roles,
+                      initialRoleId: _selectedRoleId,
+                      errorText: _roleError,
+                      onChanged: (role) {
                         setState(() {
-                          _selectedRoleId = val;
-                          _selectedRoleData = roles.firstWhere((r) => r['id'] == val);
+                          _selectedRoleId = role?['id'] as String?;
+                          _selectedRoleData = role;
+                          _roleError = null;
                         });
                       },
-                      validator: (v) => v == null ? 'Required' : null,
                     );
                   },
                   loading: () => const CircularProgressIndicator(),
@@ -209,7 +203,12 @@ class _WorkerFormDialogState extends ConsumerState<WorkerFormDialog> {
   }
 
   Future<void> _submit() async {
-    if (_formKey.currentState!.validate()) {
+    final formValid = _formKey.currentState!.validate();
+    if (_selectedRoleId == null) {
+      setState(() => _roleError = 'Required');
+      return;
+    }
+    if (formValid) {
       try {
         final isEditing = widget.worker != null;
         final data = {

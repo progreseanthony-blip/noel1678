@@ -1097,7 +1097,8 @@ class _StepLaborState extends State<StepLabor> {
   Widget _buildCompactView(List<Map<String, dynamic>> filteredLabor) {
     final items = _buildCompactItems(filteredLabor);
     if (items.isEmpty) return _empty('No workers match your search');
-    final tableWidth = widget.isReadOnly ? 516.0 : 646.0;
+    // +16 accounts for the horizontal padding (8+8) inside header/row containers.
+    final tableWidth = widget.isReadOnly ? 532.0 : 662.0;
     return Container(
       decoration: BoxDecoration(border: Border.all(color: AppTheme.slate200), borderRadius: BorderRadius.circular(8)),
       clipBehavior: Clip.antiAlias,
@@ -1108,7 +1109,7 @@ class _StepLaborState extends State<StepLabor> {
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            SizedBox(width: tableWidth, child: _buildTableHeader()),
+            SizedBox(width: tableWidth, child: _buildTableHeader(items)),
             const Divider(height: 1, color: AppTheme.slate200),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 500),
@@ -1212,12 +1213,38 @@ class _StepLaborState extends State<StepLabor> {
     );
   }
 
-  Widget _buildTableHeader() {
+  Widget _buildTableHeader(List<Map<String, dynamic>> items) {
+    // Workers visible in this table that can be bulk-selected (absent rows
+    // have no checkbox, same rule as the per-row checkbox).
+    final selectableIds = items
+        .where((i) => i['type'] == 'worker' && i['is_absent'] != true)
+        .map((i) => i['worker_id'] as String)
+        .toSet();
+    final allSelected =
+        selectableIds.isNotEmpty && selectableIds.every(_selectedWorkerIds.contains);
+    final someSelected = selectableIds.any(_selectedWorkerIds.contains);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       decoration: BoxDecoration(color: AppTheme.slate50),
       child: Row(children: [
-        _thCell('', 44),
+        SizedBox(
+          width: 44,
+          child: (!widget.isReadOnly && selectableIds.isNotEmpty)
+              ? Checkbox(
+                  tristate: true,
+                  value: allSelected ? true : (someSelected ? null : false),
+                  onChanged: (_) => setState(() {
+                    if (allSelected) {
+                      _selectedWorkerIds.removeAll(selectableIds);
+                    } else {
+                      _selectedWorkerIds.addAll(selectableIds);
+                    }
+                  }),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                )
+              : const SizedBox.shrink(),
+        ),
         _thCell('Worker', 160),
         _thCell('Role', 120),
         _thCell('In', 56, ta: TextAlign.center),

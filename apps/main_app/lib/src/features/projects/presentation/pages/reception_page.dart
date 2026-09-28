@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -46,6 +48,15 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
   Map<String, int> _returnedMachineryCounts = {};
   Map<String, int> _returnedInstrumentCounts = {};
 
+  // Persistent scroll controllers so list position survives data refreshes.
+  final ScrollController _machineryScrollCtrl = ScrollController();
+  final ScrollController _materialsScrollCtrl = ScrollController();
+  final ScrollController _instrumentsScrollCtrl = ScrollController();
+
+  // '$tab|$serviceName' of the last edited group, highlighted briefly on return.
+  String? _highlightGroupKey;
+  Timer? _highlightTimer;
+
   @override
   void initState() {
     super.initState();
@@ -56,15 +67,74 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
   @override
   void dispose() {
     _tabController.dispose();
+    _machineryScrollCtrl.dispose();
+    _materialsScrollCtrl.dispose();
+    _instrumentsScrollCtrl.dispose();
+    _highlightTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _loadData() async {
-    if (!mounted) return;
-    setState(() {
-      _isLoading = true;
-      _error = null;
+  List<ScrollController> get _tabScrollCtrls => [
+        _machineryScrollCtrl,
+        _materialsScrollCtrl,
+        _instrumentsScrollCtrl,
+      ];
+
+  /// Captures current scroll offsets so they can be restored after a reload
+  /// that remounts the lists.
+  Map<ScrollController, double> _captureScrollOffsets() {
+    final offsets = <ScrollController, double>{};
+    for (final c in _tabScrollCtrls) {
+      if (c.hasClients) offsets[c] = c.offset;
+    }
+    return offsets;
+  }
+
+  void _restoreScrollOffsets(Map<ScrollController, double> offsets) {
+    if (offsets.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      for (final entry in offsets.entries) {
+        final c = entry.key;
+        if (c.hasClients) {
+          final target = entry.value.clamp(0.0, c.position.maxScrollExtent);
+          if ((c.offset - target).abs() > 1) c.jumpTo(target);
+        }
+      }
     });
+  }
+
+  String _groupKey(String tab, String service) => '$tab|$service';
+  bool _isHighlighted(String tab, String service) =>
+      _highlightGroupKey == _groupKey(tab, service);
+
+  void _flashHighlight(String tab, String service) {
+    _highlightTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _highlightGroupKey = _groupKey(tab, service));
+    _highlightTimer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _highlightGroupKey = null);
+    });
+  }
+
+  /// Reloads data without swapping the content for a spinner (lists stay
+  /// mounted, so scroll position is kept), then flashes the edited group.
+  Future<void> _refreshAfterEdit(String tab, String? service) async {
+    await _loadData(silent: true);
+    if (service != null) _flashHighlight(tab, service);
+  }
+
+  Future<void> _loadData({bool silent = false}) async {
+    if (!mounted) return;
+    final savedOffsets = _captureScrollOffsets();
+    if (!silent) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    } else {
+      _error = null;
+    }
 
     try {
       final supabase = Supabase.instance.client;
@@ -207,6 +277,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
           });
           _isLoading = false;
         });
+        _restoreScrollOffsets(savedOffsets);
       }
     } catch (e) {
       debugPrint('ERROR in _loadData: $e');
@@ -517,13 +588,21 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
     }
 
     return ListView.builder(
+      controller: _machineryScrollCtrl,
       padding: EdgeInsets.all(isMobile ? 16 : 32),
       itemCount: serviceNames.length,
       itemBuilder: (context, sIndex) {
         final sName = serviceNames[sIndex];
         final groupItems = grouped[sName]!;
 
-        return Column(
+        return Container(
+          decoration: _isHighlighted('machinery', sName)
+              ? BoxDecoration(
+                  border: Border.all(color: AppTheme.primaryGreen, width: 2),
+                  borderRadius: BorderRadius.circular(12),
+                )
+              : null,
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildServiceHeader(sName),
@@ -632,7 +711,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                           serviceName: sName,
                         ),
                       ).then((updated) {
-                        if (updated == true) _loadData();
+                        if (updated == true) _refreshAfterEdit('machinery', sName);
                       });
                     },
                     icon: const Icon(Icons.history, color: Colors.orange),
@@ -672,7 +751,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                           serviceName: sName,
                         ),
                       ).then((updated) {
-                        if (updated == true) _loadData();
+                        if (updated == true) _refreshAfterEdit('machinery', sName);
                       });
                     },
                     icon: const Icon(Icons.outbound_outlined, size: 16, color: Colors.white),
@@ -697,7 +776,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                           serviceName: sName,
                         ),
                       ).then((received) {
-                        if (received == true) _loadData();
+                        if (received == true) _refreshAfterEdit('machinery', sName);
                       });
                     },
                     icon: const Icon(Icons.add_box, size: 16, color: Colors.white),
@@ -754,6 +833,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
             }).toList(),
             const SizedBox(height: 16),
           ],
+          ),
         );
       },
     );
@@ -786,13 +866,21 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
     }
 
     return ListView.builder(
+      controller: _materialsScrollCtrl,
       padding: EdgeInsets.all(isMobile ? 16 : 32),
       itemCount: serviceNames.length,
       itemBuilder: (context, sIndex) {
         final sName = serviceNames[sIndex];
         final groupItems = grouped[sName]!;
 
-        return Column(
+        return Container(
+          decoration: _isHighlighted('materials', sName)
+              ? BoxDecoration(
+                  border: Border.all(color: AppTheme.primaryGreen, width: 2),
+                  borderRadius: BorderRadius.circular(12),
+                )
+              : null,
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildServiceHeader(sName),
@@ -861,7 +949,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                           expectedQuantity: expected,
                         ),
                       ).then((updated) {
-                        if (updated == true) _loadData();
+                        if (updated == true) _refreshAfterEdit('materials', sName);
                       });
                     },
                     icon: const Icon(Icons.history, color: AppTheme.primaryGreen),
@@ -888,7 +976,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                           currentReceived: received,
                         ),
                       ).then((received) {
-                        if (received == true) _loadData();
+                        if (received == true) _refreshAfterEdit('materials', sName);
                       });
                     },
                     icon: const Icon(Icons.add_box, size: 16, color: Colors.white),
@@ -945,6 +1033,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
             }).toList(),
             const SizedBox(height: 16),
           ],
+          ),
         );
       },
     );
@@ -977,13 +1066,21 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
     }
 
     return ListView.builder(
+      controller: _instrumentsScrollCtrl,
       padding: EdgeInsets.all(isMobile ? 16 : 32),
       itemCount: serviceNames.length,
       itemBuilder: (context, sIndex) {
         final sName = serviceNames[sIndex];
         final groupItems = grouped[sName]!;
 
-        return Column(
+        return Container(
+          decoration: _isHighlighted('instruments', sName)
+              ? BoxDecoration(
+                  border: Border.all(color: AppTheme.primaryGreen, width: 2),
+                  borderRadius: BorderRadius.circular(12),
+                )
+              : null,
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildServiceHeader(sName),
@@ -1074,7 +1171,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                           serviceName: sName,
                         ),
                       ).then((updated) {
-                        if (updated == true) _loadData();
+                        if (updated == true) _refreshAfterEdit('instruments', sName);
                       });
                     },
                     icon: const Icon(Icons.history, color: AppTheme.primaryGreen),
@@ -1114,7 +1211,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                           serviceName: sName,
                         ),
                       ).then((updated) {
-                        if (updated == true) _loadData();
+                        if (updated == true) _refreshAfterEdit('instruments', sName);
                       });
                     },
                     icon: const Icon(Icons.outbound_outlined, size: 16, color: Colors.white),
@@ -1139,7 +1236,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
                           serviceName: sName,
                         ),
                       ).then((received) {
-                        if (received == true) _loadData();
+                        if (received == true) _refreshAfterEdit('instruments', sName);
                       });
                     },
                     icon: const Icon(Icons.qr_code_scanner, size: 16, color: Colors.white),
@@ -1196,6 +1293,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
             }).toList(),
             const SizedBox(height: 16),
           ],
+          ),
         );
       },
     );
