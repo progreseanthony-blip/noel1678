@@ -3530,26 +3530,57 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
       });
     }
 
-    // Aggregate sibling rows (same service + role) so a role with several
-    // workers shows one scheduled span instead of 'Pending' ghost rows.
-    for (var l in _aggregateLaborRows(widget.labor)) {
-      final evm = _localCalculateLaborEVM(l);
-      final isPlanned = (l['quote_service_labors'] != null &&
-              (l['quote_service_labors'] is! List || (l['quote_service_labors'] as List).isNotEmpty)) ||
-          l['project_service_id'] != null;
-      items.add({
-        'name': l['role_name'] ?? 'Unknown Crew',
-        'type': 'Labor',
-        'icon': Icons.engineering,
-        'service': getService(l, 'quote_service_labors'),
-        'serviceIds': getServiceIds(l, 'quote_service_labors'),
-        'plannedStart': evm['plannedStart'] as DateTime?,
-        'plannedEnd': evm['plannedEnd'] as DateTime?,
-        'isUnplanned': !isPlanned || l['calculation_metadata']?['is_unplanned'] == true,
-        'calculationMetadata': l['calculation_metadata'] as Map<String, dynamic>?,
-        'changeType': l['change_type'] ?? 'planning',
-        'isCo': l['project_service_id'] != null,
-      });
+    // One line per worker assignment (not per role): a role with several
+    // workers shows one line each with its own dates.
+    for (var l in widget.labor) {
+      final roleName = l['role_name']?.toString() ?? 'Unknown Crew';
+      final rowStart =
+          l['start_date'] != null ? DateTime.tryParse(l['start_date'].toString()) : null;
+      final rowEnd =
+          l['end_date'] != null ? DateTime.tryParse(l['end_date'].toString()) : null;
+      final assigns = (l['project_labor_assignments'] as List?) ?? [];
+
+      Map<String, dynamic> laborBase() {
+        final planned = (l['quote_service_labors'] != null &&
+                (l['quote_service_labors'] is! List ||
+                    (l['quote_service_labors'] as List).isNotEmpty)) ||
+            l['project_service_id'] != null;
+        return {
+          'name': roleName,
+          'type': 'Labor',
+          'icon': Icons.engineering,
+          'service': getService(l, 'quote_service_labors'),
+          'serviceIds': getServiceIds(l, 'quote_service_labors'),
+          'isUnplanned':
+              !planned || l['calculation_metadata']?['is_unplanned'] == true,
+          'calculationMetadata': l['calculation_metadata'] as Map<String, dynamic>?,
+          'changeType': l['change_type'] ?? 'planning',
+          'isCo': l['project_service_id'] != null,
+          'sourceId': l['id']?.toString() ??
+              '$roleName|${getService(l, 'quote_service_labors')}',
+        };
+      }
+
+      if (assigns.isEmpty) {
+        final evm = _localCalculateLaborEVM(l);
+        final b = laborBase();
+        b['plannedStart'] = evm['plannedStart'] as DateTime?;
+        b['plannedEnd'] = evm['plannedEnd'] as DateTime?;
+        items.add(b);
+      } else {
+        for (final a in assigns) {
+          final am = a as Map<String, dynamic>;
+          final b = laborBase();
+          b['workerName'] = am['workers']?['full_name']?.toString();
+          b['plannedStart'] = am['start_date'] != null
+              ? DateTime.tryParse(am['start_date'].toString())
+              : rowStart;
+          b['plannedEnd'] = am['end_date'] != null
+              ? DateTime.tryParse(am['end_date'].toString())
+              : rowEnd;
+          items.add(b);
+        }
+      }
     }
 
     for (var i in widget.instruments) {
@@ -3780,6 +3811,13 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                   overflow: TextOverflow.ellipsis,
                   style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate900),
                 ),
+                if (item['workerName'] != null)
+                  Text(
+                    item['workerName']?.toString() ?? '',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.slate500),
+                  ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
@@ -3838,8 +3876,14 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
 
     // Dynamic timeline compression logic
     final Map<String, double> serviceDaysSaved = {};
+    // Expanded items share their parent row's metadata: count each source
+    // row only once so days_saved isn't multiplied per worker.
+    final Set<String> savedCountedSources = {};
     for (var item in items) {
       if (item['isUnplanned'] == true && item['isCo'] != true && item['calculationMetadata'] != null) {
+        final src = item['sourceId']?.toString() ??
+            '${item['service']}|${item['name']}';
+        if (!savedCountedSources.add(src)) continue;
         final serviceName = item['service'] as String;
         final saved = (item['calculationMetadata']?['days_saved'] as num?)?.toDouble() ?? 0.0;
         serviceDaysSaved[serviceName] = (serviceDaysSaved[serviceName] ?? 0.0) + saved;
@@ -4184,6 +4228,17 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
                           ],
                           ],
                         ),
+                        if (item['workerName'] != null)
+                          Text(
+                            item['workerName'] as String,
+                            style: GoogleFonts.manrope(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: AppTheme.slate500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         if (start != null && end != null)
                           Text(
                             '${DateFormat('MMM dd').format(start)} - ${DateFormat('MMM dd').format(end)} ($itemDuration d)',
