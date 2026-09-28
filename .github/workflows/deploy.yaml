@@ -62,7 +62,7 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
 
       - name: Set Email Function Secrets
-        if: ${{ secrets.SMTP_HOST != '' }}
+        if: secrets.SMTP_HOST != ''
         run: |
           supabase secrets set --project-ref ${{ secrets.SUPABASE_PROJECT_ID }} \
             SMTP_HOST="${{ secrets.SMTP_HOST }}" \
