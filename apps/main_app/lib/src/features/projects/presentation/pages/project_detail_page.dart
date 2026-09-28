@@ -3532,8 +3532,29 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
 
     // One line per worker assignment (not per role): a role with several
     // workers shows one line each with its own dates.
+    // Pre-pass: groups (service|role) that have anything scheduled, so empty
+    // sibling rows of an already-planned group are skipped as ghosts — while
+    // a never-scheduled role keeps its 'Pending' line.
+    final scheduledGroups = <String>{};
+    for (var l in widget.labor) {
+      final key =
+          '${getService(l, 'quote_service_labors')}|${l['role_name']?.toString() ?? ''}';
+      if (l['start_date'] != null || l['end_date'] != null) {
+        scheduledGroups.add(key);
+      } else {
+        for (final a in (l['project_labor_assignments'] as List?) ?? []) {
+          final am = a as Map<String, dynamic>;
+          if (am['start_date'] != null || am['end_date'] != null) {
+            scheduledGroups.add(key);
+            break;
+          }
+        }
+      }
+    }
     for (var l in widget.labor) {
       final roleName = l['role_name']?.toString() ?? 'Unknown Crew';
+      final groupKey =
+          '${getService(l, 'quote_service_labors')}|$roleName';
       final rowStart =
           l['start_date'] != null ? DateTime.tryParse(l['start_date'].toString()) : null;
       final rowEnd =
@@ -3563,9 +3584,16 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
 
       if (assigns.isEmpty) {
         final evm = _localCalculateLaborEVM(l);
+        final start = evm['plannedStart'] as DateTime?;
+        final end = evm['plannedEnd'] as DateTime?;
+        // Ghost sibling: nothing scheduled here but the group is planned
+        // elsewhere → skip instead of showing a 'Pending' duplicate.
+        if (start == null && end == null && scheduledGroups.contains(groupKey)) {
+          continue;
+        }
         final b = laborBase();
-        b['plannedStart'] = evm['plannedStart'] as DateTime?;
-        b['plannedEnd'] = evm['plannedEnd'] as DateTime?;
+        b['plannedStart'] = start;
+        b['plannedEnd'] = end;
         items.add(b);
       } else {
         for (final a in assigns) {
