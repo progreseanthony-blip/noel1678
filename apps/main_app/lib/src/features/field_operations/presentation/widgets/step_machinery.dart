@@ -48,6 +48,10 @@ class _StepMachineryState extends State<StepMachinery> {
   List<Map<String, dynamic>> _entries = [];
   String? _serviceFilter;
   final Map<String, TextEditingController> _ctrls = {};
+  // Bulk table mode (Excel-like transcription, Normal cards stay untouched).
+  bool _compactView = false;
+  String _searchQuery = '';
+  final Set<int> _selectedEntryIdx = {};
   Map<String, double> _machineryProduction = {};
   Map<String, double> _rawProd = {};
   Map<String, List<double>> _rawProdList = {};
@@ -125,6 +129,7 @@ class _StepMachineryState extends State<StepMachinery> {
       _entries = widget.machineryLogs.map((m) => Map<String, dynamic>.from(m)).toList();
       _enrichEntries();
       _recalculateCalculatedCy();
+      _selectedEntryIdx.clear();
     }
   }
 
@@ -230,6 +235,7 @@ class _StepMachineryState extends State<StepMachinery> {
         'start_shift_photos': <String>[],
         'end_shift_photos': <String>[],
       });
+      _selectedEntryIdx.clear();
     });
     _emit();
   }
@@ -381,7 +387,10 @@ class _StepMachineryState extends State<StepMachinery> {
   }
 
   void _removeEntry(int index) {
-    setState(() => _entries.removeAt(index));
+    setState(() {
+      _entries.removeAt(index);
+      _selectedEntryIdx.clear();
+    });
     _emit();
   }
 
@@ -473,10 +482,21 @@ class _StepMachineryState extends State<StepMachinery> {
     return result;
   }
 
-  List<DropdownMenuItem<String>> _buildOperatorItems(List<Map<String, dynamic>> operators, Map<String, dynamic>? pm) {
+  ({List<Map<String, dynamic>> matching, List<Map<String, dynamic>> others, String? roleId}) _splitOperators(
+      List<Map<String, dynamic>> operators, Map<String, dynamic>? pm) {
     final opRoleId = pm != null ? _getOperatorRoleId(pm) : null;
-    final matching = operators.where((w) => w['role']?['id'] == opRoleId).toList();
-    final others = operators.where((w) => w['role']?['id'] != opRoleId).toList();
+    return (
+      matching: operators.where((w) => w['role']?['id'] == opRoleId).toList(),
+      others: operators.where((w) => w['role']?['id'] != opRoleId).toList(),
+      roleId: opRoleId,
+    );
+  }
+
+  List<DropdownMenuItem<String>> _buildOperatorItems(List<Map<String, dynamic>> operators, Map<String, dynamic>? pm) {
+    final split = _splitOperators(operators, pm);
+    final matching = split.matching;
+    final others = split.others;
+    final opRoleId = split.roleId;
 
     final items = <DropdownMenuItem<String>>[];
 
@@ -591,21 +611,39 @@ class _StepMachineryState extends State<StepMachinery> {
     final grouped = _groupByService(filtered);
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _buildServiceFilter(),
+      Row(children: [
+        Expanded(child: _buildServiceFilter()),
+        const SizedBox(width: 8),
+        _buildViewToggle(),
+      ]),
       const SizedBox(height: 12),
       if (filtered.isEmpty)
         _emptyState('No machinery scheduled for this date')
+      else if (_compactView) ...[
+        _buildTableSearch(),
+        const SizedBox(height: 8),
+        if (!widget.isReadOnly) ...[
+          _buildBulkBar(),
+          const SizedBox(height: 8),
+        ],
+        _buildTableView(filtered),
+        const SizedBox(height: 12),
+        if (!widget.isReadOnly) _buildBaselineButton(),
+      ]
       else ...[
         ...grouped.entries.map((svc) => _buildServiceGroup(svc.key ?? 'Unassigned', svc.value)),
         const SizedBox(height: 12),
-        if (!widget.isReadOnly)
-          TextButton.icon(
-            onPressed: widget.onNavigateToBaseline,
-            icon: const Icon(Icons.add_circle_outline, size: 16),
-            label: Text('+ Add to Baseline', style: _t(fontSize: 15, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
-          ),
+        if (!widget.isReadOnly) _buildBaselineButton(),
       ],
     ]);
+  }
+
+  Widget _buildBaselineButton() {
+    return TextButton.icon(
+      onPressed: widget.onNavigateToBaseline,
+      icon: const Icon(Icons.add_circle_outline, size: 16),
+      label: Text('+ Add to Baseline', style: _t(fontSize: 15, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
+    );
   }
 
   Widget _buildServiceFilter() {
@@ -1620,6 +1658,632 @@ class _StepMachineryState extends State<StepMachinery> {
         Icon(Icons.precision_manufacturing_outlined, size: 40, color: AppTheme.slate400),
         const SizedBox(height: 8),
         Text(text, style: _t(fontSize: 15, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
+      ]),
+    );
+  }
+
+  // ================= Bulk table mode (Excel-like) =================
+
+  Widget _buildViewToggle() {
+    return Container(
+      height: 40,
+      decoration: BoxDecoration(color: AppTheme.slate50, borderRadius: BorderRadius.circular(8)),
+      child: Row(children: [
+        _toggleOpt(Icons.view_list, 'Normal', !_compactView, () => setState(() => _compactView = false)),
+        _toggleOpt(Icons.table_chart, 'Table', _compactView, () => setState(() => _compactView = true)),
+      ]),
+    );
+  }
+
+  Widget _toggleOpt(IconData icon, String label, bool active, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: active ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          boxShadow: active ? [BoxShadow(color: Colors.black.withAlpha(13), blurRadius: 4, offset: const Offset(0, 2))] : null,
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 14, color: active ? AppTheme.primaryGreen : AppTheme.slate500),
+          const SizedBox(width: 4),
+          Text(label, style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: active ? AppTheme.primaryGreen : AppTheme.slate500)),
+        ]),
+      ),
+    );
+  }
+
+  Widget _buildTableSearch() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.slate200),
+      ),
+      child: TextField(
+        onChanged: (v) => setState(() { _searchQuery = v; _selectedEntryIdx.clear(); }),
+        style: _t(fontSize: 14),
+        decoration: InputDecoration(
+          hintText: 'Search machines...',
+          hintStyle: _t(fontSize: 14, color: AppTheme.slate400),
+          border: InputBorder.none,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+          prefixIcon: const Icon(Icons.search, size: 18, color: AppTheme.slate400),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? GestureDetector(
+                  onTap: () => setState(() { _searchQuery = ''; _selectedEntryIdx.clear(); }),
+                  child: const Icon(Icons.close, size: 16, color: AppTheme.slate400),
+                )
+              : null,
+        ),
+      ),
+    );
+  }
+
+  String _fmtNum(double v) => v % 1 == 0 ? v.toInt().toString() : v.toString();
+
+  void _syncCtrl(int idx, String field, double v) {
+    final key = '${idx}_$field';
+    final c = _ctrls[key];
+    if (c != null && c.text != _fmtNum(v)) {
+      c.text = _fmtNum(v);
+    }
+  }
+
+  Future<void> _askBulkNumber(String title, String label, void Function(double) apply) async {
+    final ctrl = TextEditingController();
+    final v = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(labelText: label, border: const OutlineInputBorder()),
+          onSubmitted: (_) => Navigator.pop(ctx, double.tryParse(ctrl.text)),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, double.tryParse(ctrl.text)), child: const Text('Apply')),
+        ],
+      ),
+    );
+    if (v != null) apply(v);
+  }
+
+  void _bulkSet(String field, double v) {
+    final targets = _selectedEntryIdx.where((i) => i >= 0 && i < _entries.length).toList();
+    for (final idx in targets) {
+      final entry = _entries[idx];
+      if (field == 'production_value' && entry['_is_principal'] != true) continue;
+      _updateEntry(idx, field, v);
+      _syncCtrl(idx, field, v);
+    }
+    _recalculateCalculatedCy();
+    setState(() => _selectedEntryIdx.clear());
+  }
+
+  void _bulkCopyFirst() {
+    if (_selectedEntryIdx.isEmpty) return;
+    final srcIdx = _selectedEntryIdx.reduce((a, b) => a < b ? a : b);
+    if (srcIdx < 0 || srcIdx >= _entries.length) return;
+    final src = _entries[srcIdx];
+    for (final idx in _selectedEntryIdx) {
+      if (idx == srcIdx || idx < 0 || idx >= _entries.length) continue;
+      final entry = _entries[idx];
+      for (final f in ['start_meter', 'end_meter', 'fuel_added']) {
+        final val = (src[f] as num?)?.toDouble() ?? 0.0;
+        _updateEntry(idx, f, val);
+        _syncCtrl(idx, f, val);
+      }
+      if (entry['_is_principal'] == true) {
+        final val = (src['production_value'] as num?)?.toDouble() ?? 0.0;
+        _updateEntry(idx, 'production_value', val);
+        _syncCtrl(idx, 'production_value', val);
+      }
+    }
+    _recalculateCalculatedCy();
+    setState(() => _selectedEntryIdx.clear());
+  }
+
+  Widget _buildBulkBar() {
+    final hasSel = _selectedEntryIdx.isNotEmpty;
+    Widget bulkBtn(String label, VoidCallback? onTap) {
+      return TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          backgroundColor: onTap == null ? AppTheme.slate200 : AppTheme.primaryGreen.withAlpha(15),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          minimumSize: Size.zero,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        ),
+        child: Text(label, style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: onTap == null ? AppTheme.slate400 : AppTheme.primaryGreen)),
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.slate50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.slate200),
+      ),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          const Icon(Icons.bolt, size: 14, color: AppTheme.slate500),
+          Text('Bulk:', style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate600)),
+          bulkBtn('Set Start', hasSel ? () => _askBulkNumber('Set start meter', 'Start meter', (v) => _bulkSet('start_meter', v)) : null),
+          bulkBtn('Set End', hasSel ? () => _askBulkNumber('Set end meter', 'End meter', (v) => _bulkSet('end_meter', v)) : null),
+          bulkBtn('Set Fuel', hasSel ? () => _askBulkNumber('Set fuel (gal)', 'Gallons', (v) => _bulkSet('fuel_added', v)) : null),
+          bulkBtn('Set Trips', hasSel ? () => _askBulkNumber('Set trips / production', 'Value', (v) => _bulkSet('production_value', v)) : null),
+          bulkBtn('Copy 1st → all', hasSel ? _bulkCopyFirst : null),
+          if (hasSel) ...[
+            Text('${_selectedEntryIdx.length} selected', style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate500)),
+            GestureDetector(
+              onTap: () => setState(() => _selectedEntryIdx.clear()),
+              child: Text('Clear', style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.errorRed)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _buildTableItems(List<Map<String, dynamic>> filtered) {
+    final q = _searchQuery.trim().toLowerCase();
+    final items = <Map<String, dynamic>>[];
+    final grouped = _groupByService(filtered);
+    final svcNames = grouped.keys.toList()
+      ..sort((a, b) => (a ?? 'Unassigned').compareTo(b ?? 'Unassigned'));
+    for (final svc in svcNames) {
+      final rows = <Map<String, dynamic>>[];
+      for (final pm in grouped[svc]!) {
+        final name = (pm['machinery_name'] ?? pm['machinery']?['description'] ?? '').toString();
+        if (q.isNotEmpty && !name.toLowerCase().contains(q)) continue;
+        final pmId = pm['id'] as String;
+        final idxs = _entriesFor(pmId);
+        final expected = (pm['expected_quantity'] as int?) ?? 1;
+        final count = idxs.length > expected ? idxs.length : expected;
+        for (int pos = 0; pos < count; pos++) {
+          if (pos < idxs.length) {
+            rows.add({'type': 'entry', 'index': idxs[pos], 'pm': pm});
+          } else {
+            rows.add({'type': 'empty', 'pm': pm});
+          }
+        }
+      }
+      if (rows.isNotEmpty) {
+        items.add({'type': 'header', 'name': svc ?? 'Unassigned', 'count': rows.length});
+        items.addAll(rows);
+      }
+    }
+    return items;
+  }
+
+  double get _tableWidth => widget.isReadOnly ? 852.0 : 932.0;
+
+  Widget _buildTableView(List<Map<String, dynamic>> filtered) {
+    final items = _buildTableItems(filtered);
+    if (items.isEmpty) return _emptyState('No machines match your search');
+    return Container(
+      decoration: BoxDecoration(border: Border.all(color: AppTheme.slate200), borderRadius: BorderRadius.circular(8)),
+      clipBehavior: Clip.antiAlias,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          SizedBox(width: _tableWidth, child: _buildTableHeader(items)),
+          const Divider(height: 1, color: AppTheme.slate200),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 520),
+            child: SizedBox(
+              width: _tableWidth,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: items.length,
+                itemBuilder: (_, i) => _buildTableItem(items[i]),
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _thCell(String l, double w, {TextAlign ta = TextAlign.left}) {
+    return SizedBox(width: w, child: Text(l, style: _t(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.slate500), textAlign: ta));
+  }
+
+  Widget _buildTableHeader(List<Map<String, dynamic>> items) {
+    final selectable = items
+        .where((i) => i['type'] == 'entry')
+        .map((i) => i['index'] as int)
+        .toSet();
+    final allSel = selectable.isNotEmpty && selectable.every(_selectedEntryIdx.contains);
+    final someSel = selectable.any(_selectedEntryIdx.contains);
+    // 44+150+190+78+78+56+64+70+110+40+36 = 916 (+16 padding = 932).
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      decoration: BoxDecoration(color: AppTheme.slate50),
+      child: Row(children: [
+        SizedBox(
+          width: 44,
+          child: (!widget.isReadOnly && selectable.isNotEmpty)
+              ? Checkbox(
+                  tristate: true,
+                  value: allSel ? true : (someSel ? null : false),
+                  onChanged: (_) => setState(() {
+                    if (allSel) {
+                      _selectedEntryIdx.removeAll(selectable);
+                    } else {
+                      _selectedEntryIdx.addAll(selectable);
+                    }
+                  }),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                )
+              : const SizedBox.shrink(),
+        ),
+        _thCell('Machine', 150),
+        _thCell('Operator', 190),
+        _thCell('Start', 78, ta: TextAlign.center),
+        _thCell('End', 78, ta: TextAlign.center),
+        _thCell('Hrs', 56, ta: TextAlign.center),
+        _thCell('Fuel', 64, ta: TextAlign.center),
+        _thCell('Trips', 70, ta: TextAlign.center),
+        _thCell('Day %', 110, ta: TextAlign.center),
+        _thCell('', 40),
+        if (!widget.isReadOnly) _thCell('', 36),
+      ]),
+    );
+  }
+
+  List<Map<String, dynamic>> _operatorsForEntry(int index, Map<String, dynamic> entry, Map<String, dynamic> pm) {
+    final operators = _getOperatorsForMachine(pm).toList();
+    final currentOpId = entry['operator_id'] as String?;
+    if (currentOpId != null && !operators.any((w) => w['id'] == currentOpId)) {
+      final currentOp = _activeWorkers.firstWhere(
+        (w) => w['id'] == currentOpId,
+        orElse: () => <String, dynamic>{},
+      );
+      if (currentOp.isNotEmpty) operators.insert(0, currentOp);
+    }
+    final takenIds = <String>{};
+    for (int i = 0; i < _entries.length; i++) {
+      if (i == index) continue;
+      final id = _entries[i]['operator_id'] as String?;
+      if (id != null) takenIds.add(id);
+    }
+    operators.removeWhere((w) => takenIds.contains(w['id'] as String?));
+    return operators;
+  }
+
+  /// Operator dropdown for table rows: the closed field shows the short name
+  /// only (full "name — role (id)" stays visible inside the menu).
+  Widget _operatorTableDropdown(int index, Map<String, dynamic> entry, Map<String, dynamic> pm) {
+    final ops = _operatorsForEntry(index, entry, pm);
+    final split = _splitOperators(ops, pm);
+    Widget shortOp(Map<String, dynamic> w) => Text(
+          (w['full_name'] as String?) ?? '?',
+          style: _t(fontSize: 12),
+          overflow: TextOverflow.ellipsis,
+        );
+    final selected = <Widget>[];
+    if (split.matching.isNotEmpty && split.roleId != null) {
+      selected.add(const Text(''));
+      selected.addAll(split.matching.map(shortOp));
+    }
+    if (split.others.isNotEmpty) {
+      if (selected.isNotEmpty) selected.add(const Text(''));
+      selected.addAll(split.others.map(shortOp));
+    }
+    return DropdownButtonFormField<String>(
+      isExpanded: true,
+      value: entry['operator_id'] as String?,
+      decoration: const InputDecoration(
+        hintText: 'Select...',
+        isDense: true,
+        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      ),
+      style: _t(fontSize: 12),
+      items: _buildOperatorItems(ops, pm),
+      selectedItemBuilder: (_) => selected,
+      onChanged: (v) {
+        _updateEntry(index, 'operator_id', v);
+        _updateEntry(index, 'rate_override', null);
+      },
+    );
+  }
+
+  Widget _miniProgress(int index, Map<String, dynamic> entry, Map<String, dynamic> pm) {
+    if (entry['_is_principal'] != true) {
+      return Text('—', style: _t(fontSize: 12, color: AppTheme.slate400), textAlign: TextAlign.center);
+    }
+    final est = _findEst(pm);
+    if (est == null) {
+      return Text('—', style: _t(fontSize: 12, color: AppTheme.slate400), textAlign: TextAlign.center);
+    }
+    final pmId = pm['id'] as String;
+    final days = _daysElapsed(pm);
+    final entryIndices = _entriesFor(pmId);
+    final myPos = entryIndices.indexOf(index);
+    final stride = entryIndices.isEmpty ? 1 : entryIndices.length;
+    final histList = _rawProdList[pmId] ?? [];
+    double hist = 0;
+    for (int i = myPos < 0 ? 0 : myPos; i < histList.length; i += stride) {
+      hist += histList[i];
+    }
+    final today = (entry['production_value'] as num?)?.toDouble() ?? 0.0;
+
+    // Accumulated values shown like the individual card ("To date: X / Y UNIT").
+    double cum;
+    double target;
+    String unit;
+    if (_isTripBased(pm)) {
+      final tripsPerDay = (est['trips_per_day'] as num?)?.toDouble() ?? 0;
+      if (tripsPerDay <= 0) {
+        return Text('—', style: _t(fontSize: 12, color: AppTheme.slate400), textAlign: TextAlign.center);
+      }
+      final histCYList = _machineryProdList[pmId] ?? [];
+      double histCY = 0;
+      for (int i = myPos < 0 ? 0 : myPos; i < histCYList.length; i += stride) {
+        histCY += histCYList[i];
+      }
+      final todayCY = (entry['_calculated_cy'] as num?)?.toDouble() ?? 0.0;
+      final capPerTrip = (est['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+      cum = histCY + todayCY;
+      target = capPerTrip * tripsPerDay * days;
+      unit = 'CY';
+    } else {
+      final dailyTarget = (est['performance_per_day'] as num?)?.toDouble() ?? 0;
+      if (dailyTarget <= 0) {
+        return Text('—', style: _t(fontSize: 12, color: AppTheme.slate400), textAlign: TextAlign.center);
+      }
+      cum = hist + today;
+      target = dailyTarget * days;
+      final prodUnit = entry['production_unit']?.toString().toUpperCase() ?? '';
+      unit = prodUnit.isNotEmpty
+          ? prodUnit
+          : (pm['quote_services']?['unit_of_measure']?.toString().toUpperCase() ?? 'units');
+    }
+    if (target <= 0) {
+      return Text('—', style: _t(fontSize: 12, color: AppTheme.slate400), textAlign: TextAlign.center);
+    }
+    final ratio = (cum / target).clamp(0.0, 1.0);
+    final pct = (ratio * 100).toInt();
+    final color = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
+    return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('${cum.toStringAsFixed(0)} / ${target.toStringAsFixed(0)} $unit',
+          style: _t(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis),
+      const SizedBox(height: 2),
+      Row(children: [
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+                value: ratio, backgroundColor: AppTheme.slate200, valueColor: AlwaysStoppedAnimation<Color>(color), minHeight: 4),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text('$pct%', style: _t(fontSize: 10, fontWeight: FontWeight.w700, color: color)),
+      ]),
+    ]);
+  }
+
+  Future<void> _openPhotoSheet(int index, Map<String, dynamic> entry) async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom, left: 16, right: 16, top: 12),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppTheme.slate200, borderRadius: BorderRadius.circular(2)))),
+            const SizedBox(height: 8),
+            Text('Evidence — ${entry['_name'] ?? 'Machine'}', style: _t(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.slate900)),
+            const SizedBox(height: 12),
+            _buildPhotoSection(index, entry, 'start_shift_photos', 'Start of shift'),
+            const SizedBox(height: 12),
+            _buildPhotoSection(index, entry, 'end_shift_photos', 'End of shift'),
+            const SizedBox(height: 24),
+          ]),
+        ),
+      ),
+    );
+    if (mounted) setState(() {});
+  }
+
+  Widget _buildTableItem(Map<String, dynamic> item) {
+    if (item['type'] == 'header') {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+        color: AppTheme.slate50,
+        child: Row(children: [
+          const SizedBox(width: 44),
+          Expanded(
+            child: Text(
+              '${item['name']} (${item['count']} rows)',
+              style: _t(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate700),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ]),
+      );
+    }
+
+    final pm = item['pm'] as Map<String, dynamic>;
+    final machName = (pm['machinery_name'] ?? pm['machinery']?['description'] ?? 'Machine').toString();
+
+    if (item['type'] == 'empty') {
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+        decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppTheme.slate200.withAlpha(80)))),
+        child: Row(children: [
+          const SizedBox(width: 44),
+          SizedBox(
+            width: 150,
+            child: Text(machName, style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate400), overflow: TextOverflow.ellipsis),
+          ),
+          Expanded(
+            child: Row(children: [
+              Text('Not registered', style: _t(fontSize: 12, color: AppTheme.slate400)),
+              const SizedBox(width: 8),
+              if (!widget.isReadOnly)
+                TextButton.icon(
+                  onPressed: () => _addEntry(pm),
+                  icon: const Icon(Icons.add, size: 14),
+                  label: Text('Add', style: _t(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen)),
+                  style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                ),
+            ]),
+          ),
+        ]),
+      );
+    }
+
+    final index = item['index'] as int;
+    if (index < 0 || index >= _entries.length) return const SizedBox.shrink();
+    final entry = _entries[index];
+    final isPrincipal = entry['_is_principal'] == true;
+    final tripBased = _isTripBased(pm);
+    final isSelected = _selectedEntryIdx.contains(index);
+    final start = (entry['start_meter'] as num?)?.toDouble() ?? 0;
+    final end = entry['end_meter'] == null ? null : (entry['end_meter'] as num?)?.toDouble();
+    final endInvalid = end != null && end <= start;
+    final totalHrs = (entry['total_hours'] as num?)?.toDouble() ?? 0;
+    final photoCount = ((entry['start_shift_photos'] as List?)?.length ?? 0) + ((entry['end_shift_photos'] as List?)?.length ?? 0);
+
+    Widget numCell(String field, String label, double? current, void Function(double) save) {
+      if (widget.isReadOnly) {
+        return SizedBox(
+          child: Text(
+            current == null ? '—' : _fmtNum(current),
+            style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900),
+            textAlign: TextAlign.center,
+          ),
+        );
+      }
+      return _numField(index, field, label, current?.toString() ?? '', save);
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppTheme.slate200.withAlpha(80))),
+        color: isSelected ? AppTheme.primaryGreen.withAlpha(12) : null,
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+        SizedBox(
+          width: 44,
+          child: widget.isReadOnly
+              ? const SizedBox.shrink()
+              : Checkbox(
+                  value: isSelected,
+                  onChanged: (_) => setState(() {
+                    if (isSelected) {
+                      _selectedEntryIdx.remove(index);
+                    } else {
+                      _selectedEntryIdx.add(index);
+                    }
+                  }),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+        ),
+        SizedBox(
+          width: 150,
+          child: Text(machName, style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900), overflow: TextOverflow.ellipsis),
+        ),
+        SizedBox(
+          width: 190,
+          child: widget.isReadOnly
+              ? Text(_workerName(entry['operator_id'] as String?),
+                  style: _t(fontSize: 12, color: AppTheme.slate700), overflow: TextOverflow.ellipsis)
+              : _operatorTableDropdown(index, entry, pm),
+        ),
+        SizedBox(width: 78, child: numCell('start_meter', 'Start', start, (v) => _updateEntry(index, 'start_meter', v))),
+        SizedBox(width: 78, child: numCell('end_meter', 'End', end, (v) => _updateEntry(index, 'end_meter', v))),
+        SizedBox(
+          width: 56,
+          child: Text(
+            _fmtNum(totalHrs),
+            style: _t(fontSize: 13, fontWeight: FontWeight.w700, color: endInvalid ? AppTheme.errorRed : AppTheme.slate700),
+            textAlign: TextAlign.center,
+          ),
+        ),
+        SizedBox(
+          width: 64,
+          child: numCell('fuel_added', 'Fuel', (entry['fuel_added'] as num?)?.toDouble() ?? 0, (v) => _updateEntry(index, 'fuel_added', v)),
+        ),
+        SizedBox(
+          width: 70,
+          child: isPrincipal
+              ? (widget.isReadOnly
+                  ? Text(
+                      _fmtNum((entry['production_value'] as num?)?.toDouble() ?? 0),
+                      style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900),
+                      textAlign: TextAlign.center,
+                    )
+                  : _numField(index, 'production_value', tripBased ? 'Trips' : 'Prod', entry['production_value']?.toString() ?? '', (v) {
+                      if (tripBased) {
+                        final capacity = _getEstimationCapacity(pm);
+                        _updateEntry(index, 'production_value', v);
+                        if (capacity > 0) {
+                          _updateEntry(index, '_calculated_cy', v * capacity);
+                        }
+                      } else {
+                        _updateEntry(index, 'production_value', v);
+                        _updateEntry(index, '_calculated_cy', v);
+                      }
+                    }))
+              : Text('—', style: _t(fontSize: 12, color: AppTheme.slate400), textAlign: TextAlign.center),
+        ),
+        SizedBox(width: 110, child: _miniProgress(index, entry, pm)),
+        SizedBox(
+          width: 40,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.photo_camera_outlined, size: 18, color: AppTheme.slate500),
+                tooltip: 'Evidence photos',
+                onPressed: () => _openPhotoSheet(index, entry),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+              ),
+              if (photoCount > 0)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(color: AppTheme.primaryGreen, borderRadius: BorderRadius.circular(8)),
+                    child: Text('$photoCount', style: _t(fontSize: 9, fontWeight: FontWeight.w700, color: Colors.white)),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        if (!widget.isReadOnly)
+          SizedBox(
+            width: 36,
+            child: IconButton(
+              icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.errorRed),
+              tooltip: 'Remove',
+              onPressed: () => _removeEntry(index),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            ),
+          ),
       ]),
     );
   }
