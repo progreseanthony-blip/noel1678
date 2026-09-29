@@ -482,10 +482,21 @@ class _StepMachineryState extends State<StepMachinery> {
     return result;
   }
 
-  List<DropdownMenuItem<String>> _buildOperatorItems(List<Map<String, dynamic>> operators, Map<String, dynamic>? pm) {
+  ({List<Map<String, dynamic>> matching, List<Map<String, dynamic>> others, String? roleId}) _splitOperators(
+      List<Map<String, dynamic>> operators, Map<String, dynamic>? pm) {
     final opRoleId = pm != null ? _getOperatorRoleId(pm) : null;
-    final matching = operators.where((w) => w['role']?['id'] == opRoleId).toList();
-    final others = operators.where((w) => w['role']?['id'] != opRoleId).toList();
+    return (
+      matching: operators.where((w) => w['role']?['id'] == opRoleId).toList(),
+      others: operators.where((w) => w['role']?['id'] != opRoleId).toList(),
+      roleId: opRoleId,
+    );
+  }
+
+  List<DropdownMenuItem<String>> _buildOperatorItems(List<Map<String, dynamic>> operators, Map<String, dynamic>? pm) {
+    final split = _splitOperators(operators, pm);
+    final matching = split.matching;
+    final others = split.others;
+    final opRoleId = split.roleId;
 
     final items = <DropdownMenuItem<String>>[];
 
@@ -1856,7 +1867,7 @@ class _StepMachineryState extends State<StepMachinery> {
     return items;
   }
 
-  double get _tableWidth => widget.isReadOnly ? 812.0 : 892.0;
+  double get _tableWidth => widget.isReadOnly ? 852.0 : 932.0;
 
   Widget _buildTableView(List<Map<String, dynamic>> filtered) {
     final items = _buildTableItems(filtered);
@@ -1896,7 +1907,7 @@ class _StepMachineryState extends State<StepMachinery> {
         .toSet();
     final allSel = selectable.isNotEmpty && selectable.every(_selectedEntryIdx.contains);
     final someSel = selectable.any(_selectedEntryIdx.contains);
-    // 44+150+170+78+78+56+64+70+90+40+36 = 876 (+16 padding = 892).
+    // 44+150+190+78+78+56+64+70+110+40+36 = 916 (+16 padding = 932).
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       decoration: BoxDecoration(color: AppTheme.slate50),
@@ -1920,13 +1931,13 @@ class _StepMachineryState extends State<StepMachinery> {
               : const SizedBox.shrink(),
         ),
         _thCell('Machine', 150),
-        _thCell('Operator', 170),
+        _thCell('Operator', 190),
         _thCell('Start', 78, ta: TextAlign.center),
         _thCell('End', 78, ta: TextAlign.center),
         _thCell('Hrs', 56, ta: TextAlign.center),
         _thCell('Fuel', 64, ta: TextAlign.center),
         _thCell('Trips', 70, ta: TextAlign.center),
-        _thCell('Day %', 90, ta: TextAlign.center),
+        _thCell('Day %', 110, ta: TextAlign.center),
         _thCell('', 40),
         if (!widget.isReadOnly) _thCell('', 36),
       ]),
@@ -1953,6 +1964,43 @@ class _StepMachineryState extends State<StepMachinery> {
     return operators;
   }
 
+  /// Operator dropdown for table rows: the closed field shows the short name
+  /// only (full "name — role (id)" stays visible inside the menu).
+  Widget _operatorTableDropdown(int index, Map<String, dynamic> entry, Map<String, dynamic> pm) {
+    final ops = _operatorsForEntry(index, entry, pm);
+    final split = _splitOperators(ops, pm);
+    Widget shortOp(Map<String, dynamic> w) => Text(
+          (w['full_name'] as String?) ?? '?',
+          style: _t(fontSize: 12),
+          overflow: TextOverflow.ellipsis,
+        );
+    final selected = <Widget>[];
+    if (split.matching.isNotEmpty && split.roleId != null) {
+      selected.add(const Text(''));
+      selected.addAll(split.matching.map(shortOp));
+    }
+    if (split.others.isNotEmpty) {
+      if (selected.isNotEmpty) selected.add(const Text(''));
+      selected.addAll(split.others.map(shortOp));
+    }
+    return DropdownButtonFormField<String>(
+      isExpanded: true,
+      value: entry['operator_id'] as String?,
+      decoration: const InputDecoration(
+        hintText: 'Select...',
+        isDense: true,
+        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      ),
+      style: _t(fontSize: 12),
+      items: _buildOperatorItems(ops, pm),
+      selectedItemBuilder: (_) => selected,
+      onChanged: (v) {
+        _updateEntry(index, 'operator_id', v);
+        _updateEntry(index, 'rate_override', null);
+      },
+    );
+  }
+
   Widget _miniProgress(int index, Map<String, dynamic> entry, Map<String, dynamic> pm) {
     if (entry['_is_principal'] != true) {
       return Text('—', style: _t(fontSize: 12, color: AppTheme.slate400), textAlign: TextAlign.center);
@@ -1963,55 +2011,70 @@ class _StepMachineryState extends State<StepMachinery> {
     }
     final pmId = pm['id'] as String;
     final days = _daysElapsed(pm);
-    double ratio = 0;
+    final entryIndices = _entriesFor(pmId);
+    final myPos = entryIndices.indexOf(index);
+    final stride = entryIndices.isEmpty ? 1 : entryIndices.length;
+    final histList = _rawProdList[pmId] ?? [];
+    double hist = 0;
+    for (int i = myPos < 0 ? 0 : myPos; i < histList.length; i += stride) {
+      hist += histList[i];
+    }
+    final today = (entry['production_value'] as num?)?.toDouble() ?? 0.0;
+
+    // Accumulated values shown like the individual card ("To date: X / Y UNIT").
+    double cum;
+    double target;
+    String unit;
     if (_isTripBased(pm)) {
       final tripsPerDay = (est['trips_per_day'] as num?)?.toDouble() ?? 0;
       if (tripsPerDay <= 0) {
         return Text('—', style: _t(fontSize: 12, color: AppTheme.slate400), textAlign: TextAlign.center);
       }
-      final entryIndices = _entriesFor(pmId);
-      final myPos = entryIndices.indexOf(index);
-      final stride = entryIndices.isEmpty ? 1 : entryIndices.length;
-      final histList = _rawProdList[pmId] ?? [];
-      double hist = 0;
-      for (int i = myPos < 0 ? 0 : myPos; i < histList.length; i += stride) {
-        hist += histList[i];
+      final histCYList = _machineryProdList[pmId] ?? [];
+      double histCY = 0;
+      for (int i = myPos < 0 ? 0 : myPos; i < histCYList.length; i += stride) {
+        histCY += histCYList[i];
       }
-      final today = (entry['production_value'] as num?)?.toDouble() ?? 0.0;
-      final target = tripsPerDay * days;
-      if (target <= 0) {
-        return Text('—', style: _t(fontSize: 12, color: AppTheme.slate400), textAlign: TextAlign.center);
-      }
-      ratio = ((hist + today) / target).clamp(0.0, 1.0);
+      final todayCY = (entry['_calculated_cy'] as num?)?.toDouble() ?? 0.0;
+      final capPerTrip = (est['capacity_per_trip'] as num?)?.toDouble() ?? 0;
+      cum = histCY + todayCY;
+      target = capPerTrip * tripsPerDay * days;
+      unit = 'CY';
     } else {
       final dailyTarget = (est['performance_per_day'] as num?)?.toDouble() ?? 0;
       if (dailyTarget <= 0) {
         return Text('—', style: _t(fontSize: 12, color: AppTheme.slate400), textAlign: TextAlign.center);
       }
-      final entryIndices = _entriesFor(pmId);
-      final myPos = entryIndices.indexOf(index);
-      final stride = entryIndices.isEmpty ? 1 : entryIndices.length;
-      final histList = _rawProdList[pmId] ?? [];
-      double hist = 0;
-      for (int i = myPos < 0 ? 0 : myPos; i < histList.length; i += stride) {
-        hist += histList[i];
-      }
-      final today = (entry['production_value'] as num?)?.toDouble() ?? 0.0;
-      final target = dailyTarget * days;
-      if (target <= 0) {
-        return Text('—', style: _t(fontSize: 12, color: AppTheme.slate400), textAlign: TextAlign.center);
-      }
-      ratio = ((hist + today) / target).clamp(0.0, 1.0);
+      cum = hist + today;
+      target = dailyTarget * days;
+      final prodUnit = entry['production_unit']?.toString().toUpperCase() ?? '';
+      unit = prodUnit.isNotEmpty
+          ? prodUnit
+          : (pm['quote_services']?['unit_of_measure']?.toString().toUpperCase() ?? 'units');
     }
+    if (target <= 0) {
+      return Text('—', style: _t(fontSize: 12, color: AppTheme.slate400), textAlign: TextAlign.center);
+    }
+    final ratio = (cum / target).clamp(0.0, 1.0);
     final pct = (ratio * 100).toInt();
     final color = pct >= 80 ? AppTheme.primaryGreen : (pct >= 50 ? Colors.orange : AppTheme.errorRed);
     return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text('$pct%', style: _t(fontSize: 12, fontWeight: FontWeight.w700, color: color)),
+      Text('${cum.toStringAsFixed(0)} / ${target.toStringAsFixed(0)} $unit',
+          style: _t(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis),
       const SizedBox(height: 2),
-      ClipRRect(
-        borderRadius: BorderRadius.circular(2),
-        child: LinearProgressIndicator(value: ratio, backgroundColor: AppTheme.slate200, valueColor: AlwaysStoppedAnimation<Color>(color), minHeight: 4),
-      ),
+      Row(children: [
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(2),
+            child: LinearProgressIndicator(
+                value: ratio, backgroundColor: AppTheme.slate200, valueColor: AlwaysStoppedAnimation<Color>(color), minHeight: 4),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text('$pct%', style: _t(fontSize: 10, fontWeight: FontWeight.w700, color: color)),
+      ]),
     ]);
   }
 
@@ -2141,25 +2204,11 @@ class _StepMachineryState extends State<StepMachinery> {
           child: Text(machName, style: _t(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900), overflow: TextOverflow.ellipsis),
         ),
         SizedBox(
-          width: 170,
+          width: 190,
           child: widget.isReadOnly
               ? Text(_workerName(entry['operator_id'] as String?),
                   style: _t(fontSize: 12, color: AppTheme.slate700), overflow: TextOverflow.ellipsis)
-              : DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  value: entry['operator_id'] as String?,
-                  decoration: const InputDecoration(
-                    hintText: 'Select...',
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                  ),
-                  style: _t(fontSize: 12),
-                  items: _buildOperatorItems(_operatorsForEntry(index, entry, pm), pm),
-                  onChanged: (v) {
-                    _updateEntry(index, 'operator_id', v);
-                    _updateEntry(index, 'rate_override', null);
-                  },
-                ),
+              : _operatorTableDropdown(index, entry, pm),
         ),
         SizedBox(width: 78, child: numCell('start_meter', 'Start', start, (v) => _updateEntry(index, 'start_meter', v))),
         SizedBox(width: 78, child: numCell('end_meter', 'End', end, (v) => _updateEntry(index, 'end_meter', v))),
@@ -2198,7 +2247,7 @@ class _StepMachineryState extends State<StepMachinery> {
                     }))
               : Text('—', style: _t(fontSize: 12, color: AppTheme.slate400), textAlign: TextAlign.center),
         ),
-        SizedBox(width: 90, child: _miniProgress(index, entry, pm)),
+        SizedBox(width: 110, child: _miniProgress(index, entry, pm)),
         SizedBox(
           width: 40,
           child: Stack(
