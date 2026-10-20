@@ -4,18 +4,13 @@ workflows:
     instance_type: mac_mini_m2
     working_directory: apps/main_app
     environment:
-      flutter: stable
+      # Match the Flutter version used by the production web workflow.
+      flutter: 3.44.6
       xcode: latest
       cocoapods: default
       ios_signing:
-        automatic:
-          app_store_connect:
-            auth_type: api_key
-            api_key_id: $APPLEKEYID
-            api_key_issuer_id: $APPLEISSUERID
-            api_key: $APPLEAPIKEY
-      vars:
-        APP_ID: com.globalgolf.projectapp
+        distribution_type: app_store
+        bundle_identifier: com.globalgolf.projectapp
     triggering:
       events:
         - push
@@ -24,31 +19,55 @@ workflows:
           include: true
           source: true
     scripts:
-      - name: Install Melos
+      - name: Verify Flutter project path
         script: |
-          dart pub global activate melos
-      - name: Bootstrap Melos
+          set -eu
+          test -f pubspec.yaml
+          test -f ios/Runner.xcodeproj/project.pbxproj
+      - name: Install workspace dependencies
         script: |
-          cd ../..
-          melos bootstrap
+          set -eu
+          cd "$CM_BUILD_DIR"
+          dart pub get
+          # Local packages use path dependencies, without Dart pub workspaces.
+          for package in packages/core packages/data packages/ui_components apps/main_app; do
+            (cd "$package" && flutter pub get)
+          done
       - name: Generate Code
         script: |
-          cd ../..
-          melos run gen
+          set -eu
+          cd "$CM_BUILD_DIR"
+          # Explicit package paths also work when Melos is not installed globally.
+          for package in packages/core packages/data apps/main_app; do
+            (cd "$package" && dart run build_runner build --delete-conflicting-outputs)
+          done
+      - name: Configure iOS signing
+        script: |
+          set -eu
+          xcode-project use-profiles
       - name: Build iOS IPA
         script: |
-          cd apps/main_app
-          flutter clean
+          set -eu
+          # Each script starts in working_directory: apps/main_app.
+          set -a
+          source "$CM_BUILD_DIR/.env.production"
+          set +a
+          : "${ENVIRONMENT:?Missing ENVIRONMENT in .env.production}"
+          : "${SUPABASE_URL:?Missing SUPABASE_URL in .env.production}"
+          : "${SUPABASE_ANON_KEY:?Missing SUPABASE_ANON_KEY in .env.production}"
           flutter build ipa --release \
-            --export-method=app-store \
-            --build-number=$(grep '^version:' pubspec.yaml | sed 's/.*+//')
+            --export-options-plist="$HOME/export_options.plist" \
+            --build-number="$(grep '^version:' pubspec.yaml | sed 's/.*+//')" \
+            --dart-define="ENVIRONMENT=$ENVIRONMENT" \
+            --dart-define="SUPABASE_URL=$SUPABASE_URL" \
+            --dart-define="SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY"
     artifacts:
-      - build/ios/ipa/*.ipa
-      - build/ios/ipa/*.dSYM.zip
+      - apps/main_app/build/ios/ipa/*.ipa
+      - apps/main_app/build/ios/archive/*.xcarchive/dSYMs/*.dSYM
+      - /tmp/xcodebuild_logs/*.log
     publishing:
       app_store_connect:
-        auth_type: api_key
-        api_key_id: $APPLEKEYID
-        api_key_issuer_id: $APPLEISSUERID
+        key_id: $APPLEKEYID
+        issuer_id: $APPLEISSUERID
         api_key: $APPLEAPIKEY
         submit_to_testflight: true
