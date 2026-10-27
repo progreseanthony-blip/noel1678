@@ -4,8 +4,9 @@
 
 Fases 0 a 5 completadas en local, incluida la conciliación de descansos y horas.
 El menú de la fase 6 está unificado y los campos históricos se conservaron.
-Queda la fase 7 de validación integrada y compilación web final, además de retirar
-la excepción temporal de fechas futuras cuando terminen las pruebas del usuario.
+Queda la validación funcional integrada del usuario. La compilación web release y las
+pruebas automáticas finales están aprobadas. Por instrucción expresa del usuario,
+la excepción temporal de fechas futuras permanece activa en local.
 
 ## Estado inicial al 18 de octubre de 2026
 
@@ -1118,3 +1119,20 @@ RPC, las reglas de aprobación independiente y el diseño existente en inglés.
 No hay cambios de base de datos.
 
 Validación: 13 pruebas Flutter aprobadas (4 de confirmación/cancelación del diálogo y 9 del reporte por cuadrillas). Sin merge ni push.
+
+### 2026-10-27 — Integración y publicación autorizadas
+
+El usuario autorizó merge y push, manteniendo expresamente la excepción de
+fechas futuras para continuar sus pruebas locales. Se integró la implementación
+en main junto con las actualizaciones remotas de iOS. Las ediciones locales
+anteriores de codemagic.yaml quedaron preservadas en un stash específico;
+se conserva la configuración remota más reciente sin reintroducir ese archivo.
+Los respaldos, scripts scratch y documentos personales no forman parte del commit.
+
+Validación final: dart pub get y generación core/data/app; 153 pruebas Flutter
+de la implementación aprobadas, 15 suites SQL aisladas con ROLLBACK aprobadas y
+compilación web release aprobada. La prueba de contador original de la plantilla
+no pertenece a esta batería funcional. Las cinco definiciones de la excepción
+local de fechas futuras conservan exactamente sus hashes antes/después del merge.
+Las pruebas funcionales del usuario continúan; no se restauró la restricción de
+fechas ni se publicó la excepción local como migración de producción.
