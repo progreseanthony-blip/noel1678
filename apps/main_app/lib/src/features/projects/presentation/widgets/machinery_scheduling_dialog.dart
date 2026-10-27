@@ -3,12 +3,15 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
+import 'package:noel_data/noel_data.dart';
 
 class MachinerySchedulingDialog extends StatefulWidget {
   final String projectMachineryId;
   final String machineryName;
   final int expectedQuantity;
   final String serviceName;
+  final DateTime? referenceStart, referenceEnd;
+  final num? workingDays;
 
   const MachinerySchedulingDialog({
     super.key,
@@ -16,24 +19,30 @@ class MachinerySchedulingDialog extends StatefulWidget {
     required this.machineryName,
     required this.expectedQuantity,
     this.serviceName = '',
+    this.referenceStart,
+    this.referenceEnd,
+    this.workingDays,
   });
 
   @override
-  State<MachinerySchedulingDialog> createState() => _MachinerySchedulingDialogState();
+  State<MachinerySchedulingDialog> createState() =>
+      _MachinerySchedulingDialogState();
 }
 
 class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
   bool _isLoading = true;
+  String? _projectId;
+  List<Map<String, dynamic>> _originalAssignments = [];
   double? _stipulatedDays;
   String? _quoteServiceId;
   DateTime? _estStart;
   DateTime? _estEnd;
   Map<String, double> _nonWorkingDays = {};
-  
+
   // Virtual units: index -> {startDate, endDate, assignmentId}
   final Map<int, Map<String, dynamic>> _unitPlans = {};
   final Set<int> _selectedUnits = {};
-  
+
   DateTime? _batchStartDate;
   DateTime? _batchEndDate;
 
@@ -46,15 +55,15 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
   DateTime _calculateEndDate(DateTime start, double duration) {
     DateTime current = start;
     double remaining = duration;
-    
+
     while (remaining > 0) {
       double contribution = getWorkingDayContribution(current, _nonWorkingDays);
-      
+
       if (contribution <= 0) {
         current = current.add(const Duration(days: 1));
         continue;
       }
-      
+
       if (remaining <= contribution) {
         remaining = 0;
       } else {
@@ -72,13 +81,16 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
       // 1. Get machinery details and stipulated duration
       final mRes = await supabase
           .from('project_machinery')
-          .select('project_id, quote_service_id, calculation_metadata, quote_service_machineries(quote_services(quote_service_estimations(total_working_days, start_date, end_date)))')
+          .select(
+            'project_id, quote_service_id, calculation_metadata, quote_service_machineries(quote_services(quote_service_estimations(total_working_days, start_date, end_date)))',
+          )
           .eq('id', widget.projectMachineryId)
           .single();
-      
+
       _quoteServiceId = mRes['quote_service_id'];
       final projectId = mRes['project_id'];
-      
+      _projectId = projectId as String;
+
       dynamic duration;
       String? estStartStr, estEndStr;
       try {
@@ -101,16 +113,22 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
                 duration = firstEst['total_working_days'];
                 estStartStr = firstEst['start_date']?.toString();
                 estEndStr = firstEst['end_date']?.toString();
+              }
             }
-          }
-        } // end if (_batchStartDate == null)
-      }
+          } // end if (_batchStartDate == null)
+        }
       } catch (e) {
         debugPrint('Error parsing duration: $e');
       }
-      _stipulatedDays = duration != null ? (duration as num).toDouble() : null;
-      _estStart = estStartStr != null ? DateTime.tryParse(estStartStr) : null;
-      _estEnd = estEndStr != null ? DateTime.tryParse(estEndStr) : null;
+      _stipulatedDays =
+          widget.workingDays?.toDouble() ??
+          (duration != null ? (duration as num).toDouble() : null);
+      _estStart =
+          widget.referenceStart ??
+          (estStartStr != null ? DateTime.tryParse(estStartStr) : null);
+      _estEnd =
+          widget.referenceEnd ??
+          (estEndStr != null ? DateTime.tryParse(estEndStr) : null);
 
       // 2. Load existing assignments
       final assignments = await supabase
@@ -119,54 +137,7 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
           .eq('project_machinery_id', widget.projectMachineryId)
           .order('created_at');
 
-      // 3. Try to find DEFAULT dates: estimation dates first, then other resources
-      if (assignments.isEmpty && _quoteServiceId != null) {
-        if (estStartStr != null) {
-          _batchStartDate = DateTime.tryParse(estStartStr);
-          if (_batchStartDate != null && _stipulatedDays != null) {
-            _batchEndDate = _calculateEndDate(_batchStartDate!, _stipulatedDays!);
-          } else if (estEndStr != null) {
-            _batchEndDate = DateTime.tryParse(estEndStr);
-          }
-        }
-        if (_batchStartDate == null) {
-        // Try Labor first
-        final laborAssign = await supabase
-            .from('project_labor_assignments')
-            .select('start_date, end_date')
-            .eq('project_labor.quote_service_id', _quoteServiceId)
-            .limit(1)
-            .maybeSingle();
-        
-        if (laborAssign != null) {
-          _batchStartDate = DateTime.parse(laborAssign['start_date']);
-          if (_stipulatedDays != null) {
-            _batchEndDate = _calculateEndDate(_batchStartDate!, _stipulatedDays!);
-          } else {
-            _batchEndDate = DateTime.parse(laborAssign['end_date']);
-          }
-        } else {
-          // Try other machinery in same service
-          final otherMachAssign = await supabase
-              .from('project_machinery_assignments')
-              .select('start_date, end_date')
-              .eq('project_machinery.quote_service_id', _quoteServiceId)
-              .neq('project_machinery_id', widget.projectMachineryId)
-              .limit(1)
-              .maybeSingle();
-          
-          if (otherMachAssign != null) {
-            _batchStartDate = DateTime.parse(otherMachAssign['start_date']);
-            if (_stipulatedDays != null) {
-              _batchEndDate = _calculateEndDate(_batchStartDate!, _stipulatedDays!);
-            } else {
-              _batchEndDate = DateTime.parse(otherMachAssign['end_date']);
-            }
-          }
-        }
-        } // if (_batchStartDate == null)
-      }
-
+      _originalAssignments = List<Map<String, dynamic>>.from(assignments);
       // Load non-working days
       try {
         final nwDays = await supabase
@@ -181,6 +152,65 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
         }
       } catch (_) {}
 
+      // 3. Try to find DEFAULT dates: estimation dates first, then other resources
+      if (assignments.isEmpty) {
+        if (_estStart != null) {
+          _batchStartDate = _estStart;
+          if (_estEnd != null) {
+            _batchEndDate = _estEnd;
+          } else if (_batchStartDate != null && _stipulatedDays != null) {
+            _batchEndDate = _calculateEndDate(
+              _batchStartDate!,
+              _stipulatedDays!,
+            );
+          } else if (estEndStr != null) {
+            _batchEndDate = DateTime.tryParse(estEndStr);
+          }
+        }
+        if (_batchStartDate == null && _quoteServiceId != null) {
+          // Try Labor first
+          final laborAssign = await supabase
+              .from('project_labor_assignments')
+              .select('start_date, end_date')
+              .eq('project_labor.quote_service_id', _quoteServiceId)
+              .limit(1)
+              .maybeSingle();
+
+          if (laborAssign != null) {
+            _batchStartDate = DateTime.parse(laborAssign['start_date']);
+            if (_stipulatedDays != null) {
+              _batchEndDate = _calculateEndDate(
+                _batchStartDate!,
+                _stipulatedDays!,
+              );
+            } else {
+              _batchEndDate = DateTime.parse(laborAssign['end_date']);
+            }
+          } else {
+            // Try other machinery in same service
+            final otherMachAssign = await supabase
+                .from('project_machinery_assignments')
+                .select('start_date, end_date')
+                .eq('project_machinery.quote_service_id', _quoteServiceId)
+                .neq('project_machinery_id', widget.projectMachineryId)
+                .limit(1)
+                .maybeSingle();
+
+            if (otherMachAssign != null) {
+              _batchStartDate = DateTime.parse(otherMachAssign['start_date']);
+              if (_stipulatedDays != null) {
+                _batchEndDate = _calculateEndDate(
+                  _batchStartDate!,
+                  _stipulatedDays!,
+                );
+              } else {
+                _batchEndDate = DateTime.parse(otherMachAssign['end_date']);
+              }
+            }
+          }
+        } // if (_batchStartDate == null)
+      }
+
       if (mounted) {
         setState(() {
           // Map existing assignments to virtual units
@@ -191,8 +221,12 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
               if (currentUnitIdx <= widget.expectedQuantity) {
                 _unitPlans[currentUnitIdx] = {
                   'id': a['id'],
-                  'start': a['start_date'] != null ? DateTime.parse(a['start_date']) : null,
-                  'end': a['end_date'] != null ? DateTime.parse(a['end_date']) : null,
+                  'start': a['start_date'] != null
+                      ? DateTime.parse(a['start_date'])
+                      : null,
+                  'end': a['end_date'] != null
+                      ? DateTime.parse(a['end_date'])
+                      : null,
                 };
                 currentUnitIdx++;
               }
@@ -210,47 +244,41 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
   Future<void> _saveSchedule() async {
     setState(() => _isLoading = true);
     try {
-      final supabase = Supabase.instance.client;
-
-      // Group units by their plans (dates) to minimize records
-      // Or just save one record per unit for maximum granularity?
-      // User wants "Joint or Independent".
-      
-      // 1. Delete all current assignments for this project_machinery
-      await supabase.from('project_machinery_assignments').delete().eq('project_machinery_id', widget.projectMachineryId);
-
-      // 2. Insert new ones grouped by identical dates
-      final Map<String, List<int>> groups = {};
-      for (int i = 1; i <= widget.expectedQuantity; i++) {
+      if (_projectId == null)
+        throw StateError('Reload machinery planning before saving.');
+      final groups = <String, Map<String, dynamic>>{};
+      for (var i = 1; i <= widget.expectedQuantity; i++) {
         final plan = _unitPlans[i];
-        final start = plan?['start']?.toString().split(' ')[0] ?? _batchStartDate?.toString().split(' ')[0];
-        final end = plan?['end']?.toString().split(' ')[0] ?? _batchEndDate?.toString().split(' ')[0];
-        
-        if (start != null && end != null) {
-          final key = '$start|$end';
-          groups[key] ??= [];
-          groups[key]!.add(i);
-        }
+        final start = (plan?['start'] as DateTime?) ?? _batchStartDate;
+        final end = (plan?['end'] as DateTime?) ?? _batchEndDate;
+        if (start == null || end == null) continue;
+        final from = start.toIso8601String().substring(0, 10),
+            until = end.toIso8601String().substring(0, 10);
+        final id = plan?['id'];
+        final key = '$id|$from|$until';
+        final group = groups.putIfAbsent(
+          key,
+          () => {
+            'assignment_id': id,
+            'start_date': from,
+            'end_date': until,
+            'quantity': 0,
+          },
+        );
+        group['quantity'] = (group['quantity'] as int) + 1;
       }
-
-      for (var entry in groups.entries) {
-        final dates = entry.key.split('|');
-        await supabase.from('project_machinery_assignments').insert({
-          'project_machinery_id': widget.projectMachineryId,
-          'start_date': dates[0],
-          'end_date': dates[1],
-          'quantity': entry.value.length,
-        });
-      }
-
-      // 3. Update main record with first available dates for summary
-      if (groups.isNotEmpty) {
-        final first = groups.keys.first.split('|');
-        await supabase.from('project_machinery').update({
-          'start_date': first[0],
-          'end_date': first[1],
-        }).eq('id', widget.projectMachineryId);
-      }
+      await MachineryPlanningService(Supabase.instance.client).save(
+        _projectId!,
+        [
+          {
+            'id': widget.projectMachineryId,
+            'capacity': widget.expectedQuantity,
+            'mode': 'units',
+            'previous': MachineryPlanningService.snapshot(_originalAssignments),
+            'plans': groups.values.toList(),
+          },
+        ],
+      );
 
       if (mounted) {
         Navigator.pop(context, true);
@@ -258,7 +286,9 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving schedule: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error saving schedule: $e')));
       }
     }
   }
@@ -266,16 +296,15 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
   void _applyBatchDates() {
     if (_batchStartDate == null || _batchEndDate == null) return;
     if (_selectedUnits.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select at least one unit first')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select at least one unit first')),
+      );
       return;
     }
 
     setState(() {
       for (var idx in _selectedUnits) {
-        _unitPlans[idx] = {
-          'start': _batchStartDate,
-          'end': _batchEndDate,
-        };
+        _unitPlans[idx] = {'start': _batchStartDate, 'end': _batchEndDate};
       }
       _selectedUnits.clear();
     });
@@ -325,7 +354,9 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
       body: _isLoading
           ? const Padding(
               padding: EdgeInsets.all(48),
-              child: Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen)),
+              child: Center(
+                child: CircularProgressIndicator(color: AppTheme.primaryGreen),
+              ),
             )
           : Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -333,167 +364,257 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
                 if (widget.serviceName.isNotEmpty) ...[
                   Container(
                     margin: const EdgeInsets.only(bottom: 12),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: AppTheme.primaryGreen.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       'Service: ${widget.serviceName}',
-                      style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen),
+                      style: GoogleFonts.manrope(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.primaryGreen,
+                      ),
                     ),
                   ),
                 ],
                 _buildEstimationReference(),
-                      // Batch Selection & Date Picker
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(color: AppTheme.slate50, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.slate200)),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('1. SELECT UNITS AND PROGRAM DATES', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500, letterSpacing: 1)),
-                            const SizedBox(height: 16),
-                            LayoutBuilder(
-                              builder: (context, constraints) {
-                                final isNarrow = constraints.maxWidth < 480;
-                                if (isNarrow) {
-                                  return Column(
-                                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: InkWell(
-                                              onTap: _selectBatchStartDate,
-                                              child: _buildDateBox('Start Date', _batchStartDate),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Expanded(
-                                            child: InkWell(
-                                              onTap: _selectBatchEndDate,
-                                              child: _buildDateBox('End Date', _batchEndDate),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 12),
-                                      ElevatedButton(
-                                        onPressed: _applyBatchDates,
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: AppTheme.primaryGreen,
-                                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                        ),
-                                        child: Text('Apply to Selected', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
-                                      ),
-                                    ],
-                                  );
-                                }
-                                return Row(
+                // Batch Selection & Date Picker
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppTheme.slate50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.slate200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '1. SELECT UNITS AND PROGRAM DATES',
+                        style: GoogleFonts.manrope(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.slate500,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isNarrow = constraints.maxWidth < 480;
+                          if (isNarrow) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
                                   children: [
                                     Expanded(
                                       child: InkWell(
                                         onTap: _selectBatchStartDate,
-                                        child: _buildDateBox('Start Date', _batchStartDate),
+                                        child: _buildDateBox(
+                                          'Start Date',
+                                          _batchStartDate,
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: InkWell(
                                         onTap: _selectBatchEndDate,
-                                        child: _buildDateBox('End Date', _batchEndDate),
+                                        child: _buildDateBox(
+                                          'End Date',
+                                          _batchEndDate,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    ElevatedButton(
-                                      onPressed: _applyBatchDates,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppTheme.primaryGreen,
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                      ),
-                                      child: Text('Apply to Selected', style: GoogleFonts.manrope(fontWeight: FontWeight.bold, color: Colors.white)),
                                     ),
                                   ],
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ),
-                      
-                      const SizedBox(height: 24),
-                      
-                      // Units Grid
-                      Text('2. SELECT UNITS (${_selectedUnits.length} SELECTED)', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, color: AppTheme.slate500, letterSpacing: 1)),
-                      const SizedBox(height: 12),
-                      LayoutBuilder(
-                        builder: (context, constraints) {
-                          final cellWidth = (constraints.maxWidth - 12) / 2;
-                          final cellHeight = (cellWidth / 3.5).clamp(56.0, 200.0);
-                          return GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              mainAxisExtent: cellHeight,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                            ),
-                            itemCount: widget.expectedQuantity,
-                            itemBuilder: (context, index) {
-                              final uIdx = index + 1;
-                              final isSelected = _selectedUnits.contains(uIdx);
-                              final plan = _unitPlans[uIdx];
-                              final hasPlan = plan != null && plan['start'] != null;
-
-                              return InkWell(
-                                onTap: () {
-                                  setState(() {
-                                    if (isSelected) _selectedUnits.remove(uIdx);
-                                    else _selectedUnits.add(uIdx);
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                                  decoration: BoxDecoration(
-                                    color: isSelected ? AppTheme.primaryGreen.withOpacity(0.05) : Colors.white,
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: isSelected ? AppTheme.primaryGreen : AppTheme.slate200),
+                                ),
+                                const SizedBox(height: 12),
+                                ElevatedButton(
+                                  onPressed: _applyBatchDates,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppTheme.primaryGreen,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 16,
+                                    ),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
                                   ),
-                                  child: Row(
+                                  child: Text(
+                                    'Apply to Selected',
+                                    style: GoogleFonts.manrope(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }
+                          return Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: _selectBatchStartDate,
+                                  child: _buildDateBox(
+                                    'Start Date',
+                                    _batchStartDate,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: InkWell(
+                                  onTap: _selectBatchEndDate,
+                                  child: _buildDateBox(
+                                    'End Date',
+                                    _batchEndDate,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              ElevatedButton(
+                                onPressed: _applyBatchDates,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primaryGreen,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 20,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                                child: Text(
+                                  'Apply to Selected',
+                                  style: GoogleFonts.manrope(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Units Grid
+                Text(
+                  '2. SELECT UNITS (${_selectedUnits.length} SELECTED)',
+                  style: GoogleFonts.manrope(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.slate500,
+                    letterSpacing: 1,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cellWidth = (constraints.maxWidth - 12) / 2;
+                    final cellHeight = (cellWidth / 3.5).clamp(56.0, 200.0);
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        mainAxisExtent: cellHeight,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                      ),
+                      itemCount: widget.expectedQuantity,
+                      itemBuilder: (context, index) {
+                        final uIdx = index + 1;
+                        final isSelected = _selectedUnits.contains(uIdx);
+                        final plan = _unitPlans[uIdx];
+                        final hasPlan = plan != null && plan['start'] != null;
+
+                        return InkWell(
+                          onTap: () {
+                            setState(() {
+                              if (isSelected)
+                                _selectedUnits.remove(uIdx);
+                              else
+                                _selectedUnits.add(uIdx);
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: isSelected
+                                  ? AppTheme.primaryGreen.withOpacity(0.05)
+                                  : Colors.white,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isSelected
+                                    ? AppTheme.primaryGreen
+                                    : AppTheme.slate200,
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  isSelected
+                                      ? Icons.check_circle
+                                      : Icons.circle_outlined,
+                                  size: 18,
+                                  color: isSelected
+                                      ? AppTheme.primaryGreen
+                                      : AppTheme.slate400,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      Icon(isSelected ? Icons.check_circle : Icons.circle_outlined, size: 18, color: isSelected ? AppTheme.primaryGreen : AppTheme.slate400),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text('Unit $uIdx', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
-                                            Text(
-                                              hasPlan
-                                                ? '${plan['start'].toString().split(' ')[0]} to ${plan['end'].toString().split(' ')[0]}'
-                                                : 'Not Scheduled',
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: GoogleFonts.manrope(fontSize: 10, color: hasPlan ? AppTheme.primaryGreen : AppTheme.slate400),
-                                            ),
-                                          ],
+                                      Text(
+                                        'Unit $uIdx',
+                                        style: GoogleFonts.manrope(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: AppTheme.slate700,
+                                        ),
+                                      ),
+                                      Text(
+                                        hasPlan
+                                            ? '${plan['start'].toString().split(' ')[0]} to ${plan['end'].toString().split(' ')[0]}'
+                                            : 'Not Scheduled',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: GoogleFonts.manrope(
+                                          fontSize: 10,
+                                          color: hasPlan
+                                              ? AppTheme.primaryGreen
+                                              : AppTheme.slate400,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
-                              );
-                            },
-                          );
-                        },
-                      ),
-                ],
-              ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ],
+            ),
       footer: Wrap(
         alignment: WrapAlignment.spaceBetween,
         crossAxisAlignment: WrapCrossAlignment.center,
@@ -505,13 +626,23 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
             child: GestureDetector(
               onTap: () {
                 setState(() {
-                  if (_selectedUnits.length == widget.expectedQuantity) _selectedUnits.clear();
-                  else _selectedUnits.addAll(List.generate(widget.expectedQuantity, (i) => i + 1));
+                  if (_selectedUnits.length == widget.expectedQuantity)
+                    _selectedUnits.clear();
+                  else
+                    _selectedUnits.addAll(
+                      List.generate(widget.expectedQuantity, (i) => i + 1),
+                    );
                 });
               },
               child: Text(
-                _selectedUnits.length == widget.expectedQuantity ? 'Deselect All' : 'Select All Units',
-                style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.primaryGreen, fontWeight: FontWeight.w600),
+                _selectedUnits.length == widget.expectedQuantity
+                    ? 'Deselect All'
+                    : 'Select All Units',
+                style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  color: AppTheme.primaryGreen,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),
@@ -523,7 +654,10 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
                 child: GestureDetector(
                   onTap: () => Navigator.of(context).pop(),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(8),
@@ -531,7 +665,11 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
                     ),
                     child: Text(
                       'Cancel',
-                      style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700),
+                      style: GoogleFonts.manrope(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.slate700,
+                      ),
                     ),
                   ),
                 ),
@@ -542,7 +680,10 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
                 child: GestureDetector(
                   onTap: _saveSchedule,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 10,
+                    ),
                     decoration: BoxDecoration(
                       color: AppTheme.primaryGreen,
                       borderRadius: BorderRadius.circular(8),
@@ -556,7 +697,11 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
                     ),
                     child: Text(
                       'Save All Plans',
-                      style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+                      style: GoogleFonts.manrope(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -599,7 +744,11 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.calendar_month, size: 18, color: AppTheme.primaryGreen),
+          const Icon(
+            Icons.calendar_month,
+            size: 18,
+            color: AppTheme.primaryGreen,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -644,7 +793,11 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
   Widget _buildDateBox(String label, DateTime? date) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: AppTheme.slate200)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppTheme.slate200),
+      ),
       child: Row(
         children: [
           const Icon(Icons.calendar_today, size: 16, color: Colors.orange),
@@ -653,12 +806,24 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.slate400, letterSpacing: 0.5)),
+                Text(
+                  label,
+                  style: GoogleFonts.manrope(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.slate400,
+                    letterSpacing: 0.5,
+                  ),
+                ),
                 Text(
                   date != null ? date.toString().split(' ')[0] : 'Choose...',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate900),
+                  style: GoogleFonts.manrope(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.slate900,
+                  ),
                 ),
               ],
             ),

@@ -11,6 +11,7 @@ import 'package:pdf/pdf.dart';
 import 'dart:typed_data';
 import '../../../projects/services/project_service.dart';
 import '../widgets/quote_form_dialog.dart';
+import '../widgets/shared_leadership_confirmation.dart';
 import '../widgets/service_estimation_dialog.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/send_email_dialog.dart';
@@ -216,58 +217,74 @@ class _QuoteDetailPageState extends ConsumerState<QuoteDetailPage> {
   }
 
   Future<void> _approveAndCreateProject() async {
-    final confirmed = await showSafeDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(Icons.rocket_launch, color: AppTheme.primaryGreen, size: 24),
-            const SizedBox(width: 10),
-            Text('Start Project', style: GoogleFonts.manrope(fontWeight: FontWeight.w800)),
-          ],
-        ),
-        content: Text(
-          'Are you sure you want to approve this estimate?\n\nThis will convert it into an active project and generate the machinery reception list.',
-          style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate700, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text('Cancel', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: AppTheme.slate500)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryGreen,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text('Approve & Start', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
     setState(() => _isConverting = true);
     try {
-      await ProjectService.convertQuoteToProject(widget.quoteId);
+      final preview = Map<String, dynamic>.from(
+        await Supabase.instance.client.rpc(
+          'prepare_quote_team_allocation',
+          params: {'p_quote': widget.quoteId},
+        ),
+      );
+      if (!mounted) return;
+      final resources = (preview['resources'] as List? ?? [])
+          .map(
+            (r) =>
+                '${r['label']}: ${r['services']}\n${r['start']} → ${r['end']} · ${r['method']}',
+          )
+          .toList();
+      final bool confirmed;
+      if (resources.isNotEmpty) {
+        confirmed = await confirmSharedLeadership(
+          context,
+          resources: resources,
+          serviceAmounts: (preview['services'] as List? ?? []).map((s)=>'${s['name']}: \$${_fmt.format((s['before'] as num)+(s['delta'] as num))}').toList(),
+          total: (preview['total'] as num).toDouble(),
+          previousTotal: (preview['previous_total'] as num).toDouble(),
+        );
+      } else {
+        confirmed =
+            await showSafeDialog<bool>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Start Project'),
+                content: const Text(
+                  'Approve this estimate and create an active project? This generates the resource planning and reception lists.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    child: const Text('Approve & Start'),
+                  ),
+                ],
+              ),
+            ) ??
+            false;
+      }
+      if (!confirmed || !mounted) return;
+      await ProjectService.convertQuoteToProject(
+        widget.quoteId,
+        allocationFingerprint: preview['enabled'] == true
+            ? preview['fingerprint'] as String
+            : null,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Project successfully created!', style: GoogleFonts.manrope(fontWeight: FontWeight.bold)),
-            backgroundColor: AppTheme.primaryGreen,
-          )
+          const SnackBar(content: Text('Project successfully created!')),
         );
         _loadData();
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed)
+          SnackBar(
+            content: Text(e is PostgrestException ? e.message : e.toString()),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
         );
-      }
     } finally {
       if (mounted) setState(() => _isConverting = false);
     }

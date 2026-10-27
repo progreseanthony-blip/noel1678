@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:noel_data/noel_data.dart' show AccessService, Supabase;
+import '../features/access/access_pending_page.dart';
+import '../features/payroll/presentation/pages/labor_hours_page.dart';
 import '../features/auth/presentation/pages/signin_page.dart';
 import '../features/auth/presentation/pages/signup_page.dart';
 import '../features/users/presentation/pages/user_list_page.dart';
@@ -44,40 +45,61 @@ import '../features/weekly_inspections/presentation/pages/weekly_inspections_pro
 import '../features/weekly_inspections/presentation/pages/inspection_form_page.dart';
 import '../features/weekly_inspections/presentation/pages/inspection_detail_page.dart';
 import '../features/weekly_inspections/presentation/pages/reconciliation_page.dart';
+
 final goRouter = GoRouter(
   initialLocation: '/signin',
-  redirect: (context, state) {
+  redirect: (context, state) async {
     final user = Supabase.instance.client.auth.currentUser;
     final loggedIn = user != null;
-    final onAuthPage = state.matchedLocation == '/signin' || state.matchedLocation == '/signup';
+    final onAuthPage =
+        state.matchedLocation == '/signin' ||
+        state.matchedLocation == '/signup';
     if (!loggedIn && !onAuthPage) return '/signin';
-    if (loggedIn && onAuthPage) return '/projects';
+    if (loggedIn) {
+      try {
+        final access = await AccessService(Supabase.instance.client).load();
+        if (onAuthPage) return access.landing;
+        if (state.uri.path == '/project-teams') {
+          return access.isAdmin || access.isSupervisor
+              ? '/resource-planning'
+              : access.landing;
+        }
+        if (state.matchedLocation == '/access-pending') return null;
+        if (!access.allowsPath(state.uri.path)) return access.landing;
+      } catch (_) {
+        if (state.matchedLocation != '/access-pending') {
+          return '/access-pending';
+        }
+      }
+    }
     return null;
   },
   routes: [
     GoRoute(
-      path: '/signin',
-      builder: (context, state) => const SignInPage(),
+      path: '/access-pending',
+      builder: (context, state) => const AccessPendingPage(),
     ),
     GoRoute(
-      path: '/signup',
-      builder: (context, state) => const SignUpPage(),
+      path: '/project-teams',
+      redirect: (context, state) => '/resource-planning',
     ),
     GoRoute(
-      path: '/',
-      builder: (context, state) => const UserListPage(),
+      path: '/crew-reports',
+      redirect: (context, state) => '/daily-reports',
     ),
-    GoRoute(
-      path: '/users',
-      builder: (context, state) => const UserListPage(),
-    ),
+    GoRoute(path: '/worked-hours', redirect: (context, state) => '/labor-cost'),
+    GoRoute(path: '/signin', builder: (context, state) => const SignInPage()),
+    GoRoute(path: '/signup', builder: (context, state) => const SignUpPage()),
+    GoRoute(path: '/', builder: (context, state) => const UserListPage()),
+    GoRoute(path: '/users', builder: (context, state) => const UserListPage()),
     GoRoute(
       path: '/quotes',
       builder: (context, state) => const QuotesListPage(),
     ),
     GoRoute(
       path: '/quotes/:id',
-      builder: (context, state) => QuoteDetailPage(quoteId: state.pathParameters['id']!),
+      builder: (context, state) =>
+          QuoteDetailPage(quoteId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/projects',
@@ -85,15 +107,22 @@ final goRouter = GoRouter(
     ),
     GoRoute(
       path: '/projects/:id/dashboard',
-      builder: (context, state) => ProjectDashboardPage(projectId: state.pathParameters['id']!),
+      builder: (context, state) =>
+          ProjectDashboardPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/projects/:id',
-      builder: (context, state) => ProjectDetailPage(projectId: state.pathParameters['id']!),
+      builder: (context, state) => ProjectDetailPage(
+        projectId: state.pathParameters['id']!,
+        initialTeamTab: state.uri.queryParameters['tab'] == 'team',
+      ),
     ),
     GoRoute(
       path: '/projects/:id/baseline',
-      builder: (context, state) => ProjectBaselinePage(projectId: state.pathParameters['id']!, initialDate: state.uri.queryParameters['reportDate']),
+      builder: (context, state) => ProjectBaselinePage(
+        projectId: state.pathParameters['id']!,
+        initialDate: state.uri.queryParameters['reportDate'],
+      ),
     ),
     GoRoute(
       path: '/resource-planning',
@@ -101,7 +130,8 @@ final goRouter = GoRouter(
     ),
     GoRoute(
       path: '/projects/:id/reception',
-      builder: (context, state) => ReceptionPage(projectId: state.pathParameters['id']!),
+      builder: (context, state) =>
+          ReceptionPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/production-measurement',
@@ -109,7 +139,8 @@ final goRouter = GoRouter(
     ),
     GoRoute(
       path: '/projects/:id/production-measurement',
-      builder: (context, state) => ProductionMeasurementPage(projectId: state.pathParameters['id']!),
+      builder: (context, state) =>
+          ProductionMeasurementPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/monitoring',
@@ -117,7 +148,8 @@ final goRouter = GoRouter(
     ),
     GoRoute(
       path: '/projects/:id/monitoring',
-      builder: (context, state) => ProjectMonitoringPage(projectId: state.pathParameters['id']!),
+      builder: (context, state) =>
+          ProjectMonitoringPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/daily-reports',
@@ -133,7 +165,8 @@ final goRouter = GoRouter(
     ),
     GoRoute(
       path: '/projects/:id/daily-reports',
-      builder: (context, state) => DailyReportsListPage(projectId: state.pathParameters['id']!),
+      builder: (context, state) =>
+          DailyReportsListPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/projects/:id/daily-report/:reportId/review',
@@ -150,8 +183,14 @@ final goRouter = GoRouter(
       ),
     ),
     GoRoute(
+      path: '/projects/:id/labor-hours',
+      builder: (context, state) =>
+          LaborHoursPage(projectId: state.pathParameters['id']!),
+    ),
+    GoRoute(
       path: '/projects/:id/payroll',
-      builder: (context, state) => PayrollListPage(projectId: state.pathParameters['id']!),
+      builder: (context, state) =>
+          PayrollListPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/projects/:id/payroll/:periodId',
@@ -166,7 +205,8 @@ final goRouter = GoRouter(
     ),
     GoRoute(
       path: '/projects/:id/incidents',
-      builder: (context, state) => IncidentsListPage(projectId: state.pathParameters['id']!),
+      builder: (context, state) =>
+          IncidentsListPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/projects/:id/incidents/new',
@@ -191,7 +231,8 @@ final goRouter = GoRouter(
     ),
     GoRoute(
       path: '/projects/:id/billing',
-      builder: (context, state) => BillingListPage(projectId: state.pathParameters['id']!),
+      builder: (context, state) =>
+          BillingListPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/projects/:id/billing/new',
@@ -213,11 +254,13 @@ final goRouter = GoRouter(
     ),
     GoRoute(
       path: '/projects/:id/change-orders',
-      builder: (context, state) => ChangeOrdersListPage(projectId: state.pathParameters['id']!),
+      builder: (context, state) =>
+          ChangeOrdersListPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/projects/:id/change-orders/new',
-      builder: (context, state) => ChangeOrderFormPage(projectId: state.pathParameters['id']!),
+      builder: (context, state) =>
+          ChangeOrderFormPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/projects/:id/change-orders/:coId/edit',
@@ -249,10 +292,7 @@ final goRouter = GoRouter(
       path: '/catalogs',
       builder: (context, state) => const CatalogsPage(),
     ),
-    GoRoute(
-      path: '/workers',
-      builder: (context, state) => const WorkersPage(),
-    ),
+    GoRoute(path: '/workers', builder: (context, state) => const WorkersPage()),
     GoRoute(
       path: '/customers',
       builder: (context, state) => const CustomersListPage(),
@@ -263,15 +303,13 @@ final goRouter = GoRouter(
     ),
     GoRoute(
       path: '/projects/:id/weekly-inspections',
-      builder: (context, state) => WeeklyInspectionsListPage(
-        projectId: state.pathParameters['id']!,
-      ),
+      builder: (context, state) =>
+          WeeklyInspectionsListPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/projects/:id/weekly-inspections/new',
-      builder: (context, state) => InspectionFormPage(
-        projectId: state.pathParameters['id']!,
-      ),
+      builder: (context, state) =>
+          InspectionFormPage(projectId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/projects/:id/weekly-inspections/:inspectionId',

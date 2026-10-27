@@ -11,11 +11,14 @@ import 'package:noel_data/noel_data.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
 import '../../../../shared/widgets/completed_project_banner.dart';
-import '../widgets/worker_assignment_dialog.dart';
+import '../widgets/labor_crew_panel.dart';
+import '../widgets/project_team_panel.dart';
 import '../widgets/machinery_scheduling_dialog.dart';
 import '../widgets/instrument_scheduling_dialog.dart';
 import '../widgets/labor_scheduling_dialog.dart';
 import '../widgets/standard_period_picker_dialog.dart';
+import '../widgets/machinery_batch_schedule_dialog.dart';
+import '../utils/machinery_planning_dates.dart';
 import 'package:flutter/gestures.dart';
 import 'package:printing/printing.dart';
 import '../utils/timeline_pdf_generator.dart';
@@ -28,9 +31,9 @@ List<Map<String, dynamic>> _aggregateLaborRows(List<dynamic> items) {
   final Map<String, List<Map<String, dynamic>>> groups = {};
 
   for (final item in items) {
-    final qsId = item['quote_service_id']?.toString() ?? '_';
+    final qsId = item['quote_service_id']?.toString() ?? 'p:${item['project_service_id'] ?? '_'}';
     final role = item['role_name']?.toString() ?? 'General Worker';
-    final key = '${qsId}_$role';
+    final key = '${qsId}_${role}_${item['operational_role'] ?? 'none'}_${item['coverage_scope'] ?? 'service'}_${item['team_resource_id'] ?? ''}';
     (groups[key] ??= []).add(item);
   }
 
@@ -69,7 +72,8 @@ class BaselineLockResult {
 
 class ProjectDetailPage extends StatefulWidget {
   final String projectId;
-  const ProjectDetailPage({super.key, required this.projectId});
+  final bool initialTeamTab;
+  const ProjectDetailPage({super.key, required this.projectId, this.initialTeamTab = false});
 
   @override
   State<ProjectDetailPage> createState() => _ProjectDetailPageState();
@@ -87,8 +91,22 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
   bool _isLoading = true;
   String? _error;
   late TabController _tabController;
+  bool _teamTabSelected = false;
+  int _teamRevision = 0;
+  bool _initialTabApplied = false;
+  void _onPlanningTabChanged() {
+    final selected = _tabController.index == _tabController.length - 1;
+    if (mounted && selected != _teamTabSelected) {
+      setState(() {
+        _teamTabSelected = selected;
+        if (selected) _teamRevision++;
+      });
+    }
+  }
   String _selectedServiceFilter = 'All Services';
   bool _machineryTableView = false;
+  bool _savingMachineryDates = false;
+  Map<String,double> _machineryCalendar = {};
   List<String> _projectServices = [];
   double _dailyBurnRate = 1500.0;
   final Map<String, bool> _expandedServices = {};
@@ -105,7 +123,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
   final ScrollController _machineryTableScrollCtrl = ScrollController();
   final ScrollController _materialsScrollCtrl = ScrollController();
   final ScrollController _instrumentsScrollCtrl = ScrollController();
-  final ScrollController _laborScrollCtrl = ScrollController();
+  final Map<String, ScrollController> _laborScrollCtrls = {};
 
   // '$tab|$serviceName' of the last edited group, highlighted briefly on return.
   String? _highlightGroupKey;
@@ -115,6 +133,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
   void initState() {
     super.initState();
     _tabController = TabController(length: 1, vsync: this);
+    _tabController.addListener(_onPlanningTabChanged);
     _loadProjectData();
     Future.delayed(const Duration(seconds: 20), () {
       if (mounted && _isLoading) {
@@ -133,7 +152,9 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
     _machineryTableScrollCtrl.dispose();
     _materialsScrollCtrl.dispose();
     _instrumentsScrollCtrl.dispose();
-    _laborScrollCtrl.dispose();
+    for (final controller in _laborScrollCtrls.values) {
+      controller.dispose();
+    }
     _highlightTimer?.cancel();
     super.dispose();
   }
@@ -143,7 +164,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
         _machineryTableScrollCtrl,
         _materialsScrollCtrl,
         _instrumentsScrollCtrl,
-        _laborScrollCtrl,
+        ..._laborScrollCtrls.values,
       ];
 
   /// Captures current scroll offsets so they can be restored after a reload
@@ -187,6 +208,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
   /// mounted, so scroll position is kept), then flashes the edited group.
   Future<void> _refreshAfterEdit(String tab, String? service) async {
     await _loadProjectData(silent: true);
+    if (tab == 'labor' && mounted) setState(() => _teamRevision++);
     if (service != null) _flashHighlight(tab, service);
   }
 
@@ -217,6 +239,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
           .eq('project_id', widget.projectId)
           .order('machinery_name');
 
+      final machineryCalendarRows = await supabase.from('project_non_working_days').select('date,partial_ratio').eq('project_id',widget.projectId);
+
       // 3. Materials
       final matResult = await supabase.from('project_materials').select('*, quote_services(name, quote_service_estimations(total_working_days, start_date, end_date)), project_services(name), quote_service_materials(quote_services(name, quote_service_estimations(total_working_days, start_date, end_date)))').eq('project_id', widget.projectId).order('material_name');
 
@@ -234,6 +258,8 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
           .eq('project_id', widget.projectId)
           .order('role_name');
 
+      final plannedServiceNames = await supabase.from('project_tasks').select('name,planned_start_date,planned_end_date').eq('project_id',widget.projectId);
+
       // 6. Machinery Photos (Catalog)
       final photoMap = <String, String?>{};
       try {
@@ -250,7 +276,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
       }
 
       if (mounted) {
-        final allServices = <String>{'All Services'};
+        final allServices = <String>{'All Services', for(final task in plannedServiceNames) if(task['name']!=null) task['name'] as String};
         
         final serviceDurations = <String, double?>{};
         final serviceEstRanges = <String, Map<String, DateTime?>>{};
@@ -319,6 +345,14 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
         addServiceSafely(matResult, 'quote_service_materials');
         addServiceSafely(iResult, 'quote_service_instruments');
         addServiceSafely(labResult, 'quote_service_labors');
+        for(final task in plannedServiceNames) {
+          final name=task['name'] as String?;
+          if(name==null || serviceEstRanges.containsKey(name)) continue;
+          final matching=plannedServiceNames.where((t)=>t['name']==name);
+          final starts=matching.map((t)=>DateTime.tryParse(t['planned_start_date']?.toString()??'')).whereType<DateTime>().toList()..sort();
+          final ends=matching.map((t)=>DateTime.tryParse(t['planned_end_date']?.toString()??'')).whereType<DateTime>().toList()..sort();
+          if(starts.isNotEmpty || ends.isNotEmpty) serviceEstRanges[name]={'start':starts.firstOrNull,'end':ends.lastOrNull};
+        }
 
         // Calculate dynamic baseline daily burn rate based on actual project assets
         double calculatedBurnRate = 0;
@@ -374,6 +408,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
           _machineryPhotos = photoMap;
           _materialUsage = matUsage;
           _machineryProduction = machProd;
+          _machineryCalendar = {for(final d in machineryCalendarRows) d['date'] as String:(d['partial_ratio'] as num?)?.toDouble()??0};
           _serviceDurations = serviceDurations;
           _serviceEstRanges = serviceEstRanges;
           _projectServices = allServices.toList()..sort((a, b) {
@@ -396,10 +431,14 @@ class _ProjectDetailPageState extends State<ProjectDetailPage> with TickerProvid
             _tabController = TabController(
               length: requiredTabs, 
               vsync: this, 
-              initialIndex: oldIndex < requiredTabs ? oldIndex : 0
+              initialIndex: !_initialTabApplied && widget.initialTeamTab ? requiredTabs - 1 : oldIndex < requiredTabs ? oldIndex : 0
             );
+            _teamTabSelected = _tabController.index == requiredTabs - 1;
+            _initialTabApplied = true;
+            _tabController.addListener(_onPlanningTabChanged);
           }
           
+          _teamTabSelected = _tabController.index == requiredTabs - 1;
           _isLoading = false;
         });
         _restoreScrollOffsets(savedOffsets);
@@ -1170,6 +1209,26 @@ currentPath: '/projects/${widget.projectId}',
                     spacing: 8,
                     runSpacing: 8,
                     children: [
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.manage_accounts_outlined, size: 18),
+                        label: const Text('Project Access'),
+                        onPressed: () async {
+                          await showSafeDialog(context: context, builder: (ctx) => ResponsiveDialogShell(
+                            title: 'Project Access',
+                            subtitle: 'Supervisor and Foreman authorizations',
+                            icon: Icons.manage_accounts_outlined,
+                            maxWidth: 900,
+                            headerColor: Theme.of(ctx).colorScheme.surface,
+                            footerColor: Theme.of(ctx).colorScheme.surface,
+                            bodyPadding: EdgeInsets.zero,
+                            body: ProjectResponsiblesPanel(projectId: widget.projectId),
+                            footer: Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close')),
+                            ]),
+                          ));
+                          if (mounted) setState(() => _teamRevision++);
+                        },
+                      ),
                       ElevatedButton.icon(
                         onPressed: () async {
                           await _loadProjectData();
@@ -1283,19 +1342,19 @@ currentPath: '/projects/${widget.projectId}',
               // Tabs
               TabBar(
                 controller: _tabController,
-                isScrollable: isMobile,
+                isScrollable: true,
                 labelColor: AppTheme.primaryGreen,
                 unselectedLabelColor: AppTheme.slate500,
                 indicatorColor: AppTheme.primaryGreen,
                 indicatorWeight: 3,
                 labelStyle: GoogleFonts.manrope(fontWeight: FontWeight.w700, fontSize: 14),
                 tabs: (_project?['project_type'] == 'labor_supply')
-                  ? const [Tab(text: 'Labor')]
+                  ? const [Tab(text: 'Labor y cuadrillas')]
                   : const [
                       Tab(text: 'Machinery'),
                       Tab(text: 'Materials'),
                       Tab(text: 'Instruments'),
-                      Tab(text: 'Labor'),
+                      Tab(text: 'Labor y cuadrillas'),
                     ],
               ),
             ],
@@ -1444,7 +1503,7 @@ currentPath: '/projects/${widget.projectId}',
             children: [
               Flexible(
                 child: Text(
-                  '${serviceNames.length} service(s) · ${_machinery.length} machine(s)',
+                  '${serviceNames.length} service(s) · ${serviceNames.fold<int>(0,(sum,name)=>sum+grouped[name]!.length)} machine(s)',
                   style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate500),
                   overflow: TextOverflow.ellipsis,
                   maxLines: 1,
@@ -1639,6 +1698,9 @@ currentPath: '/projects/${widget.projectId}',
             machineryName: machineryName,
             expectedQuantity: expectedQuantity,
             serviceName: serviceName,
+            referenceStart: _serviceEstRanges[serviceName]?['start'],
+            referenceEnd: _serviceEstRanges[serviceName]?['end'],
+            workingDays: _serviceDurations[serviceName],
           ),
         ).then((updated) {
           if (updated == true) _refreshAfterEdit('machinery', serviceName);
@@ -1731,14 +1793,14 @@ currentPath: '/projects/${widget.projectId}',
                       _tableServiceCell(row['service']?.toString() ?? ''),
                       _tableCell(row['machinery']?['machinery_name']?.toString() ?? '', bold: true),
                       _tableCell((row['machinery']?['expected_quantity'] as num?)?.toInt().toString() ?? ''),
-                      _tableCell(row['machinery']?['start_date'] != null ? fmt.format(DateTime.parse(row['machinery']['start_date'].toString())) : '—'),
-                      _tableCell(row['machinery']?['end_date'] != null ? fmt.format(DateTime.parse(row['machinery']['end_date'].toString())) : '—'),
+                      _tableCell(_savedMachineryTableDate(row['machinery'],fmt,true)),
+                      _tableCell(_savedMachineryTableDate(row['machinery'],fmt,false)),
                       TableCell(
                         verticalAlignment: TableCellVerticalAlignment.middle,
                         child: Padding(
                           padding: const EdgeInsets.all(12),
                           child: TextButton.icon(
-                            onPressed: () => _openTableDatePicker(row['machinery'], fmt, serviceName: row['service']?.toString()),
+                            onPressed: _savingMachineryDates || _project?['status']!='active' ? null : () => _openTableDatePicker(row['machinery'], fmt, serviceName: row['service']?.toString()),
                             icon: const Icon(Icons.event, size: 14, color: AppTheme.primaryGreen),
                             label: Text('Set dates', style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
                           ),
@@ -1753,9 +1815,9 @@ currentPath: '/projects/${widget.projectId}',
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: _machinery.isEmpty ? null : () => _openBatchDateRange(serviceNames, fmt),
+              onPressed: rows.isEmpty || _savingMachineryDates || _project?['status']!='active' ? null : () => _openBatchDateRange(rows, fmt),
               icon: const Icon(Icons.event_available, size: 18, color: Colors.white),
-              label: Text('Schedule ALL machinery at once (bulk date range)', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
+              label: Text('Bulk schedule / correct dates', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: Colors.white)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.primaryGreen,
                 padding: const EdgeInsets.symmetric(vertical: 14),
@@ -1825,97 +1887,60 @@ currentPath: '/projects/${widget.projectId}',
     );
   }
 
-  Future<void> _openTableDatePicker(Map<String, dynamic> m, DateFormat fmt, {String? serviceName}) async {
-    final initialStart = m['start_date'] != null ? DateTime.parse(m['start_date'].toString()) : DateTime.now();
-    final initialEnd = m['end_date'] != null
-        ? DateTime.parse(m['end_date'].toString())
-        : initialStart.add(const Duration(days: 7));
-    final estRange = serviceName != null ? _serviceEstRanges[serviceName] : null;
-    final picked = await showSafeDialog<DateTimeRange>(
-      context: context,
-      fullscreenOnMobile: true,
-      builder: (_) => StandardPeriodPickerDialog(
-        title: 'Set Dates',
-        subtitle: serviceName,
-        initialStart: initialStart,
-        initialEnd: initialEnd,
-        referenceLabel: 'ESTIMATED PERIOD (REFERENCE)',
-        referenceStart: estRange?['start'],
-        referenceEnd: estRange?['end'],
-      ),
-    );
-    if (picked == null) return;
-    await _applyAssignments(m['id'] as String, picked.start, picked.end);
-    if (mounted) {
-      setState(() {});
-      await _refreshAfterEdit('machinery', serviceName);
-    }
+  String _savedMachineryTableDate(Map<String,dynamic> m,DateFormat format,bool start) {
+    final saved=MachineryPlanningDates.propose(m);
+    final date=start ? saved.start : saved.end;
+    return date==null ? '—' : format.format(date);
   }
 
-  Future<void> _openBatchDateRange(List<String> serviceNames, DateFormat fmt) async {
-    final first = DateTime.now();
-    final bool singleService = serviceNames.length == 1;
-    final estRange = singleService ? _serviceEstRanges[serviceNames.first] : null;
-    final picked = await showSafeDialog<DateTimeRange>(
-      context: context,
-      fullscreenOnMobile: true,
-      builder: (_) => StandardPeriodPickerDialog(
-        title: 'Schedule Period',
-        subtitle: singleService
-            ? serviceNames.first
-            : '${serviceNames.length} services (applies to unscheduled only)',
-        initialStart: first,
-        initialEnd: first.add(const Duration(days: 7)),
-        referenceLabel: 'ESTIMATED PERIOD (REFERENCE)',
-        referenceStart: estRange?['start'],
-        referenceEnd: estRange?['end'],
-        referenceFallback: singleService
-            ? 'No estimation dates for this service'
-            : 'Multiple services — see EST badges per service',
-      ),
-    );
-    if (picked == null) return;
-    var count = 0;
-    for (final m in _machinery) {
-      if (m['start_date'] == null || m['end_date'] == null) {
-        await _applyAssignments(m['id'] as String, picked.start, picked.end);
-        count++;
-      }
-    }
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(count == 0 ? 'All machinery already scheduled.' : 'Scheduled $count machine(s) from ${fmt.format(picked.start)} to ${fmt.format(picked.end)}'),
-          backgroundColor: AppTheme.primaryGreen,
-        ),
-      );
-      await _refreshAfterEdit('machinery', singleService ? serviceNames.first : null);
-    }
-  }
+  Map<String,dynamic> _machineryDateRequest(Map<String,dynamic> m, DateTimeRange range, String mode) => {
+    'id':m['id'],'capacity':(m['expected_quantity'] as num).toInt(),'mode':mode,
+    'start_date':range.start.toIso8601String().substring(0,10),
+    'end_date':range.end.toIso8601String().substring(0,10),
+    'previous':MachineryPlanningService.snapshot(m['project_machinery_assignments'] as List? ?? []),
+  };
 
-  Future<void> _applyAssignments(String projectMachineryId, DateTime start, DateTime end) async {
+  Future<void> _saveMachineryDates(List<Map<String,dynamic>> requests,DateTimeRange range,DateFormat fmt,{String? serviceName}) async {
+    if (_savingMachineryDates) return;
+    setState(()=>_savingMachineryDates=true);
     try {
-      final supabase = Supabase.instance.client;
-      await supabase
-          .from('project_machinery_assignments')
-          .delete()
-          .eq('project_machinery_id', projectMachineryId);
-      await supabase.from('project_machinery_assignments').insert({
-        'project_machinery_id': projectMachineryId,
-        'start_date': start.toIso8601String().split('T')[0],
-        'end_date': end.toIso8601String().split('T')[0],
-        'quantity': 1,
-      });
-      await supabase.from('project_machinery').update({
-        'start_date': start.toIso8601String().split('T')[0],
-        'end_date': end.toIso8601String().split('T')[0],
-      }).eq('id', projectMachineryId);
-    } catch (e) {
-      debugPrint('Error saving bulk machinery dates: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving dates: $e')));
-      }
-    }
+      final result=await MachineryPlanningService(Supabase.instance.client).save(widget.projectId,requests);
+      if (!mounted) return;
+      await _refreshAfterEdit('machinery',serviceName);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Updated ${result['machines']} machine(s): ${fmt.format(range.start)} → ${fmt.format(range.end)}.')));
+    } catch(e) {
+      if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content:Text(e is PostgrestException ? e.message : 'Could not save machinery dates. $e'),
+        backgroundColor:Theme.of(context).colorScheme.error,
+      ));
+    } finally {if(mounted)setState(()=>_savingMachineryDates=false);}
+  }
+
+  Future<void> _openTableDatePicker(Map<String,dynamic> m,DateFormat fmt,{String? serviceName}) async {
+    final ref=_serviceEstRanges[serviceName];
+    final proposed=MachineryPlanningDates.propose(m,referenceStart:ref?['start'],referenceEnd:ref?['end'],workingDays:_serviceDurations[serviceName],calendar:_machineryCalendar);
+    final picked=await showSafeDialog<DateTimeRange>(context:context,fullscreenOnMobile:true,builder:(_)=>StandardPeriodPickerDialog(
+      title:'Set Machinery Dates',subtitle:'${m['machinery_name']} · ${m['expected_quantity']} unit(s)',
+      initialStart:proposed.start,initialEnd:proposed.end,
+      referenceLabel:'SERVICE PERIOD (REFERENCE)',referenceStart:ref?['start'],referenceEnd:ref?['end'],
+      referenceFallback:'No service reference dates. Choose the planned period.',
+      details:const Text('Applies to all units of this machine. Existing unit dates are replaced; actual execution dates are retained.'),
+      confirmLabel:'Apply dates',
+    ));
+    if(picked==null || !mounted)return;
+    await _saveMachineryDates([_machineryDateRequest(m,picked,'replace')],picked,fmt,serviceName:serviceName);
+  }
+
+  Future<void> _openBatchDateRange(List<Map<String,dynamic>> visibleRows,DateFormat fmt) async {
+    final machines=[for(final r in visibleRows) <String,dynamic>{...(r['machinery'] as Map<String,dynamic>),'service_name':r['service']}];
+    final picked=await showSafeDialog<MachineryBatchSelection>(context:context,fullscreenOnMobile:true,builder:(_)=>MachineryBatchScheduleDialog(
+      machines:machines,references:_serviceEstRanges,durations:_serviceDurations,calendar:_machineryCalendar,
+    ));
+    if(picked==null || !mounted)return;
+    final services=picked.machines.map((m)=>m['service_name']).toSet();
+    await _saveMachineryDates([for(final m in picked.machines) _machineryDateRequest(m,picked.range,picked.mode)],picked.range,fmt,
+      serviceName:services.length==1 ? services.single as String : null);
   }
 
   Widget _buildLaborStatusInfo(String label, int current, int total, Color color) {
@@ -2230,7 +2255,15 @@ currentPath: '/projects/${widget.projectId}',
     );
   }
 
-  Widget _buildLaborTab(bool isMobile) {
+  Widget _buildLaborTab(bool isMobile) => LaborCrewPanel(
+    key: ValueKey('labor-${widget.projectId}-$_teamRevision'),
+    projectId: widget.projectId,
+    serviceFilter: _selectedServiceFilter,
+    planningBuilder: (service) => _buildLaborPlanTab(isMobile, serviceFilter: service),
+    onChanged: () => _loadProjectData(silent: true),
+  );
+
+  Widget _buildLaborPlanTab(bool isMobile, {required String serviceFilter}) {
     if (_labor.isEmpty) {
       return Center(
         child: Column(
@@ -2244,13 +2277,14 @@ currentPath: '/projects/${widget.projectId}',
       );
     }
 
-    final aggregatedLabor = _aggregateLaborRows(_labor);
+    final serviceLabor = _labor.where((l) {
+      final key = l['quote_service_id'] != null ? 'q:${l['quote_service_id']}' : l['project_service_id'] != null ? 'p:${l['project_service_id']}' : 'u:${widget.projectId}';
+      return key == serviceFilter;
+    }).toList();
+    final aggregatedLabor = _aggregateLaborRows(serviceLabor);
     final grouped = _groupByService(aggregatedLabor, 'quote_service_labors');
     
-    final serviceNames = grouped.keys.toList()
-        .where((s) => _selectedServiceFilter == 'All Services' || s == _selectedServiceFilter)
-        .toList()
-        ..sort();
+    final serviceNames = grouped.keys.toList()..sort();
 
     if (serviceNames.isEmpty) {
       return Center(
@@ -2262,7 +2296,7 @@ currentPath: '/projects/${widget.projectId}',
     }
 
     return ListView.builder(
-      controller: _laborScrollCtrl,
+      controller: _laborScrollCtrls.putIfAbsent(serviceFilter, () => ScrollController()),
       padding: EdgeInsets.all(isMobile ? 16 : 32),
       itemCount: serviceNames.length,
       itemBuilder: (context, sIndex) {
@@ -2282,7 +2316,6 @@ currentPath: '/projects/${widget.projectId}',
             _buildServiceHeader(sName, serviceId: _extractServiceId(groupItems.first, 'quote_service_labors')),
             ...groupItems.map((l) {
               final expected = (l['expected_employees'] as num?)?.toInt() ?? 0;
-              final active = (l['active_employees'] as num?)?.toInt() ?? 0;
               final roleName = l['role_name'] ?? 'General Worker';
 
               return Container(
@@ -2312,7 +2345,6 @@ currentPath: '/projects/${widget.projectId}',
                             children: [
                               _laborScheduleButton(projectLaborId: l['id'], roleName: roleName, serviceName: sName),
                               const SizedBox(width: 8),
-                              _laborAssignButton(projectLaborId: l['id'], roleName: roleName, expectedEmployees: expected, serviceName: sName),
                             ],
                           ),
                         ],
@@ -2325,7 +2357,6 @@ currentPath: '/projects/${widget.projectId}',
                           const SizedBox(width: 16),
                           _laborScheduleButton(projectLaborId: l['id'], roleName: roleName, serviceName: sName),
                           const SizedBox(width: 8),
-                          _laborAssignButton(projectLaborId: l['id'], roleName: roleName, expectedEmployees: expected, serviceName: sName),
                           const SizedBox(width: 8),
                         ],
                       ),
@@ -2406,7 +2437,7 @@ currentPath: '/projects/${widget.projectId}',
 
   Widget _laborScheduleButton({required String projectLaborId, required String roleName, required String serviceName}) {
     return IconButton(
-      onPressed: () {
+      onPressed: _project?['status'] != 'active' ? null : () {
         showSafeDialog(
           context: context,
           fullscreenOnMobile: true,
@@ -2428,29 +2459,6 @@ currentPath: '/projects/${widget.projectId}',
     );
   }
 
-  Widget _laborAssignButton({required String projectLaborId, required String roleName, required int expectedEmployees, required String serviceName}) {
-    return IconButton(
-      onPressed: () {
-        showSafeDialog(
-          context: context,
-          fullscreenOnMobile: true,
-          builder: (_) => WorkerAssignmentDialog(
-            projectLaborId: projectLaborId,
-            roleName: roleName,
-            expectedEmployees: expectedEmployees,
-          ),
-        ).then((updated) {
-          if (updated == true) _refreshAfterEdit('labor', serviceName);
-        });
-      },
-      icon: const Icon(Icons.group_add, color: Colors.blue),
-      tooltip: 'Assign Crew (Build Team)',
-      style: IconButton.styleFrom(
-        backgroundColor: Colors.blue.withOpacity(0.1),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-    );
-  }
 
   void _showGanttDialog() {
     _loadProjectData().then((_) {

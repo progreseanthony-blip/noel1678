@@ -24,6 +24,10 @@ class StandardPeriodPickerDialog extends StatefulWidget {
   final String referenceFallback;
 
   final String confirmLabel;
+  final Widget? details;
+  final bool canConfirm;
+  final double maxWidth;
+  final ValueChanged<DateTimeRange>? onConfirm;
 
   const StandardPeriodPickerDialog({
     super.key,
@@ -39,6 +43,10 @@ class StandardPeriodPickerDialog extends StatefulWidget {
     this.referenceSuffix,
     this.referenceFallback = 'No reference dates',
     this.confirmLabel = 'Save',
+    this.details,
+    this.canConfirm = true,
+    this.maxWidth = 480,
+    this.onConfirm,
   });
 
   @override
@@ -101,7 +109,12 @@ class _StandardPeriodPickerDialogState
       );
       return;
     }
-    Navigator.of(context).pop(DateTimeRange(start: _start!, end: _end!));
+    final range = DateTimeRange(start: _start!, end: _end!);
+    if (widget.onConfirm != null) {
+      widget.onConfirm!(range);
+    } else {
+      Navigator.of(context).pop(range);
+    }
   }
 
   @override
@@ -110,7 +123,7 @@ class _StandardPeriodPickerDialogState
       title: widget.title,
       subtitle: widget.subtitle,
       icon: Icons.calendar_month,
-      maxWidth: 480,
+      maxWidth: widget.maxWidth,
       bodyPadding: const EdgeInsets.all(24),
       onClose: () => Navigator.of(context).pop(),
       body: Column(
@@ -118,6 +131,10 @@ class _StandardPeriodPickerDialogState
         mainAxisSize: MainAxisSize.min,
         children: [
           _buildReferenceBanner(),
+          if (widget.details != null) ...[
+            widget.details!,
+            const SizedBox(height: 16),
+          ],
           Row(
             children: [
               Expanded(
@@ -137,8 +154,10 @@ class _StandardPeriodPickerDialogState
           ),
         ],
       ),
-      footer: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
+      footer: Wrap(
+        alignment: WrapAlignment.end,
+        spacing: 12,
+        runSpacing: 8,
         children: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
@@ -151,9 +170,8 @@ class _StandardPeriodPickerDialogState
               ),
             ),
           ),
-          const SizedBox(width: 12),
           ElevatedButton(
-            onPressed: _save,
+            onPressed: widget.canConfirm ? _save : null,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryGreen,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
@@ -181,7 +199,9 @@ class _StandardPeriodPickerDialogState
     if (hasRef) {
       final s = widget.referenceStart?.toString().split(' ').first ?? '?';
       final e = widget.referenceEnd?.toString().split(' ').first ?? '?';
-      text = widget.referenceSuffix != null ? '$s → $e · ${widget.referenceSuffix}' : '$s → $e';
+      text = widget.referenceSuffix != null
+          ? '$s → $e · ${widget.referenceSuffix}'
+          : '$s → $e';
     } else {
       text = widget.referenceFallback;
     }
@@ -204,7 +224,11 @@ class _StandardPeriodPickerDialogState
       ),
       child: Row(
         children: [
-          const Icon(Icons.calendar_month, size: 18, color: AppTheme.primaryGreen),
+          const Icon(
+            Icons.calendar_month,
+            size: 18,
+            color: AppTheme.primaryGreen,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
