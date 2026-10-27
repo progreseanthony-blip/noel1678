@@ -41,7 +41,8 @@ class _PendingApprovalsPageState extends ConsumerState<PendingApprovalsPage> {
             .select('role')
             .eq('id', userId)
             .single();
-        _isAdmin = profile['role'] == 'Admin';
+        _isAdmin = ['Admin','Supervisor'].contains(profile['role']);
+        _reports = _reports.where((r) => r['supervisor_id'] != userId && r['submitted_by'] != userId).toList();
       }
     } catch (_) {}
     if (mounted) setState(() => _isLoading = false);
@@ -187,7 +188,7 @@ class _PendingApprovalsPageState extends ConsumerState<PendingApprovalsPage> {
           const SizedBox(height: 16),
           Text('Admin access required', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.slate600)),
           const SizedBox(height: 8),
-          Text('Only Admins can approve or reject reports.', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400)),
+          Text('An administrator or assigned supervisor must review reports.', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400)),
         ]),
       );
     }

@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'package:uuid/uuid.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -12,6 +13,7 @@ import 'package:noel_app/src/features/catalogs/presentation/widgets/labor_role_d
 import 'package:noel_app/src/features/customers/presentation/widgets/customer_form_dialog.dart';
 import 'service_estimation_dialog.dart';
 import 'machinery_selection_dialog.dart';
+import 'shared_leadership_confirmation.dart';
 
 // ══════════════════════════════════════════════════════════════
 //  DATA MODELS (local, in-memory for the wizard)
@@ -50,6 +52,13 @@ class MachineryEntry {
 }
 
 class LaborEntry {
+  String operationalRole;
+  String coverageScope;
+  String? teamResourceId;
+  String? teamResourceLabel;
+  double dedication;
+  double? allocatedMonths;
+  bool costPrimary;
   String roleName;
   double monthsToWork;
   double employeesQuantity;
@@ -57,6 +66,12 @@ class LaborEntry {
   double perDiem;
 
   LaborEntry({
+    this.operationalRole = 'none',
+    this.coverageScope = 'service',
+    this.teamResourceId,
+    this.teamResourceLabel,
+    this.dedication = 100,
+    this.costPrimary = false,
     this.roleName = '',
     this.monthsToWork = 0,
     this.employeesQuantity = 1,
@@ -64,10 +79,187 @@ class LaborEntry {
     this.perDiem = 0,
   });
 
-  double get hoursPerMonth => monthsToWork * 220 * employeesQuantity;
+  double get effectiveMonths =>
+      allocatedMonths ??
+      monthsToWork * (teamResourceId == null ? 1 : dedication / 100);
+  double get hoursPerMonth => effectiveMonths * 220 * employeesQuantity;
   double get totalPay => hoursPerMonth * hourlyRate;
   double get totalPerDiem => hoursPerMonth * perDiem;
   double get totalFinal => totalPay + totalPerDiem;
+}
+
+/// Shared identity changes the number of people, never the projected workforce.
+class LeadershipBudget {
+  static String? validate(List<ServiceEntry> services) {
+    for (final service in services) {
+      for (final function in ['Supervisor', 'Foreman']) {
+        if (!service.labors.any(
+          (l) => l.operationalRole == function && l.teamResourceId != null,
+        ))
+          return '${service.name}: add a dedicated or shared $function.';
+      }
+      for (final line in service.labors.where(
+        (l) => l.teamResourceId != null,
+      )) {
+        if (line.roleName.trim().isEmpty ||
+            (line.teamResourceLabel ?? '').trim().isEmpty ||
+            !line.monthsToWork.isFinite ||
+            line.monthsToWork <= 0 ||
+            !line.employeesQuantity.isFinite ||
+            line.employeesQuantity < 1 ||
+            line.employeesQuantity != line.employeesQuantity.roundToDouble() ||
+            !line.hourlyRate.isFinite ||
+            line.hourlyRate <= 0 ||
+            !line.perDiem.isFinite ||
+            line.perDiem < 0)
+          return '${service.name}: check the role, positions, months, rate and allocation for ${line.teamResourceLabel}.';
+        DateTime? day(String key) {
+          final raw = service.estimationData?[key];
+          final d = raw is DateTime
+              ? raw
+              : DateTime.tryParse(raw?.toString() ?? '');
+          return d == null ? null : DateTime.utc(d.year, d.month, d.day);
+        }
+
+        final start = day('start_date'), end = day('end_date');
+        if (start == null ||
+            end == null ||
+            end.isBefore(start) ||
+            end.difference(start).inDays > 36600)
+          return '${service.name}: set the dates in Work Projection.';
+      }
+    }
+    for (final id in entries(
+      services,
+    ).map((l) => l.teamResourceId).whereType<String>().toSet()) {
+      if (entries(
+            services,
+          ).where((l) => l.teamResourceId == id && l.costPrimary).length >
+          1) {
+        return 'Choose only one cost service for each shared resource.';
+      }
+    }
+    return null;
+  }
+
+  /// Integrate date segments once per resource. The largest active daily
+  /// budget is its capacity; proportional shares never multiply that capacity.
+  /// Service months retain the estimate's calendar-month basis (220 hours/month).
+  static List<String> allocate(List<ServiceEntry> services) {
+    final groups =
+        <
+          String,
+          List<
+            ({
+              ServiceEntry service,
+              LaborEntry line,
+              DateTime start,
+              DateTime end,
+            })
+          >
+        >{};
+    for (final service in services) {
+      DateTime? day(String key) {
+        final raw = service.estimationData?[key];
+        final d = raw is DateTime
+            ? raw
+            : DateTime.tryParse(raw?.toString() ?? '');
+        return d == null ? null : DateTime.utc(d.year, d.month, d.day);
+      }
+
+      final start = day('start_date'), end = day('end_date');
+      for (final line in service.labors) {
+        line.allocatedMonths = null;
+        if (line.teamResourceId == null ||
+            start == null ||
+            end == null ||
+            end.isBefore(start) ||
+            end.difference(start).inDays > 36600 ||
+            !line.monthsToWork.isFinite ||
+            line.monthsToWork <= 0)
+          continue;
+        line.allocatedMonths = 0;
+        groups.putIfAbsent(line.teamResourceId!, () => []).add((
+          service: service,
+          line: line,
+          start: start,
+          end: end,
+        ));
+      }
+    }
+    final warnings = <String>[];
+    for (final group in groups.values) {
+      final points = <DateTime>{
+        for (final row in group) ...[
+          row.start,
+          row.end.add(const Duration(days: 1)),
+        ],
+      }.toList()..sort();
+      final primary = group.where((r) => r.line.costPrimary).firstOrNull;
+      var overlaps = false;
+      for (var i = 0; i < points.length - 1; i++) {
+        final active = group
+            .where(
+              (r) => !r.start.isAfter(points[i]) && !r.end.isBefore(points[i]),
+            )
+            .toList();
+        if (active.isEmpty) continue;
+        overlaps |= active.length > 1;
+        double density(dynamic r) =>
+            r.line.monthsToWork / (r.end.difference(r.start).inDays + 1);
+        final total = active.fold<double>(0, (s, r) => s + density(r));
+        final capacity = active.map(density).reduce((a, b) => a > b ? a : b);
+        final days = points[i + 1].difference(points[i]).inDays;
+        if (primary != null) {
+          primary.line.allocatedMonths =
+              primary.line.allocatedMonths! + days * capacity;
+        } else {
+          for (final row in active) {
+            row.line.allocatedMonths =
+                row.line.allocatedMonths! +
+                days * density(row) * capacity / total;
+          }
+        }
+      }
+      if (overlaps)
+        warnings.add(
+          '${group.first.line.teamResourceLabel ?? group.first.line.operationalRole}: ${group.map((r) => '${r.service.name} (${r.start.toIso8601String().substring(0, 10)} → ${r.end.toIso8601String().substring(0, 10)})').join(', ')}',
+        );
+    }
+    return warnings;
+  }
+
+  static Iterable<LaborEntry> entries(List<ServiceEntry> services) => services
+      .expand((s) => s.labors)
+      .where((l) => l.operationalRole != 'none');
+  static void update(
+    List<ServiceEntry> services,
+    LaborEntry line,
+    void Function(LaborEntry) change,
+  ) {
+    for (final candidate in entries(services)) {
+      if (identical(line, candidate) ||
+          (line.teamResourceId != null &&
+              candidate.teamResourceId == line.teamResourceId))
+        change(candidate);
+    }
+  }
+
+  static LaborEntry share(LaborEntry source, double serviceMonths) {
+    source.teamResourceId ??= const Uuid().v4();
+    source.teamResourceLabel ??= source.operationalRole;
+    source.coverageScope = 'service';
+    return LaborEntry(
+      roleName: source.roleName,
+      operationalRole: source.operationalRole,
+      teamResourceId: source.teamResourceId,
+      teamResourceLabel: source.teamResourceLabel,
+      monthsToWork: serviceMonths,
+      employeesQuantity: source.employeesQuantity,
+      hourlyRate: source.hourlyRate,
+      perDiem: source.perDiem,
+    );
+  }
 }
 
 class MaterialEntry {
@@ -169,6 +361,7 @@ class ServiceEntry {
         totalMaterials +
         totalInstruments;
   }
+
   double get overheadAmount => subTotal * (overheadPercentage / 100);
   double get totalPlusOverhead => subTotal + overheadAmount;
   double get profitAmount => totalPlusOverhead * (profitPercentage / 100);
@@ -176,15 +369,16 @@ class ServiceEntry {
   double get unitPrice => quantity > 0 ? totalSaleV2 / quantity : 0;
 
   double get priceGap => targetPrice - totalSaleV2;
-  double get priceGapPercent =>
-      targetPrice > 0 ? (targetPrice - totalSaleV2).abs() / targetPrice * 100 : 0;
+  double get priceGapPercent => targetPrice > 0
+      ? (targetPrice - totalSaleV2).abs() / targetPrice * 100
+      : 0;
   String get gapStatus => targetPrice <= 0
       ? 'none'
       : priceGapPercent < 2
-          ? 'green'
-          : priceGapPercent < 10
-              ? 'yellow'
-              : 'red';
+      ? 'green'
+      : priceGapPercent < 10
+      ? 'yellow'
+      : 'red';
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -199,9 +393,298 @@ class QuoteFormDialog extends StatefulWidget {
 }
 
 class _QuoteFormDialogState extends State<QuoteFormDialog> {
+  bool get _isNewTeamFlow =>
+      widget.quoteToEdit == null ||
+      widget.quoteToEdit?['team_sharing_enabled'] == true ||
+      LeadershipBudget.entries(_services).any((l) => l.teamResourceId != null);
+  String? _teamDate(ServiceEntry service, String key) {
+    final raw = service.estimationData?[key];
+    final date = raw is DateTime
+        ? raw
+        : DateTime.tryParse(raw?.toString() ?? '');
+    return date?.toIso8601String().substring(0, 10);
+  }
+
+  double _teamMonths(ServiceEntry service) {
+    final start = DateTime.tryParse(_teamDate(service, 'start_date') ?? '');
+    final end = DateTime.tryParse(_teamDate(service, 'end_date') ?? '');
+    if (start == null || end == null || end.isBefore(start)) return 0;
+    final months = (end.difference(start).inDays + 1) / 30.44;
+    final rounded = double.parse(months.toStringAsFixed(1));
+    return rounded > 0 ? rounded : double.parse(months.toStringAsFixed(3));
+  }
+
+  Future<void> _shareLeadership(ServiceEntry service, String function) async {
+    final options = <String, MapEntry<ServiceEntry, LaborEntry>>{};
+    for (final other in _services) {
+      if (identical(other, service)) continue;
+      for (final line in other.labors.where(
+        (l) => l.operationalRole == function,
+      )) {
+        if (line.teamResourceId != null &&
+            service.labors.any((l) => l.teamResourceId == line.teamResourceId))
+          continue;
+        options.putIfAbsent(
+          line.teamResourceId ?? '${other.name}-${other.labors.indexOf(line)}',
+          () => MapEntry(other, line),
+        );
+      }
+    }
+    final selected = await showSafeDialog<LaborEntry>(
+      context: context,
+      builder: (ctx) => SimpleDialog(
+        title: Text('Share existing $function'),
+        children: options.isEmpty
+            ? [
+                const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Text('Create a resource in another service first.'),
+                ),
+              ]
+            : options.values
+                  .map(
+                    (e) => SimpleDialogOption(
+                      onPressed: () => Navigator.pop(ctx, e.value),
+                      child: Text(
+                        '${e.value.teamResourceLabel ?? function} · ${e.key.name} · ${e.value.roleName}',
+                      ),
+                    ),
+                  )
+                  .toList(),
+      ),
+    );
+    if (selected != null && mounted)
+      setState(
+        () => service.labors.add(
+          LeadershipBudget.share(selected, _teamMonths(service)),
+        ),
+      );
+  }
+
+  Widget _buildLeadership(ServiceEntry service) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text(
+        'Supervision and Leadership',
+        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+      ),
+      const SizedBox(height: 8),
+      const Text(
+        'Share a Supervisor or Foreman across services when one person can cover them. Time and cost are distributed automatically; an administrator confirms overlapping coverage before approval.',
+      ),
+      for (final function in ['Supervisor', 'Foreman']) ...[
+        const SizedBox(height: 16),
+        Text(function, style: Theme.of(context).textTheme.titleMedium),
+        ...service.labors
+            .where((l) => l.operationalRole == function)
+            .map((line) => _leadershipCard(service, line)),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              icon: const Icon(Icons.add),
+              label: Text('Add dedicated $function'),
+              onPressed: () => setState(() {
+                final count =
+                    LeadershipBudget.entries(_services)
+                        .where((l) => l.operationalRole == function)
+                        .map((l) => l.teamResourceId ?? l.hashCode.toString())
+                        .toSet()
+                        .length +
+                    1;
+                service.labors.add(
+                  LaborEntry(
+                    roleName: function,
+                    operationalRole: function,
+                    teamResourceId: const Uuid().v4(),
+                    teamResourceLabel: '$function $count',
+                    monthsToWork: _teamMonths(service),
+                  ),
+                );
+              }),
+            ),
+            TextButton.icon(
+              icon: const Icon(Icons.link),
+              label: Text('Share existing $function'),
+              onPressed: () => _shareLeadership(service, function),
+            ),
+          ],
+        ),
+      ],
+    ],
+  );
+  Widget _leadershipCard(ServiceEntry service, LaborEntry line) {
+    final linked = _services
+        .where(
+          (s) => s.labors.any(
+            (l) =>
+                identical(l, line) ||
+                (line.teamResourceId != null &&
+                    l.teamResourceId == line.teamResourceId),
+          ),
+        )
+        .toList();
+    final resourceTotal = linked
+        .expand((s) => s.labors)
+        .where(
+          (l) =>
+              identical(l, line) ||
+              (line.teamResourceId != null &&
+                  l.teamResourceId == line.teamResourceId),
+        )
+        .fold<double>(0, (sum, l) => sum + l.totalFinal);
+    void shared(void Function(LaborEntry) change) =>
+        setState(() => LeadershipBudget.update(_services, line, change));
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    line.teamResourceLabel ?? line.operationalRole,
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Remove from this service',
+                  onPressed: () => setState(() => service.labors.remove(line)),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            Text(
+              linked.length > 1
+                  ? 'Shared across: ${linked.map((s) => s.name).join(', ')}'
+                  : 'Dedicated to this service',
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                _fieldCard(
+                  'Resource Name',
+                  null,
+                  180,
+                  initialText: line.teamResourceLabel ?? line.operationalRole,
+                  onText: (v) => shared((l) => l.teamResourceLabel = v),
+                ),
+                _SearchableCatalogDropdown(
+                  label: 'Role / Position',
+                  compact: true,
+                  width: 200,
+                  items: _catalogLaborRoles,
+                  excludeItems: const [],
+                  initialValue: line.roleName,
+                  onSelected: (name, item) => shared((l) {
+                    l.roleName = name;
+                    if (item?['hourly_rate'] != null)
+                      l.hourlyRate = (item!['hourly_rate'] as num).toDouble();
+                  }),
+                  onAddNew: () => _openCatalogItemAdd('labor'),
+                ),
+                _fieldCard(
+                  'Months in Service',
+                  line.monthsToWork,
+                  130,
+                  onNum: (v) => setState(() => line.monthsToWork = v),
+                ),
+                _calcChip(
+                  'Allocated Months',
+                  line.effectiveMonths,
+                  isCurrency: false,
+                ),
+                _fieldCard(
+                  'Positions',
+                  line.employeesQuantity,
+                  80,
+                  onNum: (v) => shared((l) => l.employeesQuantity = v),
+                ),
+                _fieldCard(
+                  'Hourly Rate \$',
+                  line.hourlyRate,
+                  110,
+                  onNum: (v) => shared((l) => l.hourlyRate = v),
+                ),
+                _fieldCard(
+                  'Per diem',
+                  line.perDiem,
+                  90,
+                  onNum: (v) => shared((l) => l.perDiem = v),
+                ),
+              ],
+            ),
+            if (linked.length > 1) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                key: ValueKey(
+                  '${line.teamResourceId}:${linked.indexWhere((s) => s.labors.any((l) => l.teamResourceId == line.teamResourceId && l.costPrimary))}',
+                ),
+                initialValue: linked.indexWhere(
+                  (s) => s.labors.any(
+                    (l) =>
+                        l.teamResourceId == line.teamResourceId &&
+                        l.costPrimary,
+                  ),
+                ),
+                decoration: const InputDecoration(labelText: 'Cost allocation'),
+                items: [
+                  const DropdownMenuItem(
+                    value: -1,
+                    child: Text('Distribute automatically'),
+                  ),
+                  for (var i = 0; i < linked.length; i++)
+                    DropdownMenuItem(
+                      value: i,
+                      child: Text('Charge to ${linked[i].name}'),
+                    ),
+                ],
+                onChanged: (v) => setState(() {
+                  for (var i = 0; i < linked.length; i++) {
+                    for (final l in linked[i].labors.where(
+                      (l) => l.teamResourceId == line.teamResourceId,
+                    )) {
+                      l.costPrimary = i == v;
+                    }
+                  }
+                }),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Text(
+              'Service period: ${_teamDate(service, 'start_date') ?? 'not set'} → ${_teamDate(service, 'end_date') ?? 'not set'}',
+            ),
+            Text(
+              'Cost in this service: \$${_currencyFormat.format(line.totalFinal)} · Resource total: \$${_currencyFormat.format(resourceTotal)}',
+            ),
+            if (linked.length > 1)
+              TextButton(
+                onPressed: () => setState(() {
+                  line.teamResourceId = const Uuid().v4();
+                  line.teamResourceLabel =
+                      '${line.operationalRole} · ${service.name}';
+                }),
+                child: const Text('Make dedicated resource'),
+              ),
+            const Text(
+              'Time is counted once across overlapping dates. Name, role, positions and rates are shared.',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   int _currentStep = 0;
   bool _isSaving = false;
   bool _isLoadingData = false;
+  bool _canAuthorize = false;
 
   // Step 0 - Quote Info
   late TextEditingController _titleController;
@@ -252,7 +735,13 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     if (_isEditing) {
       _loadExistingData();
     } else {
-      _services.add(ServiceEntry(name: _quoteType == 'staffing' ? 'Role 1' : 'Service 1', unitOfMeasure: _quoteType == 'staffing' ? 'hr' : 'und', isStaffingRole: _quoteType == 'staffing'));
+      _services.add(
+        ServiceEntry(
+          name: _quoteType == 'staffing' ? 'Role 1' : 'Service 1',
+          unitOfMeasure: _quoteType == 'staffing' ? 'hr' : 'und',
+          isStaffingRole: _quoteType == 'staffing',
+        ),
+      );
     }
   }
 
@@ -267,6 +756,11 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
     final months = double.parse((calendarDays / 30.44).toStringAsFixed(1));
 
     // 2. Fetch resources from estimation result
+    for (final existing in svc.labors.where((l) => l.teamResourceId != null)) {
+      existing.monthsToWork = months > 0
+          ? months
+          : double.parse((calendarDays / 30.44).toStringAsFixed(3));
+    }
     final resources = result['resources'] as List;
     if (resources.isEmpty) return;
 
@@ -402,20 +896,20 @@ class _QuoteFormDialogState extends State<QuoteFormDialog> {
                 hourlyRate: (role['hourly_rate'] as num?)?.toDouble() ?? 0,
                 perDiem: (role['per_diem'] as num?)?.toDouble() ?? 0,
               ),
-    );
-  }
-}
+            );
+          }
+        }
 
-String _nonEmptyStr(dynamic value) {
-  final s = value?.toString() ?? '';
-  return s.isNotEmpty ? s : '';
-  }
-}
+        String _nonEmptyStr(dynamic value) {
+          final s = value?.toString() ?? '';
+          return s.isNotEmpty ? s : '';
+        }
+      }
 
-String _nonEmptyStr(dynamic value) {
-  final s = value?.toString() ?? '';
-  return s.isNotEmpty ? s : '';
-}
+      String _nonEmptyStr(dynamic value) {
+        final s = value?.toString() ?? '';
+        return s.isNotEmpty ? s : '';
+      }
     }
 
     // Merge with manual labors (keeping roles that are NOT auto-generated to avoid deleting manual entries like 'Helper')
@@ -424,7 +918,8 @@ String _nonEmptyStr(dynamic value) {
 
     for (final existing in svc.labors) {
       // If this manual labor role is NOT one of the machine operators, preserve it
-      if (!autoLabors.any((l) => l.roleName == existing.roleName)) {
+      if (existing.operationalRole != 'none' ||
+          !autoLabors.any((l) => l.roleName == existing.roleName)) {
         finalLabors.add(existing);
       }
     }
@@ -505,6 +1000,7 @@ String _nonEmptyStr(dynamic value) {
   Future<void> _loadCatalogs() async {
     try {
       final supabase = Supabase.instance.client;
+      _canAuthorize = (await AccessService(supabase).load()).isAdmin;
       final svcs = await supabase
           .from('services')
           .select()
@@ -525,10 +1021,7 @@ String _nonEmptyStr(dynamic value) {
           .from('logistics_equipment')
           .select()
           .order('description');
-      final cust = await supabase
-          .from('customers')
-          .select()
-          .order('name');
+      final cust = await supabase.from('customers').select().order('name');
 
       if (mounted) {
         setState(() {
@@ -537,10 +1030,9 @@ String _nonEmptyStr(dynamic value) {
           _catalogLaborRoles = List<Map<String, dynamic>>.from(labr ?? []);
           _catalogMaterials = List<Map<String, dynamic>>.from(matr ?? []);
           _catalogInstruments = List<Map<String, dynamic>>.from(inst ?? []);
-          _catalogCustomers = List<Map<String, dynamic>>.from(cust ?? []).map((c) => {
-            ...c,
-            'description': c['name'],
-          }).toList();
+          _catalogCustomers = List<Map<String, dynamic>>.from(
+            cust ?? [],
+          ).map((c) => {...c, 'description': c['name']}).toList();
         });
       }
     } catch (e) {
@@ -634,7 +1126,8 @@ String _nonEmptyStr(dynamic value) {
             'thickness_inches':
                 (responseEst['thickness_inches'] as num?)?.toDouble() ?? 0.0,
             'gravel_thickness_inches':
-                (responseEst['gravel_thickness_inches'] as num?)?.toDouble() ?? 0.0,
+                (responseEst['gravel_thickness_inches'] as num?)?.toDouble() ??
+                0.0,
             'trench_width_inches':
                 (responseEst['trench_width_inches'] as num?)?.toDouble() ?? 0.0,
             'trench_depth_inches':
@@ -661,7 +1154,7 @@ String _nonEmptyStr(dynamic value) {
         final machineries = machData
             .map<MachineryEntry>(
               (m) => MachineryEntry(
-          machineName: _nonEmptyStr(m['machine_name']),
+                machineName: _nonEmptyStr(m['machine_name']),
                 monthsToUse: (m['months_to_use'] as num?)?.toDouble() ?? 0,
                 monthlyRentCost:
                     (m['monthly_rent_cost'] as num?)?.toDouble() ?? 0,
@@ -688,7 +1181,20 @@ String _nonEmptyStr(dynamic value) {
             .map<LaborEntry>(
               (l) => LaborEntry(
                 roleName: l['role_name'] ?? '',
-                monthsToWork: (l['months_to_work'] as num?)?.toDouble() ?? 0,
+                operationalRole: l['operational_role'] ?? 'none',
+                coverageScope: l['coverage_scope'] ?? 'service',
+                teamResourceId: l['team_resource_id'] as String?,
+                teamResourceLabel: l['team_resource_label'] as String?,
+                dedication: (l['team_dedication'] as num?)?.toDouble() ?? 100,
+                costPrimary: l['team_cost_primary'] == true,
+                monthsToWork:
+                    ((l['team_resource_id'] != null
+                                ? l['team_service_months']
+                                : null)
+                            as num?)
+                        ?.toDouble() ??
+                    (l['months_to_work'] as num?)?.toDouble() ??
+                    0,
                 employeesQuantity:
                     (l['employees_quantity'] as num?)?.toDouble() ?? 1,
                 hourlyRate: (l['hourly_rate'] as num?)?.toDouble() ?? 0,
@@ -748,7 +1254,7 @@ String _nonEmptyStr(dynamic value) {
             directCost: (svcData['direct_cost'] as num?)?.toDouble() ?? 0,
             targetPrice: (svcData['target_price'] as num?)?.toDouble() ?? 0,
             isStaffingRole: _quoteType == 'staffing',
-            machineries: machineries,  // _loadExistingData
+            machineries: machineries, // _loadExistingData
             labors: labors,
             materials: materials,
             instruments: instruments,
@@ -804,6 +1310,21 @@ String _nonEmptyStr(dynamic value) {
 
   // ── Save to Supabase ──
   Future<void> _persistQuote({required bool closeDialog}) async {
+    final overlap = _isNewTeamFlow
+        ? LeadershipBudget.allocate(_services)
+        : <String>[];
+    if (closeDialog &&
+        _isNewTeamFlow &&
+        ['sent', 'accepted'].contains(_selectedStatus)) {
+      final error = LeadershipBudget.validate(_services);
+      if (error != null) {
+        setState(() => _currentStep = 2);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error)));
+        return;
+      }
+    }
     if (_titleController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -818,10 +1339,48 @@ String _nonEmptyStr(dynamic value) {
       return;
     }
 
+    final authorizing =
+        closeDialog && ['sent', 'accepted'].contains(_selectedStatus);
+    if (authorizing && overlap.isNotEmpty) {
+      if (!_canAuthorize) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'An administrator must confirm shared coverage on overlapping dates.',
+            ),
+          ),
+        );
+        return;
+      }
+      if (!await confirmSharedLeadership(
+        context,
+        resources: overlap,
+        serviceAmounts: _services
+            .map((s) => '${s.name}: \$${_currencyFormat.format(s.totalSaleV2)}')
+            .toList(),
+        total: _services.fold<double>(0, (sum, s) => sum + s.totalSaleV2),
+      ))
+        return;
+      if (!mounted) return;
+    }
     setState(() => _isSaving = true);
     try {
       final supabase = Supabase.instance.client;
       String quoteId;
+      if (_isNewTeamFlow && (_isEditing || _createdQuoteId != null)) {
+        final existingId =
+            _createdQuoteId ?? widget.quoteToEdit!['id'] as String;
+        final projects = await supabase
+            .from('projects')
+            .select('id')
+            .eq('quote_id', existingId)
+            .limit(1);
+        if (projects.isNotEmpty)
+          throw const PostgrestException(
+            message:
+                'This estimate is already linked to a project. Manage changes from the project to preserve its original budget.',
+          );
+      }
 
       double totalAmount = 0;
       for (final svc in _services) {
@@ -830,7 +1389,8 @@ String _nonEmptyStr(dynamic value) {
 
       final isUpdate = _isEditing || _createdQuoteId != null;
       if (isUpdate) {
-        final quoteIdToUpdate = _createdQuoteId ?? widget.quoteToEdit!['id'] as String;
+        final quoteIdToUpdate =
+            _createdQuoteId ?? widget.quoteToEdit!['id'] as String;
         await supabase
             .from('quotes')
             .update({
@@ -839,7 +1399,9 @@ String _nonEmptyStr(dynamic value) {
               'client_address': _selectedClientAddress,
               'total_amount': totalAmount,
               'quote_date': _quoteDate.toIso8601String().split('T')[0],
-              'status': _selectedStatus,
+              'status': 'partial',
+              'team_sharing_enabled': _isNewTeamFlow,
+              'team_allocation_automatic': _isNewTeamFlow,
               'quote_type': _quoteType,
               'updated_at': DateTime.now().toIso8601String(),
             })
@@ -854,7 +1416,9 @@ String _nonEmptyStr(dynamic value) {
               'client_address': _selectedClientAddress,
               'total_amount': totalAmount,
               'quote_date': _quoteDate.toIso8601String().split('T')[0],
-              'status': closeDialog ? _selectedStatus : 'partial',
+              'status': 'partial',
+              'team_sharing_enabled': _isNewTeamFlow,
+              'team_allocation_automatic': _isNewTeamFlow,
               'quote_type': _quoteType,
             })
             .select()
@@ -882,11 +1446,26 @@ String _nonEmptyStr(dynamic value) {
               .eq('id', svcId);
 
           // Delete old resource children to re-insert
-          await supabase.from('quote_service_machineries').delete().eq('quote_service_id', svcId);
-          await supabase.from('quote_service_labors').delete().eq('quote_service_id', svcId);
-          await supabase.from('quote_service_materials').delete().eq('quote_service_id', svcId);
-          await supabase.from('quote_service_instruments').delete().eq('quote_service_id', svcId);
-          await supabase.from('quote_service_estimations').delete().eq('quote_service_id', svcId);
+          await supabase
+              .from('quote_service_machineries')
+              .delete()
+              .eq('quote_service_id', svcId);
+          await supabase
+              .from('quote_service_labors')
+              .delete()
+              .eq('quote_service_id', svcId);
+          await supabase
+              .from('quote_service_materials')
+              .delete()
+              .eq('quote_service_id', svcId);
+          await supabase
+              .from('quote_service_instruments')
+              .delete()
+              .eq('quote_service_id', svcId);
+          await supabase
+              .from('quote_service_estimations')
+              .delete()
+              .eq('quote_service_id', svcId);
         } else {
           final svcResult = await supabase
               .from('quote_services')
@@ -925,7 +1504,24 @@ String _nonEmptyStr(dynamic value) {
           await supabase.from('quote_service_labors').insert({
             'quote_service_id': svcId,
             'role_name': l.roleName,
-            'months_to_work': l.monthsToWork,
+            'operational_role': l.operationalRole,
+            'coverage_scope': l.coverageScope,
+            'months_to_work': l.effectiveMonths,
+            'team_resource_id': l.teamResourceId,
+            'team_resource_label': l.teamResourceLabel,
+            'team_dedication': l.teamResourceId == null || l.monthsToWork <= 0
+                ? l.dedication
+                : (l.effectiveMonths / l.monthsToWork * 100).clamp(0, 100),
+            'team_cost_primary': l.costPrimary,
+            'team_service_months': l.teamResourceId == null
+                ? null
+                : l.monthsToWork,
+            'team_start': l.teamResourceId == null
+                ? null
+                : _teamDate(svc, 'start_date'),
+            'team_end': l.teamResourceId == null
+                ? null
+                : _teamDate(svc, 'end_date'),
             'employees_quantity': l.employeesQuantity,
             'hourly_rate': l.hourlyRate,
             'per_diem': l.perDiem,
@@ -1057,6 +1653,27 @@ String _nonEmptyStr(dynamic value) {
         }
       }
 
+      if (authorizing && overlap.isNotEmpty) {
+        final preview = Map<String, dynamic>.from(
+          await supabase.rpc(
+            'prepare_quote_team_allocation',
+            params: {'p_quote': quoteId},
+          ),
+        );
+        await supabase.rpc(
+          'prepare_quote_team_allocation',
+          params: {
+            'p_quote': quoteId,
+            'p_confirm': true,
+            'p_fingerprint': preview['fingerprint'],
+          },
+        );
+      }
+      await supabase
+          .from('quotes')
+          .update({'status': closeDialog ? _selectedStatus : 'partial'})
+          .eq('id', quoteId);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1077,7 +1694,10 @@ String _nonEmptyStr(dynamic value) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e', style: GoogleFonts.manrope()),
+            content: Text(
+              e is PostgrestException ? e.message : e.toString(),
+              style: GoogleFonts.manrope(),
+            ),
             backgroundColor: AppTheme.errorRed,
           ),
         );
@@ -1092,6 +1712,7 @@ String _nonEmptyStr(dynamic value) {
   // ══════════════════════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
+    if (_isNewTeamFlow) LeadershipBudget.allocate(_services);
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
       child: Dialog(
@@ -1218,8 +1839,19 @@ String _nonEmptyStr(dynamic value) {
 
   // ── Step Indicator ──
   Widget _buildStepIndicator() {
-    final bool allServicesAreLS = _services.isNotEmpty && _services.every((s) => s.unitOfMeasure.toLowerCase() == 'ls' || s.isStaffingRole);
-    final steps = ['Info', 'Machinery', 'Labor', 'Materials', 'Tools', 'Summary'];
+    final bool allServicesAreLS =
+        _services.isNotEmpty &&
+        _services.every(
+          (s) => s.unitOfMeasure.toLowerCase() == 'ls' || s.isStaffingRole,
+        );
+    final steps = [
+      'Info',
+      'Machinery',
+      'Labor',
+      'Materials',
+      'Tools',
+      'Summary',
+    ];
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
       color: const Color(0xFFF8FAFC),
@@ -1299,7 +1931,9 @@ String _nonEmptyStr(dynamic value) {
     try {
       final response = await supabase
           .from('quotes')
-          .select('id, title, client_name, quote_date, total_amount, status, quote_type')
+          .select(
+            'id, title, client_name, quote_date, total_amount, status, quote_type',
+          )
           .order('created_at', ascending: false)
           .limit(100);
       quotes = List<Map<String, dynamic>>.from(response ?? []);
@@ -1331,7 +1965,10 @@ String _nonEmptyStr(dynamic value) {
             filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
             child: Dialog(
               backgroundColor: Colors.transparent,
-              insetPadding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 24, vertical: 24),
+              insetPadding: EdgeInsets.symmetric(
+                horizontal: isMobile ? 16 : 24,
+                vertical: 24,
+              ),
               child: Container(
                 width: double.infinity,
                 constraints: BoxConstraints(
@@ -1354,13 +1991,23 @@ String _nonEmptyStr(dynamic value) {
                   children: [
                     _buildTemplatePickerHeader(ctx),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 32,
+                        vertical: 16,
+                      ),
                       child: TextField(
                         controller: searchCtrl,
                         decoration: InputDecoration(
                           hintText: 'Search by title or client...',
-                          hintStyle: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate400),
-                          prefixIcon: const Icon(Icons.search, size: 20, color: AppTheme.slate400),
+                          hintStyle: GoogleFonts.manrope(
+                            fontSize: 14,
+                            color: AppTheme.slate400,
+                          ),
+                          prefixIcon: const Icon(
+                            Icons.search,
+                            size: 20,
+                            color: AppTheme.slate400,
+                          ),
                           suffixIcon: query.isNotEmpty
                               ? IconButton(
                                   icon: const Icon(Icons.clear, size: 18),
@@ -1372,21 +2019,33 @@ String _nonEmptyStr(dynamic value) {
                               : null,
                           filled: true,
                           fillColor: AppTheme.slate50,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFE2E8F0),
+                            ),
                           ),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                            borderSide: const BorderSide(
+                              color: Color(0xFFE2E8F0),
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 2),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF1D4ED8),
+                              width: 2,
+                            ),
                           ),
                         ),
-                        onChanged: (v) => setDialogState(() => query = v.toLowerCase().trim()),
+                        onChanged: (v) => setDialogState(
+                          () => query = v.toLowerCase().trim(),
+                        ),
                       ),
                     ),
                     Container(height: 1, color: AppTheme.slate200),
@@ -1397,7 +2056,11 @@ String _nonEmptyStr(dynamic value) {
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.folder_open_outlined, size: 48, color: AppTheme.slate400),
+                                  Icon(
+                                    Icons.folder_open_outlined,
+                                    size: 48,
+                                    color: AppTheme.slate400,
+                                  ),
                                   const SizedBox(height: 12),
                                   Text(
                                     'No existing estimates found',
@@ -1413,7 +2076,10 @@ String _nonEmptyStr(dynamic value) {
                           : ListView.separated(
                               padding: const EdgeInsets.symmetric(vertical: 8),
                               itemCount: filtered.length,
-                              separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                              separatorBuilder: (_, __) => const Divider(
+                                height: 1,
+                                color: Color(0xFFF1F5F9),
+                              ),
                               itemBuilder: (context, index) {
                                 final q = filtered[index];
                                 return _TemplateQuoteItem(
@@ -1445,7 +2111,10 @@ String _nonEmptyStr(dynamic value) {
       final supabase = Supabase.instance.client;
       final quotesService = QuotesService(supabase);
       final full = await quotesService.getFullQuoteForTemplate(quoteId);
-      if (full == null || !mounted) { setState(() => _isLoadingData = false); return; }
+      if (full == null || !mounted) {
+        setState(() => _isLoadingData = false);
+        return;
+      }
 
       final type = full['quote_type'] ?? 'standard';
       _quoteType = type == 'staffing' ? 'staffing' : 'standard';
@@ -1461,61 +2130,99 @@ String _nonEmptyStr(dynamic value) {
         final svcData = svc as Map<String, dynamic>;
 
         final machList = svcData['machineries'] as List? ?? [];
-        final machineries = machList.map<MachineryEntry>((m) => MachineryEntry(
-          machineName: _nonEmptyStr(m['machine_name']),
-          monthsToUse: (m['months_to_use'] as num?)?.toDouble() ?? 0,
-          monthlyRentCost: (m['monthly_rent_cost'] as num?)?.toDouble() ?? 0,
-          quantity: (m['quantity'] as num?)?.toDouble() ?? 1,
-          gallonsPerHour: (m['gallons_per_hour'] as num?)?.toDouble() ?? 0,
-          gallonCost: (m['gallon_cost'] as num?)?.toDouble() ?? 0,
-          deliveryCost: (m['delivery_cost'] as num?)?.toDouble() ?? 0,
-          isPrimaryMover: m['is_primary_mover'] as bool? ?? true,
-          parentMachineName: m['parent_machine_name'] as String?,
-        )).toList();
+        final machineries = machList
+            .map<MachineryEntry>(
+              (m) => MachineryEntry(
+                machineName: _nonEmptyStr(m['machine_name']),
+                monthsToUse: (m['months_to_use'] as num?)?.toDouble() ?? 0,
+                monthlyRentCost:
+                    (m['monthly_rent_cost'] as num?)?.toDouble() ?? 0,
+                quantity: (m['quantity'] as num?)?.toDouble() ?? 1,
+                gallonsPerHour:
+                    (m['gallons_per_hour'] as num?)?.toDouble() ?? 0,
+                gallonCost: (m['gallon_cost'] as num?)?.toDouble() ?? 0,
+                deliveryCost: (m['delivery_cost'] as num?)?.toDouble() ?? 0,
+                isPrimaryMover: m['is_primary_mover'] as bool? ?? true,
+                parentMachineName: m['parent_machine_name'] as String?,
+              ),
+            )
+            .toList();
 
         final laborList = svcData['labors'] as List? ?? [];
-        final labors = laborList.map<LaborEntry>((l) => LaborEntry(
-          roleName: l['role_name'] ?? '',
-          monthsToWork: (l['months_to_work'] as num?)?.toDouble() ?? 0,
-          employeesQuantity: (l['employees_quantity'] as num?)?.toDouble() ?? 1,
-          hourlyRate: (l['hourly_rate'] as num?)?.toDouble() ?? 0,
-          perDiem: (l['per_diem'] as num?)?.toDouble() ?? 0,
-        )).toList();
+        final labors = laborList
+            .map<LaborEntry>(
+              (l) => LaborEntry(
+                roleName: l['role_name'] ?? '',
+                operationalRole: l['operational_role'] ?? 'none',
+                coverageScope: l['coverage_scope'] ?? 'service',
+                teamResourceId: l['team_resource_id'] as String?,
+                teamResourceLabel: l['team_resource_label'] as String?,
+                dedication: (l['team_dedication'] as num?)?.toDouble() ?? 100,
+                costPrimary: l['team_cost_primary'] == true,
+                monthsToWork:
+                    ((l['team_resource_id'] != null
+                                ? l['team_service_months']
+                                : null)
+                            as num?)
+                        ?.toDouble() ??
+                    (l['months_to_work'] as num?)?.toDouble() ??
+                    0,
+                employeesQuantity:
+                    (l['employees_quantity'] as num?)?.toDouble() ?? 1,
+                hourlyRate: (l['hourly_rate'] as num?)?.toDouble() ?? 0,
+                perDiem: (l['per_diem'] as num?)?.toDouble() ?? 0,
+              ),
+            )
+            .toList();
 
         final matList = svcData['materials'] as List? ?? [];
-        final materials = matList.map<MaterialEntry>((m) => MaterialEntry(
-          materialName: m['material_name'] ?? '',
-          quantity: (m['quantity'] as num?)?.toDouble() ?? 0,
-          unitPrice: (m['unit_price'] as num?)?.toDouble() ?? 0,
-          unit: m['unit_name'] ?? 'und',
-          catalogId: m['material_id']?.toString(),
-        )).toList();
+        final materials = matList
+            .map<MaterialEntry>(
+              (m) => MaterialEntry(
+                materialName: m['material_name'] ?? '',
+                quantity: (m['quantity'] as num?)?.toDouble() ?? 0,
+                unitPrice: (m['unit_price'] as num?)?.toDouble() ?? 0,
+                unit: m['unit_name'] ?? 'und',
+                catalogId: m['material_id']?.toString(),
+              ),
+            )
+            .toList();
 
         final instList = svcData['instruments'] as List? ?? [];
-        final instruments = instList.map<InstrumentEntry>((i) => InstrumentEntry(
-          instrumentName: i['instrument_name'] ?? '',
-          quantity: (i['quantity'] as num?)?.toDouble() ?? 1,
-          unitPrice: (i['unit_price'] as num?)?.toDouble() ?? 0,
-          days: (i['days'] as num?)?.toDouble() ?? 1,
-          catalogId: i['instrument_id']?.toString(),
-          notes: i['notes'],
-        )).toList();
+        final instruments = instList
+            .map<InstrumentEntry>(
+              (i) => InstrumentEntry(
+                instrumentName: i['instrument_name'] ?? '',
+                quantity: (i['quantity'] as num?)?.toDouble() ?? 1,
+                unitPrice: (i['unit_price'] as num?)?.toDouble() ?? 0,
+                days: (i['days'] as num?)?.toDouble() ?? 1,
+                catalogId: i['instrument_id']?.toString(),
+                notes: i['notes'],
+              ),
+            )
+            .toList();
 
         final est = svcData['estimation'] as Map<String, dynamic>?;
         final estResourcesRaw = svcData['estimation_resources'] as List? ?? [];
-        final estResources = estResourcesRaw.map((r) => {
-          'id': r['id'],
-          'is_primary_mover': r['is_primary_mover'] ?? true,
-          'parent_resource_id': r['parent_resource_id'],
-          'machine_id': r['machine_id'],
-          'machine_name': r['machinery']?['description'] ?? 'Unknown',
-          'photo_url': r['machinery']?['photo_url'],
-          'machinery_type': r['machinery']?['machinery_type'] ?? 'hauling',
-          'quantity': (r['quantity'] as num).toDouble(),
-          'trips_per_day': (r['trips_per_day'] as num).toDouble(),
-          'capacity_per_trip': (r['capacity_per_trip'] as num).toDouble(),
-          'performance_per_day': (r['performance_per_day'] as num?)?.toDouble() ?? 0.0,
-        }).toList();
+        final estResources = estResourcesRaw
+            .map(
+              (r) => {
+                'id': r['id'],
+                'is_primary_mover': r['is_primary_mover'] ?? true,
+                'parent_resource_id': r['parent_resource_id'],
+                'machine_id': r['machine_id'],
+                'machine_name': r['machinery']?['description'] ?? 'Unknown',
+                'photo_url': r['machinery']?['photo_url'],
+                'machinery_type':
+                    r['machinery']?['machinery_type'] ?? 'hauling',
+                'quantity': (r['quantity'] as num).toDouble(),
+                'trips_per_day': (r['trips_per_day'] as num).toDouble(),
+                'capacity_per_trip': (r['capacity_per_trip'] as num).toDouble(),
+                'performance_per_day':
+                    (r['performance_per_day'] as num?)?.toDouble() ?? 0.0,
+              },
+            )
+            .toList();
         Map<String, dynamic>? estimationData;
         if (est != null) {
           estimationData = {
@@ -1524,8 +2231,12 @@ String _nonEmptyStr(dynamic value) {
             'compacted_volume': est['compacted_volume'],
             'swell_factor': est['swell_factor'],
             'total_cy_loose': est['total_cy_loose'],
-            'start_date': est['start_date'] != null ? DateTime.parse(est['start_date'].toString()) : DateTime.now(),
-            'end_date': est['end_date'] != null ? DateTime.parse(est['end_date'].toString()) : null,
+            'start_date': est['start_date'] != null
+                ? DateTime.parse(est['start_date'].toString())
+                : DateTime.now(),
+            'end_date': est['end_date'] != null
+                ? DateTime.parse(est['end_date'].toString())
+                : null,
             'total_working_days': est['total_working_days'],
             'working_days': est['total_working_days'],
             'workingDays': est['total_working_days'],
@@ -1541,22 +2252,26 @@ String _nonEmptyStr(dynamic value) {
 
         String? catalogId = svcData['service_id']?.toString();
 
-        loadedServices.add(ServiceEntry(
-          name: svcData['name'] ?? '',
-          unitOfMeasure: svcData['unit_of_measure'] ?? 'und',
-          quantity: (svcData['quantity'] as num?)?.toDouble() ?? 1,
-          overheadPercentage: (svcData['overhead_percentage'] as num?)?.toDouble() ?? 0,
-          profitPercentage: (svcData['profit_percentage'] as num?)?.toDouble() ?? 0,
-          directCost: (svcData['direct_cost'] as num?)?.toDouble() ?? 0,
-          targetPrice: (svcData['target_price'] as num?)?.toDouble() ?? 0,
-          isStaffingRole: _quoteType == 'staffing',
-          machineries: machineries,  // _populateFromTemplate
-          labors: labors,
-          materials: materials,
-          instruments: instruments,
-          estimationData: estimationData,
-          catalogId: catalogId,
-        ));
+        loadedServices.add(
+          ServiceEntry(
+            name: svcData['name'] ?? '',
+            unitOfMeasure: svcData['unit_of_measure'] ?? 'und',
+            quantity: (svcData['quantity'] as num?)?.toDouble() ?? 1,
+            overheadPercentage:
+                (svcData['overhead_percentage'] as num?)?.toDouble() ?? 0,
+            profitPercentage:
+                (svcData['profit_percentage'] as num?)?.toDouble() ?? 0,
+            directCost: (svcData['direct_cost'] as num?)?.toDouble() ?? 0,
+            targetPrice: (svcData['target_price'] as num?)?.toDouble() ?? 0,
+            isStaffingRole: _quoteType == 'staffing',
+            machineries: machineries, // _populateFromTemplate
+            labors: labors,
+            materials: materials,
+            instruments: instruments,
+            estimationData: estimationData,
+            catalogId: catalogId,
+          ),
+        );
       }
 
       for (final s in loadedServices) {
@@ -1574,6 +2289,16 @@ String _nonEmptyStr(dynamic value) {
             ? [ServiceEntry(name: 'Service 1')]
             : loadedServices;
         if (_services.isNotEmpty) _activeServiceIndex = 0;
+        final copiedTeamIds = <String, String>{};
+        for (final svc in _services) {
+          for (final l in svc.labors) {
+            if (l.teamResourceId != null)
+              l.teamResourceId = copiedTeamIds.putIfAbsent(
+                l.teamResourceId!,
+                () => const Uuid().v4(),
+              );
+          }
+        }
         _isLoadingData = false;
       });
     } catch (e) {
@@ -1583,7 +2308,13 @@ String _nonEmptyStr(dynamic value) {
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading template: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed),
+          SnackBar(
+            content: Text(
+              'Error loading template: $e',
+              style: GoogleFonts.manrope(),
+            ),
+            backgroundColor: AppTheme.errorRed,
+          ),
         );
       }
     }
@@ -1606,21 +2337,46 @@ String _nonEmptyStr(dynamic value) {
           child: Row(
             children: [
               Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(color: AppTheme.primaryGreen.withAlpha(20), shape: BoxShape.circle),
-                child: const Icon(Icons.file_copy_outlined, color: AppTheme.primaryGreen, size: 20),
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryGreen.withAlpha(20),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.file_copy_outlined,
+                  color: AppTheme.primaryGreen,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Copy from existing estimate', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.primaryGreen)),
-                    Text('Start with a proven quote configuration — services, resources and prices', style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500)),
+                    Text(
+                      'Copy from existing estimate',
+                      style: GoogleFonts.manrope(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.primaryGreen,
+                      ),
+                    ),
+                    Text(
+                      'Start with a proven quote configuration — services, resources and prices',
+                      style: GoogleFonts.manrope(
+                        fontSize: 11,
+                        color: AppTheme.slate500,
+                      ),
+                    ),
                   ],
                 ),
               ),
-              const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.primaryGreen),
+              const Icon(
+                Icons.arrow_forward_ios,
+                size: 14,
+                color: AppTheme.primaryGreen,
+              ),
             ],
           ),
         ),
@@ -1647,7 +2403,11 @@ String _nonEmptyStr(dynamic value) {
                   shape: BoxShape.circle,
                 ),
                 child: const Center(
-                  child: Icon(Icons.file_copy_outlined, color: AppTheme.primaryGreen, size: 20),
+                  child: Icon(
+                    Icons.file_copy_outlined,
+                    color: AppTheme.primaryGreen,
+                    size: 20,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1679,7 +2439,11 @@ String _nonEmptyStr(dynamic value) {
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
               onTap: () => Navigator.of(ctx).pop(),
-              child: const Icon(Icons.close, color: AppTheme.slate400, size: 24),
+              child: const Icon(
+                Icons.close,
+                color: AppTheme.slate400,
+                size: 24,
+              ),
             ),
           ),
         ],
@@ -1706,7 +2470,10 @@ String _nonEmptyStr(dynamic value) {
             child: GestureDetector(
               onTap: () => Navigator.of(ctx).pop(),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
@@ -1736,8 +2503,8 @@ String _nonEmptyStr(dynamic value) {
     final color = svc.gapStatus == 'green'
         ? AppTheme.primaryGreen
         : svc.gapStatus == 'yellow'
-            ? Colors.orange
-            : AppTheme.errorRed;
+        ? Colors.orange
+        : AppTheme.errorRed;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -1751,7 +2518,8 @@ String _nonEmptyStr(dynamic value) {
         children: [
           Icon(
             gap <= 0 ? Icons.arrow_upward : Icons.arrow_downward,
-            size: 12, color: color,
+            size: 12,
+            color: color,
           ),
           const SizedBox(width: 4),
           Column(
@@ -1759,11 +2527,19 @@ String _nonEmptyStr(dynamic value) {
             children: [
               Text(
                 '\$${_currencyFormat.format(gap.abs())}',
-                style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: color),
+                style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                ),
               ),
               Text(
                 '${pct.toStringAsFixed(1)}%',
-                style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w600, color: color),
+                style: GoogleFonts.manrope(
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                  color: color,
+                ),
               ),
             ],
           ),
@@ -1773,29 +2549,39 @@ String _nonEmptyStr(dynamic value) {
   }
 
   Widget _buildQuickLevers(ServiceEntry svc) {
-    if (svc.targetPrice <= 0 || svc.gapStatus == 'green') return const SizedBox.shrink();
+    if (svc.targetPrice <= 0 || svc.gapStatus == 'green')
+      return const SizedBox.shrink();
 
     final gap = svc.priceGap;
     final suggestions = <_LeverSuggestion>[];
 
     if (svc.profitAmount > 0) {
-      final newProfit = (((svc.profitAmount + gap) / svc.totalPlusOverhead) * 100)
-          .clamp(5.0, 35.0);
-      suggestions.add(_LeverSuggestion(
-        label: 'Profit \u2192 ${newProfit.toStringAsFixed(1)}%',
-        icon: Icons.trending_down,
-        action: () => setState(() => svc.profitPercentage = newProfit),
-      ));
+      final newProfit =
+          (((svc.profitAmount + gap) / svc.totalPlusOverhead) * 100).clamp(
+            5.0,
+            35.0,
+          );
+      suggestions.add(
+        _LeverSuggestion(
+          label: 'Profit \u2192 ${newProfit.toStringAsFixed(1)}%',
+          icon: Icons.trending_down,
+          action: () => setState(() => svc.profitPercentage = newProfit),
+        ),
+      );
     }
 
     if (svc.overheadAmount > 0 && suggestions.length < 2) {
-      final newOH = (((svc.overheadAmount + gap) / svc.subTotal) * 100)
-          .clamp(5.0, 25.0);
-      suggestions.add(_LeverSuggestion(
-        label: 'OH \u2192 ${newOH.toStringAsFixed(1)}%',
-        icon: Icons.trending_down,
-        action: () => setState(() => svc.overheadPercentage = newOH),
-      ));
+      final newOH = (((svc.overheadAmount + gap) / svc.subTotal) * 100).clamp(
+        5.0,
+        25.0,
+      );
+      suggestions.add(
+        _LeverSuggestion(
+          label: 'OH \u2192 ${newOH.toStringAsFixed(1)}%',
+          icon: Icons.trending_down,
+          action: () => setState(() => svc.overheadPercentage = newOH),
+        ),
+      );
     }
 
     if (suggestions.isEmpty) return const SizedBox.shrink();
@@ -1805,31 +2591,46 @@ String _nonEmptyStr(dynamic value) {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('Quick fix:', style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate400)),
+          Text(
+            'Quick fix:',
+            style: GoogleFonts.manrope(fontSize: 10, color: AppTheme.slate400),
+          ),
           const SizedBox(width: 6),
-          ...suggestions.map((s) => Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: InkWell(
-              onTap: s.action,
-              borderRadius: BorderRadius.circular(6),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withAlpha(15),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: Colors.orange.withAlpha(40)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(s.icon, size: 12, color: Colors.orange),
-                    const SizedBox(width: 4),
-                    Text(s.label, style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.orange)),
-                  ],
+          ...suggestions.map(
+            (s) => Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: InkWell(
+                onTap: s.action,
+                borderRadius: BorderRadius.circular(6),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 3,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withAlpha(15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.orange.withAlpha(40)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(s.icon, size: 12, color: Colors.orange),
+                      const SizedBox(width: 4),
+                      Text(
+                        s.label,
+                        style: GoogleFonts.manrope(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.orange,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          )),
+          ),
         ],
       ),
     );
@@ -1886,7 +2687,9 @@ String _nonEmptyStr(dynamic value) {
                             onTap: () {
                               setState(() {
                                 _quoteType = 'standard';
-                                if (!_isEditing && _services.length == 1 && _services.first.name.startsWith('Role')) {
+                                if (!_isEditing &&
+                                    _services.length == 1 &&
+                                    _services.first.name.startsWith('Role')) {
                                   _services.first.name = 'Service 1';
                                   _services.first.unitOfMeasure = 'und';
                                   _services.first.isStaffingRole = false;
@@ -1895,11 +2698,26 @@ String _nonEmptyStr(dynamic value) {
                             },
                             child: Container(
                               decoration: BoxDecoration(
-                                color: _quoteType == 'standard' ? AppTheme.primaryGreen.withOpacity(0.1) : Colors.transparent,
-                                borderRadius: const BorderRadius.horizontal(left: Radius.circular(7)),
+                                color: _quoteType == 'standard'
+                                    ? AppTheme.primaryGreen.withOpacity(0.1)
+                                    : Colors.transparent,
+                                borderRadius: const BorderRadius.horizontal(
+                                  left: Radius.circular(7),
+                                ),
                               ),
                               alignment: Alignment.center,
-                              child: Text('Standard Project', style: GoogleFonts.manrope(fontSize: 13, fontWeight: _quoteType == 'standard' ? FontWeight.w700 : FontWeight.w500, color: _quoteType == 'standard' ? AppTheme.primaryGreen : AppTheme.slate600)),
+                              child: Text(
+                                'Standard Project',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 13,
+                                  fontWeight: _quoteType == 'standard'
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  color: _quoteType == 'standard'
+                                      ? AppTheme.primaryGreen
+                                      : AppTheme.slate600,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -1909,7 +2727,11 @@ String _nonEmptyStr(dynamic value) {
                             onTap: () {
                               setState(() {
                                 _quoteType = 'staffing';
-                                if (!_isEditing && _services.length == 1 && _services.first.name.startsWith('Service')) {
+                                if (!_isEditing &&
+                                    _services.length == 1 &&
+                                    _services.first.name.startsWith(
+                                      'Service',
+                                    )) {
                                   _services.first.name = 'Role 1';
                                   _services.first.unitOfMeasure = 'hr';
                                   _services.first.isStaffingRole = true;
@@ -1918,11 +2740,26 @@ String _nonEmptyStr(dynamic value) {
                             },
                             child: Container(
                               decoration: BoxDecoration(
-                                color: _quoteType == 'staffing' ? AppTheme.primaryGreen.withOpacity(0.1) : Colors.transparent,
-                                borderRadius: const BorderRadius.horizontal(right: Radius.circular(7)),
+                                color: _quoteType == 'staffing'
+                                    ? AppTheme.primaryGreen.withOpacity(0.1)
+                                    : Colors.transparent,
+                                borderRadius: const BorderRadius.horizontal(
+                                  right: Radius.circular(7),
+                                ),
                               ),
                               alignment: Alignment.center,
-                              child: Text('Labor Supply', style: GoogleFonts.manrope(fontSize: 13, fontWeight: _quoteType == 'staffing' ? FontWeight.w700 : FontWeight.w500, color: _quoteType == 'staffing' ? AppTheme.primaryGreen : AppTheme.slate600)),
+                              child: Text(
+                                'Labor Supply',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 13,
+                                  fontWeight: _quoteType == 'staffing'
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                  color: _quoteType == 'staffing'
+                                      ? AppTheme.primaryGreen
+                                      : AppTheme.slate600,
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -2019,14 +2856,21 @@ String _nonEmptyStr(dynamic value) {
                 fontSize: 14,
                 color: AppTheme.slate900,
               ),
-              items: ['draft', 'sent', 'accepted', 'rejected']
-                  .map(
-                    (s) => DropdownMenuItem(
-                      value: s,
-                      child: Text(s[0].toUpperCase() + s.substring(1)),
-                    ),
-                  )
-                  .toList(),
+              items:
+                  [
+                        'draft',
+                        'sent',
+                        if (_canAuthorize || _selectedStatus == 'accepted')
+                          'accepted',
+                        'rejected',
+                      ]
+                      .map(
+                        (s) => DropdownMenuItem(
+                          value: s,
+                          child: Text(s[0].toUpperCase() + s.substring(1)),
+                        ),
+                      )
+                      .toList(),
               onChanged: (v) {
                 if (v != null) setState(() => _selectedStatus = v);
               },
@@ -2042,7 +2886,13 @@ String _nonEmptyStr(dynamic value) {
           _addButton(_quoteType == 'staffing' ? 'Add Role' : 'Add Service', () {
             setState(() {
               _services.add(
-                ServiceEntry(name: _quoteType == 'staffing' ? 'Role ${_services.length + 1}' : 'Service ${_services.length + 1}', unitOfMeasure: _quoteType == 'staffing' ? 'hr' : 'und', isStaffingRole: _quoteType == 'staffing'),
+                ServiceEntry(
+                  name: _quoteType == 'staffing'
+                      ? 'Role ${_services.length + 1}'
+                      : 'Service ${_services.length + 1}',
+                  unitOfMeasure: _quoteType == 'staffing' ? 'hr' : 'und',
+                  isStaffingRole: _quoteType == 'staffing',
+                ),
               );
             });
           }),
@@ -2137,8 +2987,12 @@ String _nonEmptyStr(dynamic value) {
                                 () => _activeServiceIndex = serviceIndex,
                               ),
                               child: _SearchableCatalogDropdown(
-                                label: _quoteType == 'staffing' ? 'Role name' : 'Service name',
-                                items: _quoteType == 'staffing' ? _catalogLaborRoles : _catalogServices,
+                                label: _quoteType == 'staffing'
+                                    ? 'Role name'
+                                    : 'Service name',
+                                items: _quoteType == 'staffing'
+                                    ? _catalogLaborRoles
+                                    : _catalogServices,
                                 excludeItems: _services
                                     .map((s) => s.name)
                                     .where((n) => n != svc.name)
@@ -2153,13 +3007,20 @@ String _nonEmptyStr(dynamic value) {
                                       if (item['unit'] != null) {
                                         svc.unitOfMeasure = item['unit'];
                                       }
-                                      if (_quoteType == 'staffing' && item['hourly_rate'] != null) {
-                                        svc.directCost = (item['hourly_rate'] as num).toDouble();
-  }
-}
-                              });
+                                      if (_quoteType == 'staffing' &&
+                                          item['hourly_rate'] != null) {
+                                        svc.directCost =
+                                            (item['hourly_rate'] as num)
+                                                .toDouble();
+                                      }
+                                    }
+                                  });
                                 },
-                                onAddNew: () => _openCatalogItemAdd(_quoteType == 'staffing' ? 'labor' : 'services'),
+                                onAddNew: () => _openCatalogItemAdd(
+                                  _quoteType == 'staffing'
+                                      ? 'labor'
+                                      : 'services',
+                                ),
                               ),
                             ),
                           ),
@@ -2190,7 +3051,8 @@ String _nonEmptyStr(dynamic value) {
                               () => _activeServiceIndex = serviceIndex,
                             ),
                           ),
-                          if (svc.unitOfMeasure.toLowerCase() == 'ls' || svc.isStaffingRole) ...[
+                          if (svc.unitOfMeasure.toLowerCase() == 'ls' ||
+                              svc.isStaffingRole) ...[
                             const SizedBox(width: 10),
                             _miniNumField(
                               'Unit Cost (\$)',
@@ -2254,11 +3116,13 @@ String _nonEmptyStr(dynamic value) {
                           ),
                           const SizedBox(width: 10),
                           // Work Projection Button (only for non-LS/non-staffing)
-                          if (svc.unitOfMeasure.toLowerCase() != 'ls' && !svc.isStaffingRole) ...[
+                          if (svc.unitOfMeasure.toLowerCase() != 'ls' &&
+                              !svc.isStaffingRole) ...[
                             const SizedBox(width: 10),
                             Builder(
                               builder: (context) {
-                                final hasProjection = svc.estimationData != null;
+                                final hasProjection =
+                                    svc.estimationData != null;
                                 return Tooltip(
                                   message: hasProjection
                                       ? 'Work Projection — already projected (tap to edit)'
@@ -2268,22 +3132,26 @@ String _nonEmptyStr(dynamic value) {
                                     child: GestureDetector(
                                       onDoubleTap: () {},
                                       onTapDown: (_) => setState(
-                                        () => _activeServiceIndex = serviceIndex,
+                                        () =>
+                                            _activeServiceIndex = serviceIndex,
                                       ),
                                       onTap: () async {
                                         final result = await showSafeDialog(
                                           context: context,
                                           fullscreenOnMobile: true,
-                                          builder: (_) => ServiceEstimationDialog(
-                                            service: {
-                                              'id': null,
-                                              'catalog_service_id': svc.catalogId,
-                                              'name': svc.name,
-                                              'quantity': svc.quantity,
-                                              'unit': svc.unitOfMeasure,
-                                              'estimationData': svc.estimationData,
-                                            },
-                                          ),
+                                          builder: (_) =>
+                                              ServiceEstimationDialog(
+                                                service: {
+                                                  'id': null,
+                                                  'catalog_service_id':
+                                                      svc.catalogId,
+                                                  'name': svc.name,
+                                                  'quantity': svc.quantity,
+                                                  'unit': svc.unitOfMeasure,
+                                                  'estimationData':
+                                                      svc.estimationData,
+                                                },
+                                              ),
                                         );
 
                                         if (result != null &&
@@ -2291,7 +3159,8 @@ String _nonEmptyStr(dynamic value) {
                                             result['applied'] == true) {
                                           setState(() {
                                             svc.quantity =
-                                                (result['total_cy_loose'] as num)
+                                                (result['total_cy_loose']
+                                                        as num)
                                                     .toDouble();
                                             svc.estimationData =
                                                 Map<String, dynamic>.from(
@@ -2313,7 +3182,9 @@ String _nonEmptyStr(dynamic value) {
                                         }
                                       },
                                       child: Container(
-                                        margin: const EdgeInsets.only(bottom: 2),
+                                        margin: const EdgeInsets.only(
+                                          bottom: 2,
+                                        ),
                                         padding: const EdgeInsets.symmetric(
                                           horizontal: 12,
                                           vertical: 10,
@@ -2322,7 +3193,9 @@ String _nonEmptyStr(dynamic value) {
                                           color: hasProjection
                                               ? AppTheme.slate900
                                               : AppTheme.primaryGreen,
-                                          borderRadius: BorderRadius.circular(10),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
                                           border: Border.all(
                                             color: AppTheme.primaryGreen,
                                             width: 1.5,
@@ -2330,9 +3203,11 @@ String _nonEmptyStr(dynamic value) {
                                           boxShadow: [
                                             BoxShadow(
                                               color: hasProjection
-                                                  ? Colors.black.withOpacity(0.25)
+                                                  ? Colors.black.withOpacity(
+                                                      0.25,
+                                                    )
                                                   : AppTheme.primaryGreen
-                                                      .withOpacity(0.4),
+                                                        .withOpacity(0.4),
                                               blurRadius: 8,
                                               offset: const Offset(0, 2),
                                             ),
@@ -2370,16 +3245,17 @@ String _nonEmptyStr(dynamic value) {
                               },
                             ),
                           ],
-
                         ],
                       ),
                       if (svc.targetPrice > 0) ...[
                         const SizedBox(height: 6),
-                        Row(children: [
-                          _buildTargetPriceMini(svc),
-                          const SizedBox(width: 8),
-                          _buildQuickLevers(svc),
-                        ]),
+                        Row(
+                          children: [
+                            _buildTargetPriceMini(svc),
+                            const SizedBox(width: 8),
+                            _buildQuickLevers(svc),
+                          ],
+                        ),
                       ],
                       if (svc.estimationData != null) ...[
                         const SizedBox(height: 12),
@@ -2853,7 +3729,15 @@ String _nonEmptyStr(dynamic value) {
             ],
           ),
           const SizedBox(height: 16),
-          if (svc.labors.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Text(
+              widget.quoteToEdit?['team_planning_required'] == false
+                  ? 'Labor from Work Projection is preserved. Review supervision and leadership for this service before adopting the new structure.'
+                  : 'Labor from Work Projection is preserved. Add Supervisor and Foreman resources under Supervision and Leadership for each service.',
+            ),
+          ),
+          if (svc.labors.where((l) => l.operationalRole == 'none').isEmpty)
             Container(
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
@@ -2870,7 +3754,9 @@ String _nonEmptyStr(dynamic value) {
             )
           else
             ...svc.labors.asMap().entries.map(
-              (e) => _buildLaborCard(svc, e.key, e.value),
+              (e) => e.value.operationalRole == 'none'
+                  ? _buildLaborCard(svc, e.key, e.value)
+                  : const SizedBox.shrink(),
             ),
           const SizedBox(height: 16),
           _addButton('Add Labor', () {
@@ -2887,6 +3773,8 @@ String _nonEmptyStr(dynamic value) {
               () => svc.labors.add(LaborEntry(monthsToWork: initialMonths)),
             );
           }),
+          const SizedBox(height: 20),
+          _buildLeadership(svc),
           const SizedBox(height: 20),
           _buildLaborSummary(svc),
         ],
@@ -3299,7 +4187,14 @@ String _nonEmptyStr(dynamic value) {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Target Price Summary', style: GoogleFonts.manrope(fontSize: 16, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
+          Text(
+            'Target Price Summary',
+            style: GoogleFonts.manrope(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.slate900,
+            ),
+          ),
           const SizedBox(height: 16),
           Table(
             columnWidths: const {
@@ -3311,7 +4206,9 @@ String _nonEmptyStr(dynamic value) {
             },
             children: [
               TableRow(
-                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0)))),
+                decoration: const BoxDecoration(
+                  border: Border(bottom: BorderSide(color: Color(0xFFE2E8F0))),
+                ),
                 children: [
                   _thCell('Service'),
                   _thCell('Target'),
@@ -3325,34 +4222,64 @@ String _nonEmptyStr(dynamic value) {
                 final color = svc.gapStatus == 'green'
                     ? AppTheme.primaryGreen
                     : svc.gapStatus == 'yellow'
-                        ? Colors.orange
-                        : AppTheme.errorRed;
+                    ? Colors.orange
+                    : AppTheme.errorRed;
                 return TableRow(
                   children: [
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text(svc.name, style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate900)),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text('\$${_currencyFormat.format(svc.targetPrice)}', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Text('\$${_currencyFormat.format(svc.totalSaleV2)}', style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate600)),
+                      child: Text(
+                        svc.name,
+                        style: GoogleFonts.manrope(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.slate900,
+                        ),
+                      ),
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Text(
-                        gap <= 0 ? '-\$${_currencyFormat.format(gap.abs())}' : '+\$${_currencyFormat.format(gap.abs())}',
-                        style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: color),
+                        '\$${_currencyFormat.format(svc.targetPrice)}',
+                        style: GoogleFonts.manrope(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.slate700,
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        '\$${_currencyFormat.format(svc.totalSaleV2)}',
+                        style: GoogleFonts.manrope(
+                          fontSize: 13,
+                          color: AppTheme.slate600,
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(
+                        gap <= 0
+                            ? '-\$${_currencyFormat.format(gap.abs())}'
+                            : '+\$${_currencyFormat.format(gap.abs())}',
+                        style: GoogleFonts.manrope(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: color,
+                        ),
                       ),
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Container(
-                        width: 10, height: 10,
-                        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                        ),
                       ),
                     ),
                   ],
@@ -3361,25 +4288,57 @@ String _nonEmptyStr(dynamic value) {
             ],
           ),
           const Divider(height: 24),
-          Builder(builder: (_) {
-            final totalTarget = svcs.fold<double>(0, (s, svc) => s + svc.targetPrice);
-            final totalCurrent = svcs.fold<double>(0, (s, svc) => s + svc.totalSaleV2);
-            final totalGap = totalTarget - totalCurrent;
-            final tColor = totalGap.abs() / (totalTarget > 0 ? totalTarget : 1) < 0.02
-                ? AppTheme.primaryGreen
-                : totalGap.abs() / (totalTarget > 0 ? totalTarget : 1) < 0.1
-                    ? Colors.orange
-                    : AppTheme.errorRed;
-            return Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                Text('Total: ', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
-                Text('\$${_currencyFormat.format(totalTarget)} target  /  \$${_currencyFormat.format(totalCurrent)} current', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.slate600)),
-                const SizedBox(width: 16),
-                Text(totalGap <= 0 ? '-\$${_currencyFormat.format(totalGap.abs())}' : '+\$${_currencyFormat.format(totalGap.abs())}', style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: tColor)),
-              ],
-            );
-          }),
+          Builder(
+            builder: (_) {
+              final totalTarget = svcs.fold<double>(
+                0,
+                (s, svc) => s + svc.targetPrice,
+              );
+              final totalCurrent = svcs.fold<double>(
+                0,
+                (s, svc) => s + svc.totalSaleV2,
+              );
+              final totalGap = totalTarget - totalCurrent;
+              final tColor =
+                  totalGap.abs() / (totalTarget > 0 ? totalTarget : 1) < 0.02
+                  ? AppTheme.primaryGreen
+                  : totalGap.abs() / (totalTarget > 0 ? totalTarget : 1) < 0.1
+                  ? Colors.orange
+                  : AppTheme.errorRed;
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Text(
+                    'Total: ',
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.slate700,
+                    ),
+                  ),
+                  Text(
+                    '\$${_currencyFormat.format(totalTarget)} target  /  \$${_currencyFormat.format(totalCurrent)} current',
+                    style: GoogleFonts.manrope(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.slate600,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    totalGap <= 0
+                        ? '-\$${_currencyFormat.format(totalGap.abs())}'
+                        : '+\$${_currencyFormat.format(totalGap.abs())}',
+                    style: GoogleFonts.manrope(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: tColor,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
@@ -3387,7 +4346,14 @@ String _nonEmptyStr(dynamic value) {
 
   Widget _thCell(String text) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 8),
-    child: Text(text, style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate400)),
+    child: Text(
+      text,
+      style: GoogleFonts.manrope(
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+        color: AppTheme.slate400,
+      ),
+    ),
   );
 
   Widget _buildStep5Summary() {
@@ -3433,7 +4399,8 @@ String _nonEmptyStr(dynamic value) {
             ),
           ),
           const SizedBox(height: 16),
-          if (svc.unitOfMeasure.toLowerCase() == 'ls' || svc.isStaffingRole) ...[
+          if (svc.unitOfMeasure.toLowerCase() == 'ls' ||
+              svc.isStaffingRole) ...[
             _summaryRow('Direct Cost', svc.directCost),
           ] else ...[
             _summaryRow('Total Machinery', svc.totalMachinery),
@@ -3475,13 +4442,20 @@ String _nonEmptyStr(dynamic value) {
 
   Widget _buildGrandTotal() {
     final grandTotal = _services.fold(0.0, (s, svc) => s + svc.totalSaleV2);
-    final totalOverhead = _services.fold(0.0, (s, svc) => s + svc.overheadAmount);
+    final totalOverhead = _services.fold(
+      0.0,
+      (s, svc) => s + svc.overheadAmount,
+    );
     final totalProfit = _services.fold(0.0, (s, svc) => s + svc.profitAmount);
     final totalSubTotal = _services.fold(0.0, (s, svc) => s + svc.subTotal);
 
-    final overheadPct = totalSubTotal > 0 ? (totalOverhead / totalSubTotal) * 100 : 0.0;
-    final profitPct = totalSubTotal > 0 ? (totalProfit / totalSubTotal) * 100 : 0.0;
-    
+    final overheadPct = totalSubTotal > 0
+        ? (totalOverhead / totalSubTotal) * 100
+        : 0.0;
+    final profitPct = totalSubTotal > 0
+        ? (totalProfit / totalSubTotal) * 100
+        : 0.0;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -3602,7 +4576,11 @@ String _nonEmptyStr(dynamic value) {
     );
   }
 
-  Widget _buildInstrumentCard(ServiceEntry svc, int index, InstrumentEntry inst) {
+  Widget _buildInstrumentCard(
+    ServiceEntry svc,
+    int index,
+    InstrumentEntry inst,
+  ) {
     return Container(
       key: ValueKey(inst),
       margin: const EdgeInsets.only(bottom: 12),
@@ -3659,19 +4637,22 @@ String _nonEmptyStr(dynamic value) {
                               ),
                               loadingBuilder:
                                   (context, child, loadingProgress) {
-                                if (loadingProgress == null) return child;
-                                return Center(
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    value: loadingProgress.expectedTotalBytes !=
-                                            null
-                                        ? loadingProgress
-                                                .cumulativeBytesLoaded /
-                                            loadingProgress.expectedTotalBytes!
-                                        : null,
-                                  ),
-                                );
-                              },
+                                    if (loadingProgress == null) return child;
+                                    return Center(
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        value:
+                                            loadingProgress
+                                                    .expectedTotalBytes !=
+                                                null
+                                            ? loadingProgress
+                                                      .cumulativeBytesLoaded /
+                                                  loadingProgress
+                                                      .expectedTotalBytes!
+                                            : null,
+                                      ),
+                                    );
+                                  },
                             )
                           : const Icon(
                               Icons.construction,
@@ -3740,7 +4721,10 @@ String _nonEmptyStr(dynamic value) {
                 onNum: (v) => setState(() => inst.unitPrice = v),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: AppTheme.primaryGreen.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
@@ -3827,12 +4811,22 @@ String _nonEmptyStr(dynamic value) {
   //  SERVICE TABS (used in Step 1 and 2)
   // ══════════════════════════════════════════════════════════════
   Widget _buildServiceTabs() {
-    final nonLSServices = _services.asMap().entries.where((e) => e.value.unitOfMeasure.toLowerCase() != 'ls' && !e.value.isStaffingRole).toList();
+    final nonLSServices = _services
+        .asMap()
+        .entries
+        .where(
+          (e) =>
+              e.value.unitOfMeasure.toLowerCase() != 'ls' &&
+              !e.value.isStaffingRole,
+        )
+        .toList();
 
     if (nonLSServices.isEmpty) return const SizedBox.shrink();
 
     // Ensure active index is valid for tabs
-    if (_activeServiceIndex >= _services.length || _services[_activeServiceIndex].unitOfMeasure.toLowerCase() == 'ls' || _services[_activeServiceIndex].isStaffingRole) {
+    if (_activeServiceIndex >= _services.length ||
+        _services[_activeServiceIndex].unitOfMeasure.toLowerCase() == 'ls' ||
+        _services[_activeServiceIndex].isStaffingRole) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           setState(() {
@@ -3888,7 +4882,11 @@ String _nonEmptyStr(dynamic value) {
   //  WIZARD FOOTER
   // ══════════════════════════════════════════════════════════════
   Widget _buildWizardFooter() {
-    final bool allServicesAreLS = _services.isNotEmpty && _services.every((s) => s.unitOfMeasure.toLowerCase() == 'ls' || s.isStaffingRole);
+    final bool allServicesAreLS =
+        _services.isNotEmpty &&
+        _services.every(
+          (s) => s.unitOfMeasure.toLowerCase() == 'ls' || s.isStaffingRole,
+        );
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 20),
@@ -3943,10 +4941,11 @@ String _nonEmptyStr(dynamic value) {
                     }
                   }),
                 ),
-              ]
-              else
+              ] else
                 _footerBtn(
-                  _isSaving ? 'Saving...' : (_isEditing ? 'Save Estimate' : 'Create Estimate'),
+                  _isSaving
+                      ? 'Saving...'
+                      : (_isEditing ? 'Save Estimate' : 'Create Estimate'),
                   Icons.check,
                   true,
                   _isSaving ? null : () => _persistQuote(closeDialog: true),
@@ -4122,22 +5121,29 @@ String _nonEmptyStr(dynamic value) {
     // Get default days from production
     double defaultDays = 1.0;
     if (svc.estimationData != null) {
-      final wDays = svc.estimationData!['workingDays'] ?? 
-                    svc.estimationData!['working_days'] ?? 
-                    svc.estimationData!['total_working_days'];
+      final wDays =
+          svc.estimationData!['workingDays'] ??
+          svc.estimationData!['working_days'] ??
+          svc.estimationData!['total_working_days'];
       defaultDays = (wDays as num?)?.toDouble() ?? 1.0;
       if (defaultDays <= 0) defaultDays = 1.0;
     }
 
     setState(() {
       for (final i in result) {
-        svc.instruments.add(InstrumentEntry(
-          instrumentName: i['instrument_name'] ?? i['description'] ?? 'Untitled',
-          catalogId: i['instrument_id']?.toString() ?? i['id']?.toString(),
-          unitPrice: (i['unit_price'] as num?)?.toDouble() ?? (i['daily_rate'] as num?)?.toDouble() ?? 0.0,
-          photoUrl: i['photo_url'],
-          days: defaultDays,
-        ));
+        svc.instruments.add(
+          InstrumentEntry(
+            instrumentName:
+                i['instrument_name'] ?? i['description'] ?? 'Untitled',
+            catalogId: i['instrument_id']?.toString() ?? i['id']?.toString(),
+            unitPrice:
+                (i['unit_price'] as num?)?.toDouble() ??
+                (i['daily_rate'] as num?)?.toDouble() ??
+                0.0,
+            photoUrl: i['photo_url'],
+            days: defaultDays,
+          ),
+        );
       }
     });
   }
@@ -4185,7 +5191,11 @@ String _nonEmptyStr(dynamic value) {
     );
   }
 
-  Widget _addButton(String label, VoidCallback onTap, {IconData icon = Icons.add}) {
+  Widget _addButton(
+    String label,
+    VoidCallback onTap, {
+    IconData icon = Icons.add,
+  }) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -4371,38 +5381,36 @@ String _nonEmptyStr(dynamic value) {
               ),
               decoration: InputDecoration(
                 isDense: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 5,
+                ),
                 filled: true,
-                fillColor:
-                    highlight
-                        ? AppTheme.primaryGreen.withOpacity(0.06)
-                        : const Color(0xFFF1F5F9),
+                fillColor: highlight
+                    ? AppTheme.primaryGreen.withOpacity(0.06)
+                    : const Color(0xFFF1F5F9),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
                   borderSide: BorderSide(
-                    color:
-                        highlight
-                            ? AppTheme.primaryGreen.withOpacity(0.3)
-                            : const Color(0xFFE2E8F0),
+                    color: highlight
+                        ? AppTheme.primaryGreen.withOpacity(0.3)
+                        : const Color(0xFFE2E8F0),
                   ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
                   borderSide: BorderSide(
-                    color:
-                        highlight
-                            ? AppTheme.primaryGreen.withOpacity(0.3)
-                            : const Color(0xFFE2E8F0),
+                    color: highlight
+                        ? AppTheme.primaryGreen.withOpacity(0.3)
+                        : const Color(0xFFE2E8F0),
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
                   borderSide: BorderSide(
-                    color:
-                        highlight
-                            ? AppTheme.primaryGreen
-                            : const Color(0xFFE2E8F0),
+                    color: highlight
+                        ? AppTheme.primaryGreen
+                        : const Color(0xFFE2E8F0),
                   ),
                 ),
               ),
@@ -4419,7 +5427,8 @@ String _nonEmptyStr(dynamic value) {
     if (type == 'machinery') dialog = MachineryDialog();
     if (type == 'labor') dialog = LaborRoleDialog();
     if (type == 'customers') dialog = const CustomerFormDialog();
-    if (type == 'materials' || type == 'instruments') dialog = MachineryDialog();
+    if (type == 'materials' || type == 'instruments')
+      dialog = MachineryDialog();
 
     if (dialog != null) {
       showSafeDialog(
@@ -4441,6 +5450,7 @@ class _SearchableCatalogDropdown extends StatelessWidget {
   final Function(String, Map<String, dynamic>?) onSelected;
   final VoidCallback onAddNew;
   final double? width;
+  final bool compact;
 
   const _SearchableCatalogDropdown({
     required this.label,
@@ -4450,6 +5460,7 @@ class _SearchableCatalogDropdown extends StatelessWidget {
     required this.onSelected,
     required this.onAddNew,
     this.width,
+    this.compact = false,
   });
 
   @override
@@ -4462,7 +5473,7 @@ class _SearchableCatalogDropdown extends StatelessWidget {
           Text(
             label,
             style: GoogleFonts.manrope(
-              fontSize: 12,
+              fontSize: compact ? 10 : 12,
               fontWeight: FontWeight.w700,
               color: AppTheme.slate500,
             ),
@@ -4521,7 +5532,20 @@ class _SearchableCatalogDropdown extends StatelessWidget {
                           width: 1.5,
                         ),
                       ),
+                      suffixIconConstraints: compact
+                          ? const BoxConstraints.tightFor(width: 32, height: 32)
+                          : null,
                       suffixIcon: IconButton(
+                        constraints: compact
+                            ? const BoxConstraints.tightFor(
+                                width: 32,
+                                height: 32,
+                              )
+                            : null,
+                        padding: compact
+                            ? EdgeInsets.zero
+                            : const EdgeInsets.all(8),
+                        iconSize: compact ? 18 : 24,
                         icon: const Icon(
                           Icons.arrow_drop_down,
                           color: AppTheme.slate400,
@@ -4574,13 +5598,24 @@ class _SearchableCatalogDropdown extends StatelessWidget {
                                       decoration: BoxDecoration(
                                         borderRadius: BorderRadius.circular(6),
                                         color: AppTheme.slate50,
-                                        border: Border.all(color: AppTheme.slate200),
+                                        border: Border.all(
+                                          color: AppTheme.slate200,
+                                        ),
                                       ),
                                       clipBehavior: Clip.antiAlias,
-                                      child: (photoUrl != null && photoUrl.isNotEmpty)
-                                          ? Image.network(photoUrl, fit: BoxFit.cover)
+                                      child:
+                                          (photoUrl != null &&
+                                              photoUrl.isNotEmpty)
+                                          ? Image.network(
+                                              photoUrl,
+                                              fit: BoxFit.cover,
+                                            )
                                           : const Center(
-                                              child: Icon(Icons.precision_manufacturing, size: 18, color: AppTheme.slate400),
+                                              child: Icon(
+                                                Icons.precision_manufacturing,
+                                                size: 18,
+                                                color: AppTheme.slate400,
+                                              ),
                                             ),
                                     )
                                   : null,
@@ -4595,15 +5630,23 @@ class _SearchableCatalogDropdown extends StatelessWidget {
                               subtitle: option['hourly_rate'] != null
                                   ? Text(
                                       '\$${option['hourly_rate']}/hr',
-                                      style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500),
+                                      style: GoogleFonts.manrope(
+                                        fontSize: 11,
+                                        color: AppTheme.slate500,
+                                      ),
                                     )
                                   : (option['unit'] != null
-                                      ? Text(
-                                          'Unit: ${option['unit']}',
-                                          style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500),
-                                        )
-                                      : null),
-                              hoverColor: AppTheme.primaryGreen.withOpacity(0.05),
+                                        ? Text(
+                                            'Unit: ${option['unit']}',
+                                            style: GoogleFonts.manrope(
+                                              fontSize: 11,
+                                              color: AppTheme.slate500,
+                                            ),
+                                          )
+                                        : null),
+                              hoverColor: AppTheme.primaryGreen.withOpacity(
+                                0.05,
+                              ),
                               onTap: () => onSelectedInternal(option),
                             );
                           }).toList(),
@@ -4612,11 +5655,18 @@ class _SearchableCatalogDropdown extends StatelessWidget {
                             onTap: () => onAddNew(),
                             child: Container(
                               width: double.infinity,
-                              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 10,
+                                horizontal: 12,
+                              ),
                               color: AppTheme.primaryGreen.withOpacity(0.05),
                               child: Row(
                                 children: [
-                                  const Icon(Icons.add_circle_outline, size: 16, color: AppTheme.primaryGreen),
+                                  const Icon(
+                                    Icons.add_circle_outline,
+                                    size: 16,
+                                    color: AppTheme.primaryGreen,
+                                  ),
                                   const SizedBox(width: 8),
                                   Text(
                                     'Add New to Catalog',
@@ -4824,7 +5874,11 @@ class _LeverSuggestion {
   final String label;
   final IconData icon;
   final VoidCallback action;
-  const _LeverSuggestion({required this.label, required this.icon, required this.action});
+  const _LeverSuggestion({
+    required this.label,
+    required this.icon,
+    required this.action,
+  });
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -4834,10 +5888,7 @@ class _TemplateQuoteItem extends StatefulWidget {
   final Map<String, dynamic> quote;
   final VoidCallback onCopy;
 
-  const _TemplateQuoteItem({
-    required this.quote,
-    required this.onCopy,
-  });
+  const _TemplateQuoteItem({required this.quote, required this.onCopy});
 
   @override
   State<_TemplateQuoteItem> createState() => _TemplateQuoteItemState();
@@ -4852,10 +5903,14 @@ class _TemplateQuoteItemState extends State<_TemplateQuoteItem> {
     final title = q['title'] ?? 'Untitled';
     final client = q['client_name'] ?? '—';
     final date = q['quote_date'] as String?;
-    final dateFormatted = date != null ? DateFormat('MMM dd, yyyy').format(DateTime.parse(date)) : '—';
+    final dateFormatted = date != null
+        ? DateFormat('MMM dd, yyyy').format(DateTime.parse(date))
+        : '—';
     final amount = (q['total_amount'] as num?)?.toDouble() ?? 0;
     final type = q['quote_type'] ?? 'standard';
-    final typeIcon = type == 'staffing' ? Icons.people_outline : Icons.engineering_outlined;
+    final typeIcon = type == 'staffing'
+        ? Icons.people_outline
+        : Icons.engineering_outlined;
     final typeColor = type == 'staffing' ? Colors.amber : AppTheme.primaryGreen;
     final f = NumberFormat('#,##0');
 
@@ -4874,9 +5929,7 @@ class _TemplateQuoteItemState extends State<_TemplateQuoteItem> {
                 color: typeColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Center(
-                child: Icon(typeIcon, color: typeColor, size: 20),
-              ),
+              child: Center(child: Icon(typeIcon, color: typeColor, size: 20)),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -4897,7 +5950,10 @@ class _TemplateQuoteItemState extends State<_TemplateQuoteItem> {
                     children: [
                       Text(
                         '$client · $dateFormatted',
-                        style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500),
+                        style: GoogleFonts.manrope(
+                          fontSize: 12,
+                          color: AppTheme.slate500,
+                        ),
                       ),
                       const SizedBox(width: 8),
                       if (amount > 0)
@@ -4922,7 +5978,10 @@ class _TemplateQuoteItemState extends State<_TemplateQuoteItem> {
                 child: GestureDetector(
                   onTap: widget.onCopy,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: AppTheme.primaryGreen,
                       borderRadius: BorderRadius.circular(8),
@@ -4945,7 +6004,6 @@ class _TemplateQuoteItemState extends State<_TemplateQuoteItem> {
     );
   }
 }
-
 
 String _nonEmptyStr(dynamic value) {
   final s = value?.toString() ?? '';

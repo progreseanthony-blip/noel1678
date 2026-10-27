@@ -11,6 +11,7 @@ class StepMaterials extends StatefulWidget {
   final bool isReadOnly;
   final ValueChanged<List<Map<String, dynamic>>> onUsageChanged;
   final Map<String, dynamic> affectedServices;
+  final bool loadProjectTotals;
 
   const StepMaterials({
     super.key,
@@ -20,6 +21,7 @@ class StepMaterials extends StatefulWidget {
     required this.isReadOnly,
     required this.onUsageChanged,
     this.affectedServices = const {},
+    this.loadProjectTotals = true,
   });
 
   @override
@@ -44,7 +46,7 @@ class _StepMaterialsState extends State<StepMaterials> {
   void initState() {
     super.initState();
     _entries = widget.materialUsage.map((m) => Map<String, dynamic>.from(m)).toList();
-    _loadMaterialUsage();
+    if (widget.loadProjectTotals) _loadMaterialUsage();
   }
 
   Future<void> _loadMaterialUsage() async {

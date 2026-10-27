@@ -20,14 +20,19 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
   final _rateController = TextEditingController();
   final _internalCostController = TextEditingController();
   bool _isSaving = false;
+  String _operationalRole = 'none';
 
   @override
   void initState() {
     super.initState();
     if (widget.roleToEdit != null) {
+      _operationalRole =
+          widget.roleToEdit!['operational_role'] as String? ?? 'none';
       _descriptionController.text = widget.roleToEdit!['description'] ?? '';
-      _rateController.text = widget.roleToEdit!['hourly_rate']?.toString() ?? '0';
-      _internalCostController.text = widget.roleToEdit!['internal_cost_rate']?.toString() ?? '0';
+      _rateController.text =
+          widget.roleToEdit!['hourly_rate']?.toString() ?? '0';
+      _internalCostController.text =
+          widget.roleToEdit!['internal_cost_rate']?.toString() ?? '0';
     }
   }
 
@@ -49,19 +54,28 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
       final data = {
         'description': _descriptionController.text.trim(),
         'hourly_rate': double.tryParse(_rateController.text) ?? 0,
-        'internal_cost_rate': double.tryParse(_internalCostController.text) ?? 0,
+        'internal_cost_rate':
+            double.tryParse(_internalCostController.text) ?? 0,
+        'operational_role': _operationalRole,
       };
 
       if (_isEditing) {
-        await ref.read(catalogsServiceProvider).updateLaborRole(widget.roleToEdit!['id'], data);
+        await ref
+            .read(catalogsServiceProvider)
+            .updateLaborRole(widget.roleToEdit!['id'], data);
       } else {
         await ref.read(catalogsServiceProvider).createLaborRole(data);
       }
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_isEditing ? 'Role updated successfully' : 'Role added successfully', style: GoogleFonts.manrope(color: Colors.white)),
+            content: Text(
+              _isEditing
+                  ? 'Role updated successfully'
+                  : 'Role added successfully',
+              style: GoogleFonts.manrope(color: Colors.white),
+            ),
             backgroundColor: AppTheme.primaryGreen,
           ),
         );
@@ -70,7 +84,12 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
     } catch (e) {
       if (mounted) {
         setState(() => _isSaving = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e', style: GoogleFonts.manrope()), backgroundColor: AppTheme.errorRed));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e', style: GoogleFonts.manrope()),
+            backgroundColor: AppTheme.errorRed,
+          ),
+        );
       }
     }
   }
@@ -89,7 +108,11 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 30, offset: const Offset(0, 10)),
+              BoxShadow(
+                color: Colors.black.withOpacity(0.15),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
             ],
           ),
           child: Column(
@@ -109,6 +132,30 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
                           hint: 'e.g. Foreman, Superintendent',
                           icon: Icons.work_outline,
                           controller: _descriptionController,
+                        ),
+                        const SizedBox(height: 24),
+                        DropdownButtonFormField<String>(
+                          initialValue: _operationalRole,
+                          decoration: const InputDecoration(
+                            labelText: 'Función operativa',
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'none',
+                              child: Text('Otro oficio'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Supervisor',
+                              child: Text('Supervisor'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'Foreman',
+                              child: Text('Foreman'),
+                            ),
+                          ],
+                          onChanged: _isSaving
+                              ? null
+                              : (v) => setState(() => _operationalRole = v!),
                         ),
                         const SizedBox(height: 24),
                         _buildTextInput(
@@ -142,7 +189,9 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
   Widget _buildHeader() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -150,50 +199,111 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
             child: Row(
               children: [
                 Container(
-                  width: 40, height: 40,
-                  decoration: BoxDecoration(color: AppTheme.primaryGreen.withOpacity(0.1), shape: BoxShape.circle),
-                  child: Center(child: Icon(_isEditing ? Icons.edit_outlined : Icons.add_circle_outline, color: AppTheme.primaryGreen, size: 20)),
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryGreen.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Icon(
+                      _isEditing
+                          ? Icons.edit_outlined
+                          : Icons.add_circle_outline,
+                      color: AppTheme.primaryGreen,
+                      size: 20,
+                    ),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(_isEditing ? 'Edit Labor Role' : 'Add Labor Role', style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: AppTheme.slate900), overflow: TextOverflow.ellipsis, maxLines: 1),
-                      Text('Define the role and its hourly compensation', style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500), overflow: TextOverflow.ellipsis, maxLines: 1),
+                      Text(
+                        _isEditing ? 'Edit Labor Role' : 'Add Labor Role',
+                        style: GoogleFonts.manrope(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: AppTheme.slate900,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                      Text(
+                        'Define the role and its hourly compensation',
+                        style: GoogleFonts.manrope(
+                          fontSize: 12,
+                          color: AppTheme.slate500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
                     ],
                   ),
                 ),
               ],
             ),
           ),
-          IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close, color: AppTheme.slate400)),
+          IconButton(
+            onPressed: () => Navigator.pop(context),
+            icon: const Icon(Icons.close, color: AppTheme.slate400),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTextInput({required String label, required String hint, required IconData icon, required TextEditingController controller, bool isNumber = false}) {
+  Widget _buildTextInput({
+    required String label,
+    required String hint,
+    required IconData icon,
+    required TextEditingController controller,
+    bool isNumber = false,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+        Text(
+          label,
+          style: GoogleFonts.manrope(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.slate700,
+          ),
+        ),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
-          keyboardType: isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
+          keyboardType: isNumber
+              ? const TextInputType.numberWithOptions(decimal: true)
+              : TextInputType.text,
           style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: GoogleFonts.manrope(color: AppTheme.slate400),
             prefixIcon: Icon(icon, color: AppTheme.slate400, size: 20),
-            filled: true, fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
-            focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 2)),
+            filled: true,
+            fillColor: Colors.white,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 2),
+            ),
           ),
-          validator: (value) => value == null || value.trim().isEmpty ? 'Required field' : null,
+          validator: (value) =>
+              value == null || value.trim().isEmpty ? 'Required field' : null,
         ),
       ],
     );
@@ -202,13 +312,22 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
   Widget _buildFooter() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-      decoration: const BoxDecoration(color: Color(0xFFF8FAFC), border: Border(top: BorderSide(color: Color(0xFFF1F5F9)))),
+      decoration: const BoxDecoration(
+        color: Color(0xFFF8FAFC),
+        border: Border(top: BorderSide(color: Color(0xFFF1F5F9))),
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: GoogleFonts.manrope(fontWeight: FontWeight.w700, color: AppTheme.slate700)),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.manrope(
+                fontWeight: FontWeight.w700,
+                color: AppTheme.slate700,
+              ),
+            ),
           ),
           const SizedBox(width: 16),
           ElevatedButton(
@@ -217,12 +336,24 @@ class _LaborRoleDialogState extends ConsumerState<LaborRoleDialog> {
               backgroundColor: AppTheme.primaryGreen,
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
               elevation: 0,
             ),
             child: _isSaving
-                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : Text(_isEditing ? 'Save Changes' : 'Add Role', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : Text(
+                    _isEditing ? 'Save Changes' : 'Add Role',
+                    style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
+                  ),
           ),
         ],
       ),

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
-import 'package:noel_ui_components/noel_ui_components.dart';
 
 class UserFormDialog extends StatefulWidget {
   final Map<String, dynamic>? userToEdit;
@@ -21,10 +20,13 @@ class _UserFormDialogState extends State<UserFormDialog> {
   late TextEditingController _roleSearchController;
 
   String? _selectedRole;
+  String _accessStatus = 'pending';
   List<String> _availableRoles = [];
   List<String> _filteredRoles = [];
   bool _loadingRoles = true;
   bool _isSaving = false;
+  String? _workerId;
+  List<Map<String, dynamic>> _workers = [];
   bool _showRoleDropdown = false;
   final FocusNode _roleFocusNode = FocusNode();
   final LayerLink _roleLayerLink = LayerLink();
@@ -36,6 +38,9 @@ class _UserFormDialogState extends State<UserFormDialog> {
     _nameController = TextEditingController(text: widget.userToEdit?['name']);
     _emailController = TextEditingController(text: widget.userToEdit?['email']);
     _selectedRole = widget.userToEdit?['role']?.toString();
+    _workerId = widget.userToEdit?['worker_id'] as String?;
+    _accessStatus =
+        widget.userToEdit?['access_status']?.toString() ?? 'pending';
     _roleSearchController = TextEditingController(text: _selectedRole ?? '');
     _loadRoles();
 
@@ -59,8 +64,18 @@ class _UserFormDialogState extends State<UserFormDialog> {
           .order('name');
       final roles = List<Map<String, dynamic>>.from(response ?? [])
           .map((r) => r['name'].toString())
+          .where(
+            (name) =>
+                ['Admin', 'Supervisor', 'Foreman', 'Employee'].contains(name),
+          )
           .toList();
+      final workers = await Supabase.instance.client
+          .from('workers')
+          .select('id,full_name')
+          .order('full_name');
+      if (!mounted) return;
       setState(() {
+        _workers = List<Map<String, dynamic>>.from(workers);
         _availableRoles = roles;
         _filteredRoles = roles;
         _loadingRoles = false;
@@ -71,7 +86,7 @@ class _UserFormDialogState extends State<UserFormDialog> {
       });
     } catch (_) {
       setState(() {
-        _availableRoles = ['Admin', 'Employee'];
+        _availableRoles = ['Admin', 'Supervisor', 'Foreman', 'Employee'];
         _filteredRoles = List.from(_availableRoles);
         _loadingRoles = false;
       });
@@ -169,7 +184,10 @@ class _UserFormDialogState extends State<UserFormDialog> {
               padding: const EdgeInsets.all(16),
               child: Text(
                 'No roles found',
-                style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate400),
+                style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  color: AppTheme.slate400,
+                ),
               ),
             )
           : ListView.builder(
@@ -212,6 +230,8 @@ class _UserFormDialogState extends State<UserFormDialog> {
               'name': _nameController.text.trim(),
               'email': _emailController.text.trim(),
               'role': _selectedRole,
+              'access_status': _accessStatus,
+              'worker_id': _workerId,
               'updated_at': DateTime.now().toIso8601String(),
             })
             .eq('id', widget.userToEdit!['id'])
@@ -233,18 +253,18 @@ class _UserFormDialogState extends State<UserFormDialog> {
           return;
         }
       } else {
-        await Supabase.instance.client.from('profiles').insert({
-          'name': _nameController.text.trim(),
-          'email': _emailController.text.trim(),
-          'role': _selectedRole,
-        });
+        throw StateError(
+          'La persona debe registrarse primero. Después, el administrador puede activar su cuenta y asignar su rol.',
+        );
       }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              _isEditing ? 'User updated successfully' : 'User added successfully',
+              _isEditing
+                  ? 'User updated successfully'
+                  : 'User added successfully',
               style: GoogleFonts.manrope(color: Colors.white),
             ),
             backgroundColor: AppTheme.primaryGreen,
@@ -275,7 +295,10 @@ class _UserFormDialogState extends State<UserFormDialog> {
       filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
       child: Dialog(
         backgroundColor: Colors.transparent,
-        insetPadding: EdgeInsets.symmetric(horizontal: isMobile ? 16 : 24, vertical: 24),
+        insetPadding: EdgeInsets.symmetric(
+          horizontal: isMobile ? 16 : 24,
+          vertical: 24,
+        ),
         child: Container(
           width: double.infinity,
           constraints: BoxConstraints(
@@ -351,6 +374,55 @@ class _UserFormDialogState extends State<UserFormDialog> {
                         ],
                         const SizedBox(height: 24),
                         _buildInfoBox(),
+                        if (_isEditing && !_loadingRoles)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            child: DropdownButtonFormField<String>(
+                              initialValue: _workerId,
+                              decoration: const InputDecoration(
+                                labelText: 'Ficha del trabajador vinculada',
+                              ),
+                              isExpanded: true,
+                              items: [
+                                const DropdownMenuItem<String>(
+                                  value: null,
+                                  child: Text('Sin ficha vinculada'),
+                                ),
+                                ..._workers.map(
+                                  (w) => DropdownMenuItem(
+                                    value: w['id'] as String,
+                                    child: Text(w['full_name'] as String),
+                                  ),
+                                ),
+                              ],
+                              onChanged: _isSaving
+                                  ? null
+                                  : (v) => setState(() => _workerId = v),
+                            ),
+                          ),
+                        if (_isEditing)
+                          DropdownButtonFormField<String>(
+                            value: _accessStatus,
+                            decoration: const InputDecoration(
+                              labelText: 'Estado de acceso',
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'pending',
+                                child: Text('Pendiente'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'active',
+                                child: Text('Activo'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'disabled',
+                                child: Text('Deshabilitado'),
+                              ),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _accessStatus = v!),
+                          ),
                       ],
                     ),
                   ),
@@ -385,7 +457,9 @@ class _UserFormDialogState extends State<UserFormDialog> {
                   ),
                   child: Center(
                     child: Icon(
-                      _isEditing ? Icons.edit_outlined : Icons.person_add_outlined,
+                      _isEditing
+                          ? Icons.edit_outlined
+                          : Icons.person_add_outlined,
                       color: AppTheme.primaryGreen,
                       size: 20,
                     ),
@@ -426,7 +500,11 @@ class _UserFormDialogState extends State<UserFormDialog> {
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
               onTap: () => Navigator.of(context).pop(),
-              child: const Icon(Icons.close, color: AppTheme.slate400, size: 24),
+              child: const Icon(
+                Icons.close,
+                color: AppTheme.slate400,
+                size: 24,
+              ),
             ),
           ),
         ],
@@ -446,12 +524,18 @@ class _UserFormDialogState extends State<UserFormDialog> {
       children: [
         Text(
           label,
-          style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700),
+          style: GoogleFonts.manrope(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.slate700,
+          ),
         ),
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
-          keyboardType: isEmail ? TextInputType.emailAddress : TextInputType.text,
+          keyboardType: isEmail
+              ? TextInputType.emailAddress
+              : TextInputType.text,
           style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
           decoration: InputDecoration(
             hintText: hint,
@@ -459,7 +543,10 @@ class _UserFormDialogState extends State<UserFormDialog> {
             prefixIcon: Icon(icon, color: AppTheme.slate400, size: 20),
             filled: true,
             fillColor: Colors.white,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
               borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
@@ -489,7 +576,11 @@ class _UserFormDialogState extends State<UserFormDialog> {
       children: [
         Text(
           'Role',
-          style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700),
+          style: GoogleFonts.manrope(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.slate700,
+          ),
         ),
         const SizedBox(height: 8),
         _loadingRoles
@@ -501,8 +592,12 @@ class _UserFormDialogState extends State<UserFormDialog> {
                 ),
                 child: const Center(
                   child: SizedBox(
-                    width: 20, height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryGreen),
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppTheme.primaryGreen,
+                    ),
                   ),
                 ),
               )
@@ -511,7 +606,10 @@ class _UserFormDialogState extends State<UserFormDialog> {
                 child: TextFormField(
                   controller: _roleSearchController,
                   focusNode: _roleFocusNode,
-                  style: GoogleFonts.manrope(fontSize: 14, color: AppTheme.slate900),
+                  style: GoogleFonts.manrope(
+                    fontSize: 14,
+                    color: AppTheme.slate900,
+                  ),
                   onChanged: (v) {
                     _filterRoles(v);
                     // If user types and clears, reset selection
@@ -530,7 +628,11 @@ class _UserFormDialogState extends State<UserFormDialog> {
                   decoration: InputDecoration(
                     hintText: 'Search or select a role...',
                     hintStyle: GoogleFonts.manrope(color: AppTheme.slate400),
-                    prefixIcon: const Icon(Icons.admin_panel_settings_outlined, color: AppTheme.slate400, size: 20),
+                    prefixIcon: const Icon(
+                      Icons.admin_panel_settings_outlined,
+                      color: AppTheme.slate400,
+                      size: 20,
+                    ),
                     suffixIcon: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -544,11 +646,17 @@ class _UserFormDialogState extends State<UserFormDialog> {
                                   _roleSearchController.clear();
                                 });
                               },
-                              child: const Icon(Icons.close, color: AppTheme.slate400, size: 18),
+                              child: const Icon(
+                                Icons.close,
+                                color: AppTheme.slate400,
+                                size: 18,
+                              ),
                             ),
                           ),
                         Icon(
-                          _showRoleDropdown ? Icons.expand_less : Icons.expand_more,
+                          _showRoleDropdown
+                              ? Icons.expand_less
+                              : Icons.expand_more,
                           color: AppTheme.slate400,
                           size: 20,
                         ),
@@ -557,7 +665,10 @@ class _UserFormDialogState extends State<UserFormDialog> {
                     ),
                     filled: true,
                     fillColor: Colors.white,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 14,
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
                       borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
@@ -572,7 +683,10 @@ class _UserFormDialogState extends State<UserFormDialog> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Color(0xFF1D4ED8), width: 2),
+                      borderSide: const BorderSide(
+                        color: Color(0xFF1D4ED8),
+                        width: 2,
+                      ),
                     ),
                   ),
                   validator: (_) {
@@ -605,7 +719,11 @@ class _UserFormDialogState extends State<UserFormDialog> {
               _isEditing
                   ? "Modifying this user's details will immediately update their access levels across the platform."
                   : "The new user will receive an automated invitation email with login instructions once you click 'Add User'.",
-              style: GoogleFonts.manrope(fontSize: 12, color: AppTheme.slate500, height: 1.5),
+              style: GoogleFonts.manrope(
+                fontSize: 12,
+                color: AppTheme.slate500,
+                height: 1.5,
+              ),
             ),
           ),
         ],
@@ -632,7 +750,10 @@ class _UserFormDialogState extends State<UserFormDialog> {
             child: GestureDetector(
               onTap: () => Navigator.of(context).pop(),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(8),
@@ -640,7 +761,11 @@ class _UserFormDialogState extends State<UserFormDialog> {
                 ),
                 child: Text(
                   'Cancel',
-                  style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate700),
+                  style: GoogleFonts.manrope(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.slate700,
+                  ),
                 ),
               ),
             ),
@@ -651,7 +776,10 @@ class _UserFormDialogState extends State<UserFormDialog> {
             child: GestureDetector(
               onTap: _isSaving ? null : _submit,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 32,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: _isSaving ? AppTheme.slate400 : AppTheme.primaryGreen,
                   borderRadius: BorderRadius.circular(8),
@@ -668,15 +796,23 @@ class _UserFormDialogState extends State<UserFormDialog> {
                   children: [
                     if (_isSaving)
                       const SizedBox(
-                        width: 16, height: 16,
-                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
                       )
                     else
                       const Icon(Icons.check, color: Colors.white, size: 18),
                     const SizedBox(width: 8),
                     Text(
                       _isEditing ? 'Save Changes' : 'Add User',
-                      style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.white),
+                      style: GoogleFonts.manrope(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
                     ),
                   ],
                 ),
@@ -723,8 +859,8 @@ class _RoleDropdownItemState extends State<_RoleDropdownItem> {
           color: _hovered
               ? const Color(0xFFF1F5F9)
               : widget.isSelected
-                  ? AppTheme.primaryGreen.withOpacity(0.05)
-                  : Colors.white,
+              ? AppTheme.primaryGreen.withOpacity(0.05)
+              : Colors.white,
           child: Row(
             children: [
               // Role initial badge
@@ -743,7 +879,9 @@ class _RoleDropdownItemState extends State<_RoleDropdownItem> {
                     style: GoogleFonts.manrope(
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
-                      color: widget.isSelected ? AppTheme.primaryGreen : AppTheme.slate500,
+                      color: widget.isSelected
+                          ? AppTheme.primaryGreen
+                          : AppTheme.slate500,
                     ),
                   ),
                 ),
@@ -754,13 +892,21 @@ class _RoleDropdownItemState extends State<_RoleDropdownItem> {
                   widget.role,
                   style: GoogleFonts.manrope(
                     fontSize: 14,
-                    fontWeight: widget.isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color: widget.isSelected ? AppTheme.primaryGreen : AppTheme.slate900,
+                    fontWeight: widget.isSelected
+                        ? FontWeight.w700
+                        : FontWeight.w500,
+                    color: widget.isSelected
+                        ? AppTheme.primaryGreen
+                        : AppTheme.slate900,
                   ),
                 ),
               ),
               if (widget.isSelected)
-                const Icon(Icons.check_circle, color: AppTheme.primaryGreen, size: 18),
+                const Icon(
+                  Icons.check_circle,
+                  color: AppTheme.primaryGreen,
+                  size: 18,
+                ),
             ],
           ),
         ),

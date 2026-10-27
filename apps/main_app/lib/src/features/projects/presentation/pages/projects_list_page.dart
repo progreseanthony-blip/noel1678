@@ -21,6 +21,7 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
   Map<String, Map<String, dynamic>> _allServiceCompletions = {};
   Map<String, dynamic>? _portfolioSummary;
   bool _isLoading = true;
+  bool _supervisor = false;
   String? _error;
   String _searchQuery = '';
   String _statusFilter = 'all';
@@ -44,6 +45,7 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
 
     try {
       final supabase = Supabase.instance.client;
+      _supervisor = (await AccessService(supabase).load()).isSupervisor;
       final response = await supabase
           .from('projects')
           .select()
@@ -56,10 +58,10 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
       final Map<String, Map<String, dynamic>> allCompletions = {};
 
       try {
-        portfolioSummary =
+        if (!_supervisor) portfolioSummary =
             await service.getPortfolioSummaryLight(projectsPrefetched: projects);
         final summaries = List<Map<String, dynamic>>.from(
-          portfolioSummary['project_summaries'] ?? [],
+          portfolioSummary?['project_summaries'] ?? [],
         );
         for (final s in summaries) {
           allCompletions[s['project_id'] as String] = {
@@ -133,6 +135,18 @@ class _ProjectsListPageState extends ConsumerState<ProjectsListPage> {
     final userEmail = currentUser?.email ?? '';
     final screenWidth = MediaQuery.of(context).size.width;
     final isMobile = screenWidth < 768;
+
+    if (_supervisor) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Mis proyectos')),
+        drawer: Drawer(child: Sidebar(userName:userName,userEmail:userEmail,currentPath:'/projects',onLogout:() async {await Supabase.instance.client.auth.signOut();if(context.mounted)context.go('/signin');})),
+        body: _isLoading ? const Center(child:CircularProgressIndicator()) : _error != null ? Center(child:Text(_error!)) : _projects!.isEmpty ? const Center(child:Text('No tienes proyectos asignados.')) : ListView(children:_projects!.map((p)=>ListTile(
+          leading:const Icon(Icons.folder_outlined),title:Text('${p['title']}'),subtitle:Text('${p['status']}'),
+          onTap:()=>context.go('/projects/${p['id']}'),
+          trailing:IconButton(tooltip:'Reportes diarios',icon:const Icon(Icons.assignment_outlined),onPressed:()=>context.go('/projects/${p['id']}/daily-reports')),
+        )).toList()),
+      );
+    }
 
     return Scaffold(
       key: _mobileScaffoldKey,

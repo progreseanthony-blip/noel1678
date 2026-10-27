@@ -1,4 +1,7 @@
 library noel_data;
+export 'src/services/labor_crew_planning_service.dart';
+
+export 'src/services/access_service.dart';
 
 export 'src/remote/supabase_client.dart';
 export 'src/local/app_database.dart';
@@ -20,3 +23,6 @@ export 'src/services/email_service.dart';
 export 'src/services/inspection_service.dart';
 export 'src/utils/supabase_helpers.dart';
 export 'package:supabase_flutter/supabase_flutter.dart';
+export 'src/services/daily_execution_service.dart';
+export 'src/services/machinery_planning_service.dart';
+export 'src/services/labor_hours_service.dart';

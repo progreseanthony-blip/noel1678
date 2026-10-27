@@ -60,7 +60,7 @@ class _ReportReviewPageState extends ConsumerState<ReportReviewPage> {
       if (userId != null) {
         final profile = await Supabase.instance.client
             .from('profiles').select('role').eq('id', userId).maybeSingle();
-        admin = profile?['role'] == 'Admin';
+        admin = ['Admin','Supervisor'].contains(profile?['role']) && report['supervisor_id'] != userId && report['submitted_by'] != userId;
       }
 
       if (mounted) {

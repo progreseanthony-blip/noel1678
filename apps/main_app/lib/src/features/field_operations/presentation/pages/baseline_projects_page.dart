@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
+import 'package:noel_data/noel_data.dart' show DailyExecutionService;
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
 
@@ -27,17 +28,10 @@ class _BaselineProjectsPageState extends State<BaselineProjectsPage> {
   Future<void> _loadProjects() async {
     setState(() { _isLoading = true; });
     try {
-      final response = await Supabase.instance.client
-          .from('projects')
-          .select()
-          .order('created_at', ascending: false);
-      final all = List<Map<String, dynamic>>.from(response ?? []);
+      final all = await DailyExecutionService(Supabase.instance.client).projects();
       if (mounted) {
         setState(() {
-          _projects = all.where((p) {
-            final meta = p['calculation_metadata'] as Map<String, dynamic>?;
-            return meta?['baseline_latest_version'] != null || meta?['baseline_frozen'] == true;
-          }).toList();
+          _projects = all;
           _isLoading = false;
         });
       }

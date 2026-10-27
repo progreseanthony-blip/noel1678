@@ -170,7 +170,8 @@ class DailyReportService {
   ];
 
   Future<void> saveLaborLogs(String reportId, List<Map<String, dynamic>> logs) async {
-    await _supabase.from('report_labor_logs').delete().eq('daily_report_id', reportId);
+    await _supabase.from('report_labor_logs').delete().eq('daily_report_id', reportId).is_('crew_report_id', null);
+    logs = logs.where((log) => log['crew_report_id'] == null).toList();
     if (logs.isEmpty) return;
     await _supabase.from('report_labor_logs').insert(
       logs.map((log) {
@@ -206,7 +207,8 @@ class DailyReportService {
     if (nonStandby.any((l) => l['operator_id'] == null || l['machinery_id'] == null)) {
       throw Exception('All non-standby machinery logs must have operator_id and machinery_id');
     }
-    await _supabase.from('report_machinery_logs').delete().eq('daily_report_id', reportId);
+    await _supabase.from('report_machinery_logs').delete().eq('daily_report_id', reportId).is_('crew_report_id', null);
+    logs = logs.where((log) => log['crew_report_id'] == null).toList();
     if (logs.isEmpty) return;
     await _supabase.from('report_machinery_logs').insert(
       logs.map((log) {
@@ -237,7 +239,8 @@ class DailyReportService {
   ];
 
   Future<void> saveMaterialUsage(String reportId, List<Map<String, dynamic>> usage) async {
-    await _supabase.from('report_material_usage').delete().eq('daily_report_id', reportId);
+    await _supabase.from('report_material_usage').delete().eq('daily_report_id', reportId).is_('crew_report_id', null);
+    usage = usage.where((log) => log['crew_report_id'] == null).toList();
     if (usage.isEmpty) return;
     await _supabase.from('report_material_usage').insert(
       usage.map((u) {

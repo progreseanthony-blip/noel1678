@@ -7,12 +7,14 @@ class CompletedProjectBanner extends StatefulWidget {
   final String projectId;
   final Widget child;
   final void Function(bool isCompleted)? isCompletedCallback;
+  final bool? knownReadOnly;
 
   const CompletedProjectBanner({
     super.key,
     required this.projectId,
     required this.child,
     this.isCompletedCallback,
+    this.knownReadOnly,
   });
 
   @override
@@ -26,6 +28,11 @@ class _CompletedProjectBannerState extends State<CompletedProjectBanner> {
   @override
   void initState() {
     super.initState();
+    if (widget.knownReadOnly != null) {
+      _isCompleted = widget.knownReadOnly!;
+      _isLoading = false;
+      return;
+    }
     _checkStatus();
   }
 

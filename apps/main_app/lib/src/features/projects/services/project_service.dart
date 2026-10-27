@@ -5,7 +5,20 @@ class ProjectService {
 
   /// Approves a quote and converts it into a project.
   /// Throws an exception if the project already exists or if an error occurs.
-  static Future<String> convertQuoteToProject(String quoteId) async {
+  static Future<String> convertQuoteToProject(
+    String quoteId, {
+    String? allocationFingerprint,
+  }) async {
+    if (allocationFingerprint != null) {
+      await _supabase.rpc(
+        'prepare_quote_team_allocation',
+        params: {
+          'p_quote': quoteId,
+          'p_confirm': true,
+          'p_fingerprint': allocationFingerprint,
+        },
+      );
+    }
     // 1. Fetch the quote details to check its status
     final quote = await _supabase
         .from('quotes')
@@ -14,8 +27,12 @@ class ProjectService {
         .single();
 
     if (quote['status'] == 'accepted') {
-      throw Exception('This estimate has already been approved and converted to a project.');
+      throw Exception(
+        'This estimate has already been approved and converted to a project.',
+      );
     }
+
+    await _supabase.rpc('validate_quote_team', params: {'p_quote': quoteId});
 
     // 2. Check if a partial/orphaned project exists for this quote
     final existingProject = await _supabase
@@ -30,21 +47,27 @@ class ProjectService {
     }
 
     // 3. Create the project
-    final projectInsert = await _supabase.from('projects').insert({
-      'quote_id': quoteId,
-      'title': quote['title'] ?? 'Untitled Project',
-      'client_name': quote['client_name'],
-      'status': 'active',
-      'start_date': DateTime.now().toIso8601String(),
-      'project_type': quote['quote_type'] ?? 'standard',
-    }).select().single();
+    final projectInsert = await _supabase
+        .from('projects')
+        .insert({
+          'quote_id': quoteId,
+          'title': quote['title'] ?? 'Untitled Project',
+          'client_name': quote['client_name'],
+          'status': 'active',
+          'start_date': DateTime.now().toIso8601String(),
+          'project_type': quote['quote_type'] ?? 'standard',
+        })
+        .select()
+        .single();
 
     final String projectId = projectInsert['id'];
 
     // 4. Fetch the expected machinery, materials, labor, and instruments from the quote
     final services = await _supabase
         .from('quote_services')
-        .select('id, name, quote_service_machineries(id, machine_name, quantity, is_primary_mover), quote_service_estimations(quote_service_estimation_resources(machine_id, machinery(description))), quote_service_materials(id, material_name, unit_name, quantity), quote_service_labors(id, role_name, role_id, employees_quantity), quote_service_instruments(id, instrument_name, quantity)')
+        .select(
+          'id, name, quote_service_machineries(id, machine_name, quantity, is_primary_mover), quote_service_estimations(quote_service_estimation_resources(machine_id, machinery(description))), quote_service_materials(id, material_name, unit_name, quantity), quote_service_labors(id, role_name, role_id, employees_quantity, team_resource_id), quote_service_instruments(id, instrument_name, quantity)',
+        )
         .eq('quote_id', quoteId);
 
     final List<Map<String, dynamic>> machineriesToInsert = [];
@@ -53,6 +76,7 @@ class ProjectService {
     final List<Map<String, dynamic>> instrumentsToInsert = [];
     final List<Map<String, dynamic>> tasksToInsert = [];
 
+    final seenTeamResources = <String>{};
     for (final service in services) {
       // Create a task for each service
       tasksToInsert.add({
@@ -67,13 +91,19 @@ class ProjectService {
       // Build machine_id lookup from estimation resources
       final Map<String, String> nameToMachineId = {};
       final estimations = service['quote_service_estimations'];
-      final estResources = (estimations is List && estimations.isNotEmpty
-          ? (estimations[0] as Map)['quote_service_estimation_resources']
-          : (estimations is Map ? estimations['quote_service_estimation_resources'] : null)) as List?;
+      final estResources =
+          (estimations is List && estimations.isNotEmpty
+                  ? (estimations[0]
+                        as Map)['quote_service_estimation_resources']
+                  : (estimations is Map
+                        ? estimations['quote_service_estimation_resources']
+                        : null))
+              as List?;
       if (estResources != null) {
         for (final r in estResources) {
           final mid = r['machine_id']?.toString();
-          final mname = (r['machinery']?['description'] as String?)?.toLowerCase() ?? '';
+          final mname =
+              (r['machinery']?['description'] as String?)?.toLowerCase() ?? '';
           if (mid != null && mname.isNotEmpty) nameToMachineId[mname] = mid;
         }
       }
@@ -87,7 +117,10 @@ class ProjectService {
             'quote_service_machinery_id': mach['id'],
             'quote_service_id': service['id'],
             if (machineId != null) 'machinery_id': machineId,
-            'machinery_name': _nonEmpty(mach['machine_name'], 'Unknown Machine'),
+            'machinery_name': _nonEmpty(
+              mach['machine_name'],
+              'Unknown Machine',
+            ),
             'expected_quantity': 1,
             'received_quantity': 0,
             'is_principal': mach['is_primary_mover'] ?? false,
@@ -113,6 +146,8 @@ class ProjectService {
       // ... labor logic ...
       final List labors = service['quote_service_labors'] ?? [];
       for (final lab in labors) {
+        final teamId = lab['team_resource_id'] as String?;
+        if (teamId != null && !seenTeamResources.add(teamId)) continue;
         final count = (lab['employees_quantity'] as num?)?.toInt() ?? 1;
         for (int i = 0; i < count; i++) {
           laborToInsert.add({

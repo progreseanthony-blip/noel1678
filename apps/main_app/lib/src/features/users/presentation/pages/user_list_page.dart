@@ -59,7 +59,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
       if (hasFieldFilter) {
         String fieldValue;
         if (_filterField == 'Status') {
-          fieldValue = (u['status'] ?? 'active').toString().toLowerCase();
+          fieldValue = (u['access_status'] ?? 'pending').toString().toLowerCase();
         } else {
           final column = _fieldToColumn(_filterField!);
           fieldValue = (u[column] ?? '').toString().toLowerCase();
@@ -91,7 +91,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
     if (_users == null) return 0;
     return _users!
         .where((u) =>
-            (u['status'] ?? 'active').toString().toLowerCase() == 'active')
+            (u['access_status'] ?? 'pending').toString().toLowerCase() == 'active')
         .length;
   }
 
@@ -114,7 +114,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
       case 'Name': return 'name';
       case 'Email': return 'email';
       case 'Role': return 'role';
-      case 'Status': return 'status';
+      case 'Status': return 'access_status';
       default: return '';
     }
   }
@@ -150,9 +150,9 @@ class _UserListPageState extends ConsumerState<UserListPage> {
   List<Map<String, dynamic>> get _mobileFilteredUsers {
     final base = _filteredUsers;
     if (_mobileFilter == 'active') {
-      return base.where((u) => (u['status'] ?? 'active').toString().toLowerCase() == 'active').toList();
+      return base.where((u) => (u['access_status'] ?? 'pending').toString().toLowerCase() == 'active').toList();
     } else if (_mobileFilter == 'inactive') {
-      return base.where((u) => (u['status'] ?? 'active').toString().toLowerCase() != 'active').toList();
+      return base.where((u) => (u['access_status'] ?? 'pending').toString().toLowerCase() != 'active').toList();
     }
     return base;
   }
@@ -348,7 +348,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
     final users = _mobileFilteredUsers;
     final total = _filteredUsers.length;
     final activeCount = _filteredUsers.where(
-      (u) => (u['status'] ?? 'active').toString().toLowerCase() == 'active',
+      (u) => (u['access_status'] ?? 'pending').toString().toLowerCase() == 'active',
     ).length;
     final inactiveCount = total - activeCount;
 
@@ -427,7 +427,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
     final name = user['name']?.toString() ?? 'Sin Nombre';
     final email = user['email']?.toString() ?? '';
     final role = user['role']?.toString() ?? 'Employee';
-    final isActive = (user['status'] ?? 'active').toString().toLowerCase() == 'active';
+    final isActive = (user['access_status'] ?? 'pending').toString().toLowerCase() == 'active';
     final initials = _getInitials(name);
     final isAdmin = role.toLowerCase() == 'admin';
 
@@ -981,7 +981,7 @@ class _UserListPageState extends ConsumerState<UserListPage> {
                   name: u['name']?.toString() ?? 'Sin Nombre',
                   email: u['email']?.toString() ?? '',
                   role: u['role']?.toString() ?? 'Employee',
-                  isActive: (u['status'] ?? 'active').toString().toLowerCase() == 'active',
+                  isActive: (u['access_status'] ?? 'pending').toString().toLowerCase() == 'active',
                   initials: _getInitials(u['name']?.toString() ?? ''),
                   onEdit: () => _showUserForm(user: u),
                   onDelete: () {},

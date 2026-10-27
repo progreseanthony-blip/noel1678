@@ -41,7 +41,7 @@ class WorkerIndividualReportPdfGenerator {
             pw.SizedBox(height: 4),
             pw.Text(periodName, style: pw.TextStyle(font: fontBold, fontSize: 13, color: PdfColors.grey800)),
             pw.SizedBox(height: 2),
-            pw.Text('$startDate — $endDate', style: pw.TextStyle(font: font, fontSize: 11, color: PdfColors.grey700)),
+            pw.Text('$startDate - $endDate', style: pw.TextStyle(font: font, fontSize: 11, color: PdfColors.grey700)),
             pw.SizedBox(height: 2),
             pw.Text(projectTitle, style: pw.TextStyle(font: fontBold, fontSize: 11, color: PdfColor.fromHex('#15803d'))),
             pw.SizedBox(height: 20),

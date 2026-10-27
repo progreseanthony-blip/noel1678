@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
+import 'package:uuid/uuid.dart';
+import '../utils/labor_segments.dart';
 
 class StepLabor extends StatefulWidget {
   final List<Map<String, dynamic>> plannedLabor;
@@ -14,8 +16,13 @@ class StepLabor extends StatefulWidget {
   final VoidCallback? onNavigateToBaseline;
   final String? stoppedAt;
   final Map<String, dynamic> affectedServices;
+  final bool explicitBreaks;
+  final Map<String, dynamic> breakContext;
+  final String? executionCrewId;
+  final List<Map<String, dynamic>> transfers;
+  final Future<void> Function(Map<String, dynamic> entry)? onReassign;
 
-  const StepLabor({super.key, required this.plannedLabor, required this.laborLogs, required this.workers, required this.deviationReasons, required this.isReadOnly, required this.onLogsChanged, this.onNavigateToBaseline, this.stoppedAt, this.affectedServices = const {}});
+  const StepLabor({super.key, required this.plannedLabor, required this.laborLogs, required this.workers, required this.deviationReasons, required this.isReadOnly, required this.onLogsChanged, this.onNavigateToBaseline, this.stoppedAt, this.affectedServices = const {}, this.explicitBreaks = false, this.breakContext = const {}, this.executionCrewId, this.transfers = const [], this.onReassign});
 
   @override
   State<StepLabor> createState() => _StepLaborState();
@@ -27,7 +34,7 @@ class _StepLaborState extends State<StepLabor> {
   final Map<String, String?> _absentWorkers = {};
   bool _compactView = false;
   String _searchQuery = '';
-  final Set<String> _selectedWorkerIds = {};
+  final Set<String> _selectedRowKeys = {};
   bool _missingOnly = false;
 
   List<Map<String, dynamic>> get _laborReasons => widget.deviationReasons.where((r) => r['category'] == 'labor' || r['category'] == 'general').toList();
@@ -42,7 +49,7 @@ class _StepLaborState extends State<StepLabor> {
       final role = (pl['role_name'] ?? pl['labor_roles']?['description'] ?? '').toString().toLowerCase();
       if (svc.contains(q) || role.contains(q)) return true;
       final asgn = pl['project_labor_assignments'] as List? ?? [];
-      return asgn.any((a) {
+      return _entries.any((e) => e['project_labor_id'] == pl['id'] && _workerNameById(e['worker_id'] as String?).toLowerCase().contains(q)) || asgn.any((a) {
         final w = a['workers'] as Map<String, dynamic>?;
         return w != null && (w['full_name'] as String? ?? '').toLowerCase().contains(q);
       });
@@ -50,9 +57,9 @@ class _StepLaborState extends State<StepLabor> {
   }
 
   @override
-  void initState() { super.initState(); _entries = widget.laborLogs.map((l) => Map<String, dynamic>.from(l)).toList(); }
+  void initState() { super.initState(); _entries = widget.laborLogs.map((l) => <String, dynamic>{...l, 'id': l['id'] ?? const Uuid().v4()}).toList(); }
   @override
-  void didUpdateWidget(StepLabor old) { super.didUpdateWidget(old); if (old.laborLogs != widget.laborLogs) _entries = widget.laborLogs.map((l) => Map<String, dynamic>.from(l)).toList(); }
+  void didUpdateWidget(StepLabor old) { super.didUpdateWidget(old); if (old.laborLogs != widget.laborLogs) _entries = widget.laborLogs.map((l) => <String, dynamic>{...l, 'id': l['id'] ?? const Uuid().v4()}).toList(); }
 
   void _emit() => widget.onLogsChanged(List<Map<String, dynamic>>.from(_entries));
 
@@ -69,7 +76,6 @@ class _StepLaborState extends State<StepLabor> {
   }
 
   bool _isInEntries(String workerId) => _entries.any((e) => e['worker_id'] == workerId);
-  int _entryIndex(String workerId) => _entries.indexWhere((e) => e['worker_id'] == workerId);
   bool _isInEntriesFor(String workerId, String plId) => _entries.any((e) => e['worker_id'] == workerId && e['project_labor_id'] == plId);
   int _entryIndexFor(String workerId, String plId) => _entries.indexWhere((e) => e['worker_id'] == workerId && e['project_labor_id'] == plId);
 
@@ -114,21 +120,47 @@ class _StepLaborState extends State<StepLabor> {
     } else if (isUnplanned) {
       ci = '${TimeOfDay.now().hour.toString().padLeft(2, '0')}:${TimeOfDay.now().minute.toString().padLeft(2, '0')}:00';
     }
-    setState(() { _entries.add({ 'worker_id': workerId, 'project_labor_id': plannedLaborId, 'check_in_time': ci, 'check_out_time': null, 'regular_hours': 0.0, 'overtime_hours': 0.0, 'break_minutes': 30, 'total_net_hours': 0.0, 'is_unplanned': isUnplanned, 'deviation_reason_id': null, 'notes': '' }); });
+    setState(() { _entries.add({ 'id': const Uuid().v4(), 'worker_id': workerId, 'project_labor_id': plannedLaborId, 'check_in_time': ci, 'check_out_time': null, 'regular_hours': 0.0, 'overtime_hours': 0.0, 'break_minutes': widget.explicitBreaks ? 0 : 30, 'break_mode': widget.executionCrewId == null ? 'recorded' : 'auto_daily', 'total_net_hours': 0.0, 'is_unplanned': isUnplanned, 'deviation_reason_id': null, 'notes': '' }); });
+    if (widget.executionCrewId != null) {
+      final loans = widget.transfers.where((t) => t['status'] == 'approved' &&
+        t['to_crew_id'] == widget.executionCrewId && t['worker_id'] == workerId &&
+        t['project_labor_id'] == plannedLaborId &&
+        !_entries.any((e) => e['transfer_id'] == t['id'])).toList()
+        ..sort((a, b) => (a['starts_at'] as String).compareTo(b['starts_at'] as String));
+      if (loans.isNotEmpty) {
+        final loan = loans.first;
+        _entries.last.addAll(newLaborSegment(id: const Uuid().v4(), worker: workerId,
+          labor: plannedLaborId!, start: loan['starts_at'] as String,
+          end: loan['ends_at'] as String, reason: loan['reason'] as String,
+          transfer: loan['id'] as String));
+      }
+    }
+    if (widget.executionCrewId != null) reconcileAutomaticLaborBreaks(_entries, widget.breakContext);
     _emit();
   }
 
-  void _removeEntry(int index) { final wid = _entries[index]['worker_id'] as String?; setState(() { _entries.removeAt(index); _absentWorkers.remove(wid); }); _emit(); }
+  void _removeEntry(int index) { final wid = _entries[index]['worker_id'] as String?; setState(() { _selectedRowKeys.remove('entry:${_entries[index]['id']}'); _entries.removeAt(index); _absentWorkers.remove(wid); if (widget.executionCrewId != null) reconcileAutomaticLaborBreaks(_entries, widget.breakContext); }); _emit(); }
 
   void _toggleAbsent(String workerId) {
     if (_absentWorkers.containsKey(workerId)) { setState(() => _absentWorkers.remove(workerId)); return; }
-    final idx = _entryIndex(workerId);
-    if (idx >= 0) _entries.removeAt(idx);
+    if (_isInEntries(workerId)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Remove recorded work segments before marking this worker absent.')));
+      return;
+    }
     setState(() => _absentWorkers[workerId] = null);
     _emit();
   }
 
-  Future<void> _showReassignDialog(String workerId, String currentPlId, {String? estimatedCheckIn}) async {
+  Future<void> _showReassignDialog(String workerId, String currentPlId, {String? estimatedCheckIn, int? entryIndex}) async {
+    if (widget.executionCrewId != null) {
+      final idx = entryIndex ?? _entryIndexFor(workerId, currentPlId);
+      if (idx >= 0) {
+        await widget.onReassign?.call(Map<String, dynamic>.from(_entries[idx]));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record and close attendance before reassigning this worker.')));
+      }
+      return;
+    }
     final worker = widget.workers.firstWhere((w) => w['id'] == workerId, orElse: () => <String, dynamic>{});
     if (worker.isEmpty) return;
 
@@ -345,12 +377,17 @@ class _StepLaborState extends State<StepLabor> {
   }
 
   void _updateEntryField(int index, String key, dynamic value) {
-    setState(() { _entries[index][key] = value; if (key == 'check_in_time' || key == 'check_out_time') _recalcHours(index); });
+    setState(() { _entries[index][key] = value; if (widget.executionCrewId != null && key == 'break_minutes') _entries[index]['break_mode'] = 'manual'; if (key == 'check_in_time' || key == 'check_out_time' || key == 'break_minutes') _recalcHours(index); });
     _emit();
   }
 
   void _recalcHours(int index) {
     final e = _entries[index];
+    if (widget.executionCrewId != null && !widget.explicitBreaks && e['break_mode'] != 'manual') {
+      e['break_mode'] = 'auto_daily';
+      reconcileAutomaticLaborBreaks(_entries, widget.breakContext);
+      return;
+    }
     final ci = e['check_in_time'] as String?; final co = e['check_out_time'] as String?;
     if (ci == null || ci.isEmpty || co == null || co.isEmpty) { e['regular_hours'] = 0.0; e['overtime_hours'] = 0.0; e['total_net_hours'] = 0.0; return; }
     try {
@@ -358,9 +395,9 @@ class _StepLaborState extends State<StepLabor> {
       final im = int.parse(ip[0]) * 60 + int.parse(ip[1]); final om = int.parse(op[0]) * 60 + int.parse(op[1]);
       double span = (om - im) / 60.0; if (span < 0) span = 0;
       const breakMin = 30; const threshold = 6.0;
-      final breakHr = span >= threshold ? breakMin / 60.0 : 0.0;
+      final breakHr = (widget.explicitBreaks || e['break_mode'] == 'manual') ? ((e['break_minutes'] as num?)?.toDouble() ?? 0) / 60.0 : span >= threshold ? breakMin / 60.0 : 0.0;
       final net = span - breakHr;
-      e['break_minutes'] = breakHr > 0 ? breakMin : 0;
+      e['break_minutes'] = (breakHr * 60).round();
       e['total_net_hours'] = net;
       e['regular_hours'] = net > 8 ? 8.0 : net;
       e['overtime_hours'] = net > 8 ? net - 8.0 : 0.0;
@@ -554,6 +591,23 @@ class _StepLaborState extends State<StepLabor> {
           if (!widget.isReadOnly) TextButton.icon(onPressed: widget.onNavigateToBaseline, icon: const Icon(Icons.add_circle_outline, size: 16), label: Text('+ Add to Baseline', style: _t(fs: 15, w: FontWeight.w600, c: AppTheme.primaryGreen))),
         ],
       ],
+      if (widget.explicitBreaks && _entries.isNotEmpty) ...[
+        const SizedBox(height: 16),
+        Text('Breaks by work segment (minutes)', style: Theme.of(context).textTheme.titleSmall),
+        for (int i = 0; i < _entries.length; i++) ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(_workerNameById(_entries[i]['worker_id'] as String?)),
+          subtitle: Text('${_entries[i]['check_in_time'] ?? '--:--'} - ${_entries[i]['check_out_time'] ?? '--:--'}'),
+          trailing: SizedBox(width: 100, child: TextFormField(
+            key: ValueKey('break-${_entries[i]['id'] ?? i}'),
+            initialValue: '${_entries[i]['break_minutes'] ?? 0}',
+            readOnly: widget.isReadOnly,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Minutes'),
+            onChanged: (value) => _updateEntryField(i, 'break_minutes', int.tryParse(value) ?? -1),
+          )),
+        ),
+      ],
     ]);
   }
 
@@ -645,6 +699,22 @@ class _StepLaborState extends State<StepLabor> {
     final wid = w['id'] as String; final inE = _isInEntriesFor(wid, plId); final isA = _absentWorkers.containsKey(wid);
     final dr = _fmtDateRange(asgn['start_date'], asgn['end_date']); final eIdx = inE ? _entryIndexFor(wid, plId) : -1; final e = inE ? _entries[eIdx] : null;
     final r = widget.isReadOnly;
+    final segments = _entries.asMap().entries.where((item) =>
+      item.value['worker_id'] == wid && item.value['project_labor_id'] == plId).toList();
+    final additionalLoan = widget.transfers.any((t) => t['status'] == 'approved' &&
+      t['to_crew_id'] == widget.executionCrewId && t['worker_id'] == wid &&
+      t['project_labor_id'] == plId && !_entries.any((row) => row['transfer_id'] == t['id']));
+    if (widget.executionCrewId != null && (segments.length > 1 || segments.isNotEmpty && additionalLoan)) {
+      segments.sort((a, b) => (a.value['check_in_time'] as String? ?? '').compareTo(b.value['check_in_time'] as String? ?? ''));
+      return Column(children: [...segments.map((item) => KeyedSubtree(
+        key: ValueKey(item.value['id'] ?? 'segment-${item.key}'),
+        child: _buildExpandedRow(item.key, item.value, _workerName(w), dr,
+          plId: plId, w: w))),
+        if (additionalLoan && !widget.isReadOnly) TextButton.icon(
+          onPressed: () => _addEntry(wid, plannedLaborId: plId),
+          icon: const Icon(Icons.add), label: const Text('Add authorized segment')),
+      ]);
+    }
 
     if (isA) {
       String rt = 'None specified'; final rid = _absentWorkers[wid]; if (rid != null) { final rr = _laborReasons.firstWhere((x) => x['id'] == rid, orElse: () => {'description': 'Unknown'}); rt = rr['description'] as String? ?? 'Unknown'; }
@@ -748,7 +818,7 @@ class _StepLaborState extends State<StepLabor> {
                 final endM = endMin % 60;
                 estCheckIn = '${endH.toString().padLeft(2, '0')}:${endM.toString().padLeft(2, '0')}:00';
               }
-              _showReassignDialog(e['worker_id'] as String, plId, estimatedCheckIn: estCheckIn);
+              _showReassignDialog(e['worker_id'] as String, plId, estimatedCheckIn: estCheckIn, entryIndex: idx);
             },
             icon: const Icon(Icons.swap_horiz, size: 14),
             label: Text('Reassign', style: _t(fs: 13, w: FontWeight.w600, c: AppTheme.primaryGreen)),
@@ -816,7 +886,7 @@ class _StepLaborState extends State<StepLabor> {
     return FilterChip(
       label: Text('Missing', style: _t(fs: 12, w: FontWeight.w600, c: _missingOnly ? Colors.white : Colors.orange)),
       selected: _missingOnly,
-      onSelected: (v) => setState(() => _missingOnly = v),
+      onSelected: (v) => setState(() { _missingOnly = v; _selectedRowKeys.clear(); }),
       selectedColor: Colors.orange,
       checkmarkColor: Colors.white,
       visualDensity: VisualDensity.compact,
@@ -846,12 +916,12 @@ class _StepLaborState extends State<StepLabor> {
           prefixIcon: Icon(Icons.search, size: 18, color: AppTheme.slate400),
           suffixIcon: _searchQuery.isNotEmpty
               ? GestureDetector(
-                  onTap: () => setState(() { _searchQuery = ''; _selectedWorkerIds.clear(); }),
+                  onTap: () => setState(() { _searchQuery = ''; _selectedRowKeys.clear(); }),
                   child: const Icon(Icons.close, size: 16, color: AppTheme.slate400),
                 )
               : null,
         ),
-        onChanged: (v) => setState(() { _searchQuery = v; _selectedWorkerIds.clear(); }),
+        onChanged: (v) => setState(() { _searchQuery = v; _selectedRowKeys.clear(); }),
       ),
     );
   }
@@ -914,11 +984,11 @@ class _StepLaborState extends State<StepLabor> {
               presets: const ['15:30', '16:00', '17:00', '18:00'],
               onPreset: _applyCheckOutPreset, onCustom: _showCustomCheckOutTimeDialog,
             ),
-            if (_selectedWorkerIds.isNotEmpty) ...[
-              Text('${_selectedWorkerIds.length} selected', style: _t(fs: 12, w: FontWeight.w600, c: AppTheme.slate500)),
+            if (_selectedRowKeys.isNotEmpty) ...[
+              Text('${_selectedRowKeys.length} selected', style: _t(fs: 12, w: FontWeight.w600, c: AppTheme.slate500)),
               const SizedBox(width: 8),
               GestureDetector(
-                onTap: () => setState(() => _selectedWorkerIds.clear()),
+                onTap: () => setState(() => _selectedRowKeys.clear()),
                 child: Text('Clear', style: _t(fs: 12, w: FontWeight.w600, c: AppTheme.errorRed)),
               ),
             ],
@@ -946,57 +1016,48 @@ class _StepLaborState extends State<StepLabor> {
         ...presets.map((t) => Padding(
           padding: const EdgeInsets.only(right: 6),
           child: TextButton(
-            onPressed: _selectedWorkerIds.isEmpty ? null : () => onPreset(t),
+            onPressed: _selectedRowKeys.isEmpty ? null : () => onPreset(t),
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              backgroundColor: _selectedWorkerIds.isEmpty ? AppTheme.slate200 : AppTheme.primaryGreen.withAlpha(15),
+              backgroundColor: _selectedRowKeys.isEmpty ? AppTheme.slate200 : AppTheme.primaryGreen.withAlpha(15),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            child: Text(t, style: _t(fs: 13, w: FontWeight.w600, c: _selectedWorkerIds.isEmpty ? AppTheme.slate400 : AppTheme.primaryGreen)),
+            child: Text(t, style: _t(fs: 13, w: FontWeight.w600, c: _selectedRowKeys.isEmpty ? AppTheme.slate400 : AppTheme.primaryGreen)),
           ),
         )),
         TextButton.icon(
-          onPressed: _selectedWorkerIds.isEmpty ? null : onCustom,
+          onPressed: _selectedRowKeys.isEmpty ? null : onCustom,
           icon: const Icon(Icons.more_time, size: 14),
-          label: Text('Custom', style: _t(fs: 13, w: FontWeight.w600, c: _selectedWorkerIds.isEmpty ? AppTheme.slate400 : AppTheme.primaryGreen)),
+          label: Text('Custom', style: _t(fs: 13, w: FontWeight.w600, c: _selectedRowKeys.isEmpty ? AppTheme.slate400 : AppTheme.primaryGreen)),
           style: TextButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: Size.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
         ),
       ],
     );
   }
 
-  void _applyPreset(String time) {
-    for (final wid in _selectedWorkerIds) {
-      final idx = _entryIndex(wid);
+  void _applyTableTime(String field, String time) {
+    if (widget.isReadOnly) return;
+    // Resolve the selected row identities before adding any new attendance.
+    final selected = _buildCompactItems(_searchFilteredLabor)
+        .where((row) => _selectedRowKeys.contains(row['row_key'])).toList();
+    for (final row in selected) {
+      final idx = row['entry_index'] as int;
       if (idx >= 0) {
-        _updateEntryField(idx, 'check_in_time', '$time:00');
-      } else if (!_absentWorkers.containsKey(wid)) {
-        for (final pl in widget.plannedLabor) {
-          final asgn = pl['project_labor_assignments'] as List? ?? [];
-          for (final a in asgn) {
-            final w = a['workers'] as Map<String, dynamic>?;
-            if (w?['id'] == wid) {
-              _addEntry(wid, plannedLaborId: pl['id'] as String, checkInTime: '$time:00');
-              break;
-            }
-          }
-        }
+        _entries[idx][field] = '$time:00';
+        _recalcHours(idx);
+      } else if (field == 'check_in_time' && row['is_absent'] != true) {
+        _addEntry(row['worker_id'] as String,
+            plannedLaborId: row['plan_id'] as String, checkInTime: '$time:00');
       }
     }
-    setState(() => _selectedWorkerIds.clear());
+    setState(() => _selectedRowKeys.clear());
+    _emit();
   }
 
-  void _applyCheckOutPreset(String time) {
-    for (final wid in _selectedWorkerIds) {
-      final idx = _entryIndex(wid);
-      if (idx >= 0) {
-        _updateEntryField(idx, 'check_out_time', '$time:00');
-      }
-    }
-    setState(() => _selectedWorkerIds.clear());
-  }
+  void _applyPreset(String time) => _applyTableTime('check_in_time', time);
+  void _applyCheckOutPreset(String time) => _applyTableTime('check_out_time', time);
 
   Future<void> _showCustomTimeDialog() async {
     final t = await showTimePicker(context: context, initialTime: TimeOfDay.now());
@@ -1012,83 +1073,54 @@ class _StepLaborState extends State<StepLabor> {
     }
   }
 
-  bool _hasMissingTime(String wid, bool isPresent, bool isAbsent) {
-    if (isAbsent) return false;
-    if (!isPresent) return true;
-    final idx = _entryIndex(wid);
-    if (idx < 0) return true;
-    final e = _entries[idx];
-    final ci = e['check_in_time'] as String?;
-    final co = e['check_out_time'] as String?;
-    return ci == null || ci.isEmpty || co == null || co.isEmpty;
-  }
-
   List<Map<String, dynamic>> _buildCompactItems(List<Map<String, dynamic>> filteredLabor) {
     final items = <Map<String, dynamic>>[];
-    final seen = <String>{};
     final q = _searchQuery.toLowerCase();
     final grouped = _groupByService(filteredLabor);
     final sortedSvcs = grouped.keys.toList()..sort();
-
     for (final svc in sortedSvcs) {
-      final svcItems = <Map<String, dynamic>>[];
-
+      final rows = <Map<String, dynamic>>[];
       for (final pl in grouped[svc]!) {
-        final rn = pl['role_name'] ?? pl['labor_roles']?['description'] ?? 'Worker';
         final plId = pl['id'] as String;
-        for (final a in (pl['project_labor_assignments'] as List? ?? [])) {
-          final w = a['workers'] as Map<String, dynamic>?;
-          if (w == null) continue;
-          final wid = w['id'] as String;
-          final name = _workerName(w);
-          if (q.isNotEmpty && !name.toLowerCase().contains(q) && !rn.toLowerCase().contains(q) && !svc.toLowerCase().contains(q)) continue;
-          final key = '$wid|$plId';
-          if (seen.contains(key)) continue;
-          seen.add(key);
-          final isPresent = _isInEntriesFor(wid, plId);
-          final isAbsent = _absentWorkers.containsKey(wid);
-          if (_missingOnly && !_hasMissingTime(wid, isPresent, isAbsent)) continue;
-          svcItems.add({
-            'type': 'worker', 'worker_id': wid, 'full_name': name,
-            'role_name': rn, 'service_name': svc,
-            'entry_index': _entryIndexFor(wid, plId),
-            'is_present': isPresent, 'is_absent': isAbsent,
-            'plan_id': plId, 'is_unplanned': false,
-          });
+        final role = pl['role_name'] ?? pl['labor_roles']?['description'] ?? 'Worker';
+        final workers = <String, String>{};
+        for (final assignment in pl['project_labor_assignments'] as List? ?? []) {
+          final worker = assignment['workers'] as Map?;
+          if (worker != null) workers[worker['id'] as String] = _workerName(Map<String, dynamic>.from(worker));
+        }
+        // Include every saved segment, including unplanned/reassigned workers.
+        for (final entry in _entries.where((e) => e['project_labor_id'] == plId)) {
+          final wid = entry['worker_id'] as String;
+          workers.putIfAbsent(wid, () => _workerNameById(wid));
+        }
+        for (final worker in workers.entries) {
+          if (q.isNotEmpty && !worker.value.toLowerCase().contains(q) &&
+              !role.toString().toLowerCase().contains(q) && !svc.toLowerCase().contains(q)) continue;
+          final indices = <int>[
+            for (var i = 0; i < _entries.length; i++)
+              if (_entries[i]['worker_id'] == worker.key && _entries[i]['project_labor_id'] == plId) i,
+          ];
+          if (indices.isEmpty) indices.add(-1);
+          for (final index in indices) {
+            final entry = index < 0 ? null : _entries[index];
+            final absent = entry == null && _absentWorkers.containsKey(worker.key);
+            final missing = !absent && (entry == null ||
+                (entry['check_in_time'] as String? ?? '').isEmpty ||
+                (entry['check_out_time'] as String? ?? '').isEmpty);
+            if (_missingOnly && !missing) continue;
+            rows.add({
+              'type': 'worker', 'worker_id': worker.key, 'full_name': worker.value,
+              'role_name': role, 'service_name': svc, 'plan_id': plId,
+              'row_key': entry == null ? 'plan:$plId:${worker.key}' : 'entry:${entry['id']}',
+              'entry_index': index, 'is_present': entry != null, 'is_absent': absent,
+              'is_unplanned': entry?['is_unplanned'] == true,
+            });
+          }
         }
       }
-
-      for (final e in _entries.where((e) => e['is_unplanned'] == true)) {
-        final wid = e['worker_id'] as String;
-        final plId = e['project_labor_id'] as String? ?? '';
-        bool belongs = false;
-        for (final pl in grouped[svc]!) {
-          if (pl['id'] == plId) { belongs = true; break; }
-        }
-        if (!belongs) continue;
-        final name = _workerNameById(wid);
-        final rn = _getRoleNameForEntry(e) ?? 'Worker';
-        if (q.isNotEmpty && !name.toLowerCase().contains(q) && !rn.toLowerCase().contains(q)) continue;
-        final key = 'u_$wid|$plId';
-        if (seen.contains(key)) continue;
-        seen.add(key);
-        if (_missingOnly && !_hasMissingTime(wid, true, false)) continue;
-        svcItems.add({
-          'type': 'worker', 'worker_id': wid, 'full_name': name,
-          'role_name': rn, 'service_name': svc,
-          'entry_index': _entries.indexOf(e),
-          'is_present': true, 'is_absent': false,
-          'plan_id': plId, 'is_unplanned': true,
-        });
-      }
-
-      if (svcItems.isNotEmpty) {
-        items.add({
-          'type': 'header',
-          'name': svc,
-          'affected': _svcAffected(grouped[svc]!),
-        });
-        items.addAll(svcItems);
+      if (rows.isNotEmpty) {
+        items.add({'type': 'header', 'name': svc, 'affected': _svcAffected(grouped[svc]!)});
+        items.addAll(rows);
       }
     }
     return items;
@@ -1143,14 +1175,14 @@ class _StepLaborState extends State<StepLabor> {
     final wid = item['worker_id'] as String;
     final isPresent = item['is_present'] as bool;
     final isAbsent = item['is_absent'] as bool;
-    final isSelected = _selectedWorkerIds.contains(wid);
+    final isSelected = _selectedRowKeys.contains(item['row_key']);
     final eIdx = item['entry_index'] as int;
     final present = isPresent && eIdx >= 0 && eIdx < _entries.length;
     final e = present ? _entries[eIdx] : null;
     final ci = present ? (e!['check_in_time'] as String? ?? '') : '';
     final co = present ? (e!['check_out_time'] as String? ?? '') : '';
-    final hrs = present ? (e!['regular_hours'] as double? ?? 0) : 0.0;
-    final othrs = present ? (e!['overtime_hours'] as double? ?? 0) : 0.0;
+    final hrs = present ? ((e!['regular_hours'] as num?)?.toDouble() ?? 0.0) : 0.0;
+    final othrs = present ? ((e!['overtime_hours'] as num?)?.toDouble() ?? 0.0) : 0.0;
     final ciD = ci.length >= 5 ? ci.substring(0, 5) : (ci.isEmpty ? '--:--' : ci);
     final coD = co.length >= 5 ? co.substring(0, 5) : (co.isEmpty ? '--:--' : co);
 
@@ -1166,6 +1198,7 @@ class _StepLaborState extends State<StepLabor> {
         actions.add(_actionBtn(Icons.access_time, 'Set check-in time', AppTheme.primaryGreen, () => _pickTime(context, e!['check_in_time'] as String?, (v) => _updateEntryField(eIdx, 'check_in_time', v))));
         actions.add(const SizedBox(width: 8));
         actions.add(_actionBtn(Icons.logout, 'Set check-out time', AppTheme.errorRed, () => _pickTime(context, e!['check_out_time'] as String?, (v) => _updateEntryField(eIdx, 'check_out_time', v))));
+        actions.addAll(_segmentActions(eIdx, e!));
       } else {
         actions.add(_actionBtn(Icons.login, 'Check-in', AppTheme.primaryGreen, () => _addEntry(wid, plannedLaborId: item['plan_id'] as String)));
         actions.add(const SizedBox(width: 8));
@@ -1174,6 +1207,7 @@ class _StepLaborState extends State<StepLabor> {
     }
 
     return Container(
+      key: ValueKey<String>(item['row_key'] as String),
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 10),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: AppTheme.slate200.withAlpha(80))),
@@ -1184,7 +1218,7 @@ class _StepLaborState extends State<StepLabor> {
           if (!widget.isReadOnly && !isAbsent)
             Checkbox(
               value: isSelected,
-              onChanged: (_) => setState(() { isSelected ? _selectedWorkerIds.remove(wid) : _selectedWorkerIds.add(wid); }),
+              onChanged: (_) => setState(() { isSelected ? _selectedRowKeys.remove(item['row_key']) : _selectedRowKeys.add(item['row_key'] as String); }),
               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               visualDensity: VisualDensity.compact,
             ),
@@ -1218,11 +1252,11 @@ class _StepLaborState extends State<StepLabor> {
     // have no checkbox, same rule as the per-row checkbox).
     final selectableIds = items
         .where((i) => i['type'] == 'worker' && i['is_absent'] != true)
-        .map((i) => i['worker_id'] as String)
+        .map((i) => i['row_key'] as String)
         .toSet();
     final allSelected =
-        selectableIds.isNotEmpty && selectableIds.every(_selectedWorkerIds.contains);
-    final someSelected = selectableIds.any(_selectedWorkerIds.contains);
+        selectableIds.isNotEmpty && selectableIds.every(_selectedRowKeys.contains);
+    final someSelected = selectableIds.any(_selectedRowKeys.contains);
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       decoration: BoxDecoration(color: AppTheme.slate50),
@@ -1235,9 +1269,9 @@ class _StepLaborState extends State<StepLabor> {
                   value: allSelected ? true : (someSelected ? null : false),
                   onChanged: (_) => setState(() {
                     if (allSelected) {
-                      _selectedWorkerIds.removeAll(selectableIds);
+                      _selectedRowKeys.removeAll(selectableIds);
                     } else {
-                      _selectedWorkerIds.addAll(selectableIds);
+                      _selectedRowKeys.addAll(selectableIds);
                     }
                   }),
                   materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -1276,17 +1310,18 @@ class _StepLaborState extends State<StepLabor> {
     final wid = item['worker_id'] as String;
     final isPresent = item['is_present'] as bool;
     final isAbsent = item['is_absent'] as bool;
-    final isSelected = _selectedWorkerIds.contains(wid);
+    final isSelected = _selectedRowKeys.contains(item['row_key']);
     final eIdx = item['entry_index'] as int;
     final e = isPresent ? _entries[eIdx] : null;
     final ci = isPresent ? (e!['check_in_time'] as String? ?? '') : '';
     final co = isPresent ? (e!['check_out_time'] as String? ?? '') : '';
-    final hrs = isPresent ? (e!['regular_hours'] as double? ?? 0) : 0.0;
-    final othrs = isPresent ? (e!['overtime_hours'] as double? ?? 0) : 0.0;
+    final hrs = isPresent ? ((e!['regular_hours'] as num?)?.toDouble() ?? 0.0) : 0.0;
+    final othrs = isPresent ? ((e!['overtime_hours'] as num?)?.toDouble() ?? 0.0) : 0.0;
     final ciD = ci.length >= 5 ? ci.substring(0, 5) : (ci.isEmpty ? '--:--' : ci);
     final coD = co.length >= 5 ? co.substring(0, 5) : (co.isEmpty ? '--:--' : co);
 
     return Container(
+      key: ValueKey<String>(item['row_key'] as String),
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
       decoration: BoxDecoration(
         border: Border(bottom: BorderSide(color: AppTheme.slate200.withAlpha(80))),
@@ -1295,7 +1330,7 @@ class _StepLaborState extends State<StepLabor> {
       child: Row(children: [
         SizedBox(width: 44, child: isAbsent || widget.isReadOnly ? const SizedBox.shrink() : Checkbox(
           value: isSelected,
-          onChanged: (_) => setState(() { isSelected ? _selectedWorkerIds.remove(wid) : _selectedWorkerIds.add(wid); }),
+          onChanged: (_) => setState(() { isSelected ? _selectedRowKeys.remove(item['row_key']) : _selectedRowKeys.add(item['row_key'] as String); }),
           materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           visualDensity: VisualDensity.compact,
         )),
@@ -1322,11 +1357,28 @@ class _StepLaborState extends State<StepLabor> {
               ] else if (isPresent) ...[
                 _actionBtn(Icons.access_time, 'Set check-in time', AppTheme.primaryGreen, () => _pickTime(context, e!['check_in_time'] as String?, (v) => _updateEntryField(eIdx, 'check_in_time', v))),
                 _actionBtn(Icons.logout, 'Set check-out time', AppTheme.errorRed, () => _pickTime(context, e!['check_out_time'] as String?, (v) => _updateEntryField(eIdx, 'check_out_time', v))),
+                ..._segmentActions(eIdx, e!),
               ],
             ])),
       ]),
     );
   }
+
+  List<Widget> _segmentActions(int index, Map<String, dynamic> entry) => [
+    if (widget.executionCrewId != null &&
+        !_entries.skip(index + 1).any((e) => e['worker_id'] == entry['worker_id'] && e['project_labor_id'] == entry['project_labor_id']) &&
+        widget.transfers.any((t) => t['status'] == 'approved' && t['to_crew_id'] == widget.executionCrewId &&
+          t['worker_id'] == entry['worker_id'] && t['project_labor_id'] == entry['project_labor_id'] &&
+          !_entries.any((e) => e['transfer_id'] == t['id'])))
+      _actionBtn(Icons.add, 'Add authorized segment', AppTheme.primaryGreen,
+        () => _addEntry(entry['worker_id'] as String, plannedLaborId: entry['project_labor_id'] as String)),
+    _actionBtn(Icons.swap_horiz, 'Reassign segment', AppTheme.primaryGreen,
+      () => _showReassignDialog(entry['worker_id'] as String,
+        entry['project_labor_id'] as String,
+        estimatedCheckIn: entry['check_out_time'] as String?, entryIndex: index)),
+    _actionBtn(Icons.delete_outline, 'Remove segment', AppTheme.errorRed,
+      () => _removeEntry(index)),
+  ];
 
   Widget _actionBtn(IconData icon, String tooltip, Color color, VoidCallback onTap) {
     return Tooltip(

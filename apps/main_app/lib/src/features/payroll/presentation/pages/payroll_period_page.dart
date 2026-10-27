@@ -54,12 +54,6 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
   bool _isSignoffLoading = false;
   bool _isIndividualLoading = false;
   Timer? _debounce;
-  Map<String, dynamic> _virtualTotals = {
-    'total_regular_hours': 0,
-    'total_overtime_hours': 0,
-    'total_workers': 0,
-    'total_cost': 0,
-  };
 
   final DateFormat _dateFmt = DateFormat('MMM dd, yyyy');
   final DateFormat _shortFmt = DateFormat('MMM dd');
@@ -81,7 +75,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
     try {
       final service = ref.read(payrollServiceProvider);
       _period = await service.getPeriod(widget.periodId);
-      _entries = await service.calculatePeriod(widget.periodId);
+      _entries = await service.previewPeriod(widget.periodId);
 
       final proj = await Supabase.instance.client
           .from('projects')
@@ -106,6 +100,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
   }
 
   Future<void> _recalculate() async {
+    if (_period?['status'] == 'closed') return;
     setState(() => _isCalculating = true);
     try {
       final service = ref.read(payrollServiceProvider);
@@ -113,9 +108,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       _period = await service.getPeriod(widget.periodId);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
     if (mounted) setState(() => _isCalculating = false);
@@ -150,13 +145,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       );
       if (mounted) {
         setState(() {
-          _virtualEntries = List<Map<String, dynamic>>.from(result['entries'] as List);
-          _virtualTotals = {
-            'total_regular_hours': result['total_regular_hours'],
-            'total_overtime_hours': result['total_overtime_hours'],
-            'total_workers': result['total_workers'],
-            'total_cost': result['total_cost'],
-          };
+          _virtualEntries = List<Map<String, dynamic>>.from(
+            result['entries'] as List,
+          );
           _isRecalculating = false;
         });
       }
@@ -172,12 +163,6 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       _isVirtual = false;
       _currentEnd = _originalEnd;
       _virtualEntries = [];
-      _virtualTotals = {
-        'total_regular_hours': 0,
-        'total_overtime_hours': 0,
-        'total_workers': 0,
-        'total_cost': 0,
-      };
     });
   }
 
@@ -192,28 +177,45 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
     return '${name}${datePart}_${_projectTitle.replaceAll(' ', '_')}';
   }
 
-  List<Map<String, dynamic>> get _currentEntries => _isVirtual ? _virtualEntries : _entries;
+  List<Map<String, dynamic>> get _currentEntries =>
+      _isVirtual ? _virtualEntries : _entries;
 
-  String? get _virtualStart =>
-      _isVirtual && _originalStart != null ? DateFormat('yyyy-MM-dd').format(_originalStart!) : null;
-  String? get _virtualEnd =>
-      _isVirtual && _currentEnd != null ? DateFormat('yyyy-MM-dd').format(_currentEnd!) : null;
+  String? get _virtualStart => _isVirtual && _originalStart != null
+      ? DateFormat('yyyy-MM-dd').format(_originalStart!)
+      : null;
+  String? get _virtualEnd => _isVirtual && _currentEnd != null
+      ? DateFormat('yyyy-MM-dd').format(_currentEnd!)
+      : null;
 
-  String get _displayStart =>
-      _isVirtual && _originalStart != null ? DateFormat('yyyy-MM-dd').format(_originalStart!) : (_period?['start_date'] as String?) ?? '';
-  String get _displayEnd =>
-      _isVirtual && _currentEnd != null ? DateFormat('yyyy-MM-dd').format(_currentEnd!) : (_period?['end_date'] as String?) ?? '';
+  String get _displayStart => _isVirtual && _originalStart != null
+      ? DateFormat('yyyy-MM-dd').format(_originalStart!)
+      : (_period?['start_date'] as String?) ?? '';
+  String get _displayEnd => _isVirtual && _currentEnd != null
+      ? DateFormat('yyyy-MM-dd').format(_currentEnd!)
+      : (_period?['end_date'] as String?) ?? '';
 
-  num get _totalReg => (_isVirtual ? _virtualTotals['total_regular_hours'] : _period?['total_regular_hours'] ?? 0) as num;
-  num get _totalOT => (_isVirtual ? _virtualTotals['total_overtime_hours'] : _period?['total_overtime_hours'] ?? 0) as num;
-  num get _totalCost => (_isVirtual ? _virtualTotals['total_cost'] : _period?['total_cost'] ?? 0) as num;
-  num get _totalWorkers => (_isVirtual ? _virtualTotals['total_workers'] : _period?['total_workers'] ?? 0) as num;
+  num _sumEntries(String field) =>
+      _currentEntries.fold<num>(0, (sum, e) => sum + (e[field] as num? ?? 0));
+  num get _totalReg => _sumEntries('regular_hours');
+  num get _totalOT => _sumEntries('overtime_hours');
+  num get _totalCost => _sumEntries('total_pay');
+  num get _totalWorkers => _currentEntries.length;
+  bool get _snapshotDiff =>
+      !_isVirtual &&
+      _period != null &&
+      ((_totalReg - (_period!['total_regular_hours'] as num? ?? 0)).abs() >
+              0.005 ||
+          (_totalOT - (_period!['total_overtime_hours'] as num? ?? 0)).abs() >
+              0.005 ||
+          (_totalCost - (_period!['total_cost'] as num? ?? 0)).abs() > 0.005);
+  String get _exportPeriodName =>
+      '${_period?['name'] ?? ''}${_snapshotDiff ? ' - Current validated work preview' : ''}';
 
   Future<({Uint8List bytes, String name})?> _buildPeriodPdf() async {
     if (!_hasEntries) return null;
     final bytes = await PayrollPdfGenerator.generate(
       projectTitle: _projectTitle,
-      periodName: _period?['name'] ?? '',
+      periodName: _exportPeriodName,
       startDate: _displayStart,
       endDate: _displayEnd,
       entries: _currentEntries,
@@ -236,7 +238,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('PDF error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('PDF error: $e')));
       }
     }
   }
@@ -286,7 +290,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Email error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Email error: $e')));
       }
     }
   }
@@ -296,7 +302,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
     try {
       final bytes = PayrollExcelGenerator.generate(
         projectTitle: _projectTitle,
-        periodName: _period?['name'] ?? '',
+        periodName: _exportPeriodName,
         startDate: _displayStart,
         endDate: _displayEnd,
         entries: _currentEntries,
@@ -312,7 +318,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Excel error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Excel error: $e')));
       }
     }
   }
@@ -329,7 +337,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
     if (workers.isEmpty) return null;
     final bytes = await WorkerSignoffPdfGenerator.generate(
       projectTitle: _projectTitle,
-      periodName: _period?['name'] ?? '',
+      periodName: _exportPeriodName,
       startDate: _displayStart,
       endDate: _displayEnd,
       workers: workers,
@@ -348,7 +356,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       final doc = await _buildSignoffPdf();
       if (doc == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No workers found for this period.')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No workers found for this period.')),
+          );
         }
         return;
       }
@@ -358,7 +368,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Sign-off PDF error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Sign-off PDF error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isSignoffLoading = false);
@@ -372,7 +384,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       final doc = await _buildSignoffPdf();
       if (doc == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No workers found for this period.')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No workers found for this period.')),
+          );
         }
         return;
       }
@@ -386,15 +400,19 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Email error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Email error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isSignoffLoading = false);
     }
   }
 
-  Future<({Uint8List bytes, String name, String workerName, String workerEmail})?>
-      _buildIndividualPdf(Map<String, dynamic> workerEntry) async {
+  Future<
+    ({Uint8List bytes, String name, String workerName, String workerEmail})?
+  >
+  _buildIndividualPdf(Map<String, dynamic> workerEntry) async {
     final service = ref.read(payrollServiceProvider);
     final workerId = workerEntry['worker_id'] as String;
     final result = await service.getDailyLogsForWorker(
@@ -409,7 +427,7 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
 
     final bytes = await WorkerIndividualReportPdfGenerator.generate(
       projectTitle: _projectTitle,
-      periodName: _period?['name'] ?? '',
+      periodName: _exportPeriodName,
       startDate: _displayStart,
       endDate: _displayEnd,
       worker: worker,
@@ -424,7 +442,8 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       bytes: bytes,
       name: '${_exportName}_${workerName.replaceAll(' ', '_')}',
       workerName: workerName,
-      workerEmail: worker['email']?.toString() ?? workerEntry['email']?.toString() ?? '',
+      workerEmail:
+          worker['email']?.toString() ?? workerEntry['email']?.toString() ?? '',
     );
   }
 
@@ -434,7 +453,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       final doc = await _buildIndividualPdf(workerEntry);
       if (doc == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No logs found for this worker.')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No logs found for this worker.')),
+          );
         }
         return;
       }
@@ -445,7 +466,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Individual report error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Individual report error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isIndividualLoading = false);
@@ -458,7 +481,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       final doc = await _buildIndividualPdf(workerEntry);
       if (doc == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No logs found for this worker.')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No logs found for this worker.')),
+          );
         }
         return;
       }
@@ -473,7 +498,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Email error: $e')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Email error: $e')));
       }
     } finally {
       if (mounted) setState(() => _isIndividualLoading = false);
@@ -485,10 +512,18 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Close Period'),
-        content: const Text('Once closed, period data becomes read-only. Continue?'),
+        content: const Text(
+          'Once closed, period data becomes read-only. Continue?',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Close Period')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Close Period'),
+          ),
         ],
       ),
     );
@@ -499,9 +534,9 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
         _loadData();
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Error: $e')));
         }
       }
     }
@@ -512,9 +547,12 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
 
   Color _statusColor(String status) {
     switch (status) {
-      case 'calculated': return AppTheme.primaryGreen;
-      case 'closed': return AppTheme.slate500;
-      default: return AppTheme.primaryGreen;
+      case 'calculated':
+        return AppTheme.primaryGreen;
+      case 'closed':
+        return AppTheme.slate500;
+      default:
+        return AppTheme.primaryGreen;
     }
   }
 
@@ -536,27 +574,53 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
         children: [
           Row(
             children: [
-              Icon(Icons.date_range, size: 16, color: _isVirtual ? AppTheme.primaryGreen : AppTheme.slate400),
+              Icon(
+                Icons.date_range,
+                size: 16,
+                color: _isVirtual ? AppTheme.primaryGreen : AppTheme.slate400,
+              ),
               const SizedBox(width: 8),
               Text(
                 'Accumulate from start',
-                style: GoogleFonts.manrope(fontSize: 11, fontWeight: FontWeight.w700, color: AppTheme.slate500, letterSpacing: 0.5),
+                style: GoogleFonts.manrope(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.slate500,
+                  letterSpacing: 0.5,
+                ),
               ),
               if (_isVirtual) ...[
                 const Spacer(),
                 if (_isRecalculating)
-                  const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryGreen)),
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: AppTheme.primaryGreen,
+                    ),
+                  ),
                 if (_isRecalculating) const SizedBox(width: 8),
                 GestureDetector(
                   onTap: _resetSlider,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(4),
                       border: Border.all(color: AppTheme.slate200),
                     ),
-                    child: Text('Reset', style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate600)),
+                    child: Text(
+                      'Reset',
+                      style: GoogleFonts.manrope(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.slate600,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -573,13 +637,22 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
                 ),
                 child: Text(
                   'FIXED',
-                  style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen, letterSpacing: 0.5),
+                  style: GoogleFonts.manrope(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w800,
+                    color: AppTheme.primaryGreen,
+                    letterSpacing: 0.5,
+                  ),
                 ),
               ),
               const SizedBox(width: 6),
               Text(
                 _originalStart != null ? _shortFmt.format(_originalStart!) : '',
-                style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.primaryGreen),
+                style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.primaryGreen,
+                ),
               ),
               const SizedBox(width: 8),
               Icon(Icons.arrow_forward, size: 14, color: AppTheme.slate400),
@@ -601,43 +674,79 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(children: [
-                  _dayStepBtn('−1d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays - 1).clamp(1, 90)); }),
-                  const SizedBox(width: 6),
-                  _dayStepBtn('−7d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays - 7).clamp(1, 90)); }),
-                  const Spacer(),
-                  _dayStepBtn('+7d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays + 7).clamp(1, 90)); }),
-                  const SizedBox(width: 6),
-                  _dayStepBtn('+1d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays + 1).clamp(1, 90)); }),
-                ]),
+                Row(
+                  children: [
+                    _dayStepBtn('−1d', () {
+                      if (_originalStart == null) return;
+                      _onSliderChanged((_accumDays - 1).clamp(1, 90));
+                    }),
+                    const SizedBox(width: 6),
+                    _dayStepBtn('−7d', () {
+                      if (_originalStart == null) return;
+                      _onSliderChanged((_accumDays - 7).clamp(1, 90));
+                    }),
+                    const Spacer(),
+                    _dayStepBtn('+7d', () {
+                      if (_originalStart == null) return;
+                      _onSliderChanged((_accumDays + 7).clamp(1, 90));
+                    }),
+                    const SizedBox(width: 6),
+                    _dayStepBtn('+1d', () {
+                      if (_originalStart == null) return;
+                      _onSliderChanged((_accumDays + 1).clamp(1, 90));
+                    }),
+                  ],
+                ),
                 const SizedBox(height: 8),
                 _buildAccumSlider(accum),
               ],
             )
           else
-            Row(children: [
-              _dayStepBtn('−1d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays - 1).clamp(1, 90)); }),
-              const SizedBox(width: 6),
-              _dayStepBtn('−7d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays - 7).clamp(1, 90)); }),
-              const SizedBox(width: 8),
-              Expanded(child: _buildAccumSlider(accum)),
-              const SizedBox(width: 8),
-              _dayStepBtn('+7d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays + 7).clamp(1, 90)); }),
-              const SizedBox(width: 6),
-              _dayStepBtn('+1d', () { if (_originalStart == null) return; _onSliderChanged((_accumDays + 1).clamp(1, 90)); }),
-            ]),
+            Row(
+              children: [
+                _dayStepBtn('−1d', () {
+                  if (_originalStart == null) return;
+                  _onSliderChanged((_accumDays - 1).clamp(1, 90));
+                }),
+                const SizedBox(width: 6),
+                _dayStepBtn('−7d', () {
+                  if (_originalStart == null) return;
+                  _onSliderChanged((_accumDays - 7).clamp(1, 90));
+                }),
+                const SizedBox(width: 8),
+                Expanded(child: _buildAccumSlider(accum)),
+                const SizedBox(width: 8),
+                _dayStepBtn('+7d', () {
+                  if (_originalStart == null) return;
+                  _onSliderChanged((_accumDays + 7).clamp(1, 90));
+                }),
+                const SizedBox(width: 6),
+                _dayStepBtn('+1d', () {
+                  if (_originalStart == null) return;
+                  _onSliderChanged((_accumDays + 1).clamp(1, 90));
+                }),
+              ],
+            ),
           const SizedBox(height: 6),
           Row(
             children: [
               Text(
                 '${accum}d of 90 days',
-                style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w500, color: AppTheme.slate400),
+                style: GoogleFonts.manrope(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                  color: AppTheme.slate400,
+                ),
               ),
               const Spacer(),
               if (_originalStart != null && _currentEnd != null)
                 Text(
                   'Duration: ${_currentEnd!.difference(_originalStart!).inDays} days',
-                  style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w500, color: AppTheme.slate400),
+                  style: GoogleFonts.manrope(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: AppTheme.slate400,
+                  ),
                 ),
             ],
           ),
@@ -656,7 +765,14 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
           borderRadius: BorderRadius.circular(4),
           border: Border.all(color: AppTheme.slate200),
         ),
-        child: Text(label, style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w600, color: AppTheme.slate600)),
+        child: Text(
+          label,
+          style: GoogleFonts.manrope(
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            color: AppTheme.slate600,
+          ),
+        ),
       ),
     );
   }
@@ -711,7 +827,14 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
           Expanded(
             child: Column(
               children: [
-                TopHeader(userName: userName, breadcrumbs: const ['Projects', 'Labor Cost', 'Period Detail']),
+                TopHeader(
+                  userName: userName,
+                  breadcrumbs: const [
+                    'Projects',
+                    'Labor Cost',
+                    'Period Detail',
+                  ],
+                ),
                 Expanded(child: _buildContent()),
               ],
             ),
@@ -725,7 +848,10 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
     return Scaffold(
       backgroundColor: AppTheme.backgroundLight,
       appBar: AppBar(
-        title: Text(_period?['name'] ?? 'Period', style: GoogleFonts.manrope(fontWeight: FontWeight.w700)),
+        title: Text(
+          _period?['name'] ?? 'Period',
+          style: GoogleFonts.manrope(fontWeight: FontWeight.w700),
+        ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.pop(),
@@ -737,15 +863,23 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
 
   Widget _buildContent() {
     if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: AppTheme.primaryGreen));
+      return const Center(
+        child: CircularProgressIndicator(color: AppTheme.primaryGreen),
+      );
     }
     if (_error != null) {
       return Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('Error: $_error', style: GoogleFonts.manrope(color: Colors.red)),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: _loadData, child: const Text('Retry')),
-        ]),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Error: $_error',
+              style: GoogleFonts.manrope(color: Colors.red),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(onPressed: _loadData, child: const Text('Retry')),
+          ],
+        ),
       );
     }
 
@@ -760,320 +894,559 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
         if (completed != _isCompleted) setState(() => _isCompleted = completed);
       },
       child: SingleChildScrollView(
-      padding: EdgeInsets.all(MediaQuery.of(context).size.width < 768 ? 16 : 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header card
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _isVirtual ? AppTheme.primaryGreen.withOpacity(0.3) : AppTheme.slate200),
+        padding: EdgeInsets.all(
+          MediaQuery.of(context).size.width < 768 ? 16 : 32,
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header card
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: _isVirtual
+                      ? AppTheme.primaryGreen.withOpacity(0.3)
+                      : AppTheme.slate200,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Title + status row + actions
+                  LayoutBuilder(
+                    builder: (ctx, constraints) {
+                      final titleBlock = Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  _isVirtual ? 'Preview' : (p['name'] ?? ''),
+                                  style: GoogleFonts.manrope(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.slate900,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              if (!_isVirtual)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: _statusColor(
+                                      p['status'],
+                                    ).withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    (p['status'] as String?)?.toUpperCase() ??
+                                        '',
+                                    style: GoogleFonts.manrope(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: _statusColor(p['status']),
+                                    ),
+                                  ),
+                                )
+                              else
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.primaryGreen.withOpacity(
+                                      0.1,
+                                    ),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    'VIRTUAL',
+                                    style: GoogleFonts.manrope(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w800,
+                                      color: AppTheme.primaryGreen,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _isVirtual
+                                ? 'From ${_shortFmt.format(_originalStart!)} — accumulating to ${_dateFmt.format(_currentEnd!)}'
+                                : '${p['start_date']} — ${p['end_date']}',
+                            style: GoogleFonts.manrope(
+                              fontSize: 13,
+                              color: AppTheme.slate500,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _projectTitle,
+                            style: GoogleFonts.manrope(
+                              fontSize: 13,
+                              color: AppTheme.primaryGreen,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      );
+                      final buttons = <Widget>[
+                        if (!isClosed) ...[
+                          FilledButton.icon(
+                            onPressed: _isCompleted || _isVirtual
+                                ? null
+                                : _recalculate,
+                            icon: _isCalculating
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.refresh, size: 20),
+                            label: Text(
+                              _isCalculating ? 'Calculating...' : 'Calculate',
+                            ),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppTheme.primaryGreen,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 18,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          OutlinedButton.icon(
+                            onPressed: _isCompleted ? null : _closePeriod,
+                            icon: const Icon(Icons.lock_outline, size: 20),
+                            label: const Text('Close Period'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 18,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              side: BorderSide(color: AppTheme.slate200),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(width: 12),
+                        if (_hasEntries) ...[
+                          if (_isSignoffLoading)
+                            const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppTheme.primaryGreen,
+                              ),
+                            )
+                          else ...[
+                            _exportButton(
+                              icon: Icons.fact_check_outlined,
+                              label: 'Sign-off',
+                              onTap: _exportWorkerSignoffPdf,
+                            ),
+                            const SizedBox(width: 8),
+                            _exportButton(
+                              icon: Icons.email_outlined,
+                              label: 'Email Sign-off',
+                              onTap: _emailSignoffPdf,
+                            ),
+                          ],
+                          const SizedBox(width: 8),
+                          _exportButton(
+                            icon: Icons.download,
+                            label: 'Excel',
+                            onTap: _exportExcel,
+                          ),
+                          const SizedBox(width: 8),
+                          _exportButton(
+                            icon: Icons.picture_as_pdf_outlined,
+                            label: 'PDF',
+                            onTap: _exportPdf,
+                          ),
+                          const SizedBox(width: 8),
+                          _exportButton(
+                            icon: Icons.email_outlined,
+                            label: 'Email',
+                            onTap: _emailPeriodPdf,
+                          ),
+                        ],
+                      ];
+                      if (constraints.maxWidth < 700) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            titleBlock,
+                            const SizedBox(height: 16),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 12,
+                              children: buttons,
+                            ),
+                          ],
+                        );
+                      }
+                      return Row(
+                        children: [
+                          Expanded(child: titleBlock),
+                          ...buttons,
+                        ],
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  // Date scrubber
+                  if (!_isVirtual)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        isClosed
+                            ? 'Closed period: saved totals are preserved. Entries preview currently validated work.'
+                            : 'Entries preview currently validated work. Select Calculate to update saved totals.',
+                      ),
+                    ),
+                  if (_snapshotDiff)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Text(
+                        'Saved period totals remain unchanged: regular ${_fmtHrs(_period!['total_regular_hours'] as num? ?? 0)} h, overtime ${_fmtHrs(_period!['total_overtime_hours'] as num? ?? 0)} h, cost ${_fmt(_period!['total_cost'] as num? ?? 0)}. The table and exports show the current validated-work preview.',
+                      ),
+                    ),
+                  _buildDateScrubber(),
+                ],
+              ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Title + status row + actions
-                LayoutBuilder(builder: (ctx, constraints) {
-                  final titleBlock = Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+            const SizedBox(height: 24),
+
+            // Summary row
+            LayoutBuilder(
+              builder: (ctx, constraints) {
+                final tiles = [
+                  _summaryTileInner(
+                    'Workers',
+                    '${_totalWorkers}',
+                    Icons.people_outline,
+                  ),
+                  _summaryTileInner(
+                    'Regular Hours',
+                    _fmtHrs(_totalReg.toDouble()),
+                    Icons.access_time,
+                  ),
+                  _summaryTileInner(
+                    'Overtime Hours',
+                    _fmtHrs(_totalOT.toDouble()),
+                    Icons.timer_outlined,
+                  ),
+                  _summaryTileInner(
+                    'Total Cost',
+                    _fmt(_totalCost.toDouble()),
+                    Icons.attach_money,
+                    isHighlight: true,
+                  ),
+                ];
+                if (constraints.maxWidth < 700) {
+                  final half = (constraints.maxWidth - 12) / 2;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
                     children: [
-                      Row(children: [
-                        Flexible(
-                          child: Text(
-                            _isVirtual ? 'Preview' : (p['name'] ?? ''),
-                            style: GoogleFonts.manrope(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                      for (final t in tiles) SizedBox(width: half, child: t),
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: tiles[0]),
+                    const SizedBox(width: 16),
+                    Expanded(child: tiles[1]),
+                    const SizedBox(width: 16),
+                    Expanded(child: tiles[2]),
+                    const SizedBox(width: 16),
+                    Expanded(child: tiles[3]),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 28),
+
+            // Table
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.slate200),
+              ),
+              child: MediaQuery.of(context).size.width < 768
+                  ? Column(
+                      children: [
+                        if (_isVirtual && _virtualEntries.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(32),
+                            child: Center(
+                              child: Text(
+                                'No labor logs found for this period.',
+                              ),
+                            ),
+                          )
+                        else if (!_isVirtual && _entries.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(32),
+                            child: Center(
+                              child: Text(
+                                'No labor logs found for this period.',
+                              ),
+                            ),
+                          )
+                        else ...[
+                          ...(_isVirtual ? _virtualEntries : _entries).map(
+                            (e) => _buildMobileWorkerCard(
+                              e,
+                              onTap: _isIndividualLoading
+                                  ? null
+                                  : () => _exportIndividualReport(e),
+                              onEmail: _isIndividualLoading
+                                  ? null
+                                  : () => _emailIndividualReport(e),
+                            ),
+                          ),
+                          _buildMobileTotalCard(),
+                        ],
+                      ],
+                    )
+                  : Column(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 16,
+                          ),
+                          decoration: const BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(color: Color(0xFFF1F5F9)),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              _col('WORKER', 25),
+                              _col('ROLE', 18),
+                              _col('RATE', 10),
+                              _col('REG HRS', 10),
+                              _col('OT HRS', 10),
+                              _col('TOTAL HRS', 12),
+                              _col('TOTAL COST', 15),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        if (!_isVirtual)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: _statusColor(p['status']).withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(6),
+                        if (_isVirtual && _virtualEntries.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(32),
+                            child: Center(
+                              child: Text(
+                                'No labor logs found for this period.',
+                              ),
                             ),
-                            child: Text(
-                              (p['status'] as String?)?.toUpperCase() ?? '',
-                              style: GoogleFonts.manrope(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: _statusColor(p['status']),
+                          )
+                        else if (!_isVirtual && _entries.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.all(32),
+                            child: Center(
+                              child: Text(
+                                'No labor logs found for this period.',
                               ),
                             ),
                           )
                         else
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: AppTheme.primaryGreen.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              'VIRTUAL',
-                              style: GoogleFonts.manrope(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: AppTheme.primaryGreen,
-                              ),
+                          ...(_isVirtual ? _virtualEntries : _entries).map(
+                            (e) => _buildRow(
+                              e,
+                              onTap: _isIndividualLoading
+                                  ? null
+                                  : () => _exportIndividualReport(e),
+                              onEmail: _isIndividualLoading
+                                  ? null
+                                  : () => _emailIndividualReport(e),
                             ),
                           ),
-                      ]),
-                      const SizedBox(height: 4),
-                      Text(
-                        _isVirtual
-                            ? 'From ${_shortFmt.format(_originalStart!)} — accumulating to ${_dateFmt.format(_currentEnd!)}'
-                            : '${p['start_date']} — ${p['end_date']}',
-                        style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate500),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _projectTitle,
-                        style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.primaryGreen, fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  );
-                  final buttons = <Widget>[
-                    if (!isClosed) ...[
-                      FilledButton.icon(
-                        onPressed: _isCompleted || _isVirtual ? null : _recalculate,
-                        icon: _isCalculating
-                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.refresh, size: 20),
-                        label: Text(_isCalculating ? 'Calculating...' : 'Calculate'),
-                        style: FilledButton.styleFrom(
-                          backgroundColor: AppTheme.primaryGreen,
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      OutlinedButton.icon(
-                        onPressed: _isCompleted ? null : _closePeriod,
-                        icon: const Icon(Icons.lock_outline, size: 20),
-                        label: const Text('Close Period'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          side: BorderSide(color: AppTheme.slate200),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(width: 12),
-                    if (_hasEntries) ...[
-                      if (_isSignoffLoading)
-                        const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primaryGreen))
-                      else ...[
-                        _exportButton(
-                          icon: Icons.fact_check_outlined,
-                          label: 'Sign-off',
-                          onTap: _exportWorkerSignoffPdf,
-                        ),
-                        const SizedBox(width: 8),
-                        _exportButton(
-                          icon: Icons.email_outlined,
-                          label: 'Email Sign-off',
-                          onTap: _emailSignoffPdf,
+                        // Grand total row
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 16,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border(
+                              top: BorderSide(color: AppTheme.slate200),
+                            ),
+                            color: AppTheme.slate50,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                flex: 25,
+                                child: Text(
+                                  'TOTAL',
+                                  style: GoogleFonts.manrope(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.slate900,
+                                  ),
+                                ),
+                              ),
+                              const Expanded(
+                                flex: 18,
+                                child: SizedBox.shrink(),
+                              ),
+                              const Expanded(
+                                flex: 10,
+                                child: SizedBox.shrink(),
+                              ),
+                              Expanded(
+                                flex: 10,
+                                child: Text(
+                                  _fmtHrs(_totalReg.toDouble()),
+                                  style: GoogleFonts.manrope(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.slate900,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 10,
+                                child: Text(
+                                  _fmtHrs(_totalOT.toDouble()),
+                                  style: GoogleFonts.manrope(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.slate900,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 12,
+                                child: Text(
+                                  _fmtHrs((_totalReg + _totalOT).toDouble()),
+                                  style: GoogleFonts.manrope(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.slate900,
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                flex: 15,
+                                child: Text(
+                                  _fmt(_totalCost.toDouble()),
+                                  style: GoogleFonts.manrope(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: AppTheme.primaryGreen,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ],
-                      const SizedBox(width: 8),
-                      _exportButton(
-                        icon: Icons.download,
-                        label: 'Excel',
-                        onTap: _exportExcel,
-                      ),
-                      const SizedBox(width: 8),
-                      _exportButton(
-                        icon: Icons.picture_as_pdf_outlined,
-                        label: 'PDF',
-                        onTap: _exportPdf,
-                      ),
-                      const SizedBox(width: 8),
-                      _exportButton(
-                        icon: Icons.email_outlined,
-                        label: 'Email',
-                        onTap: _emailPeriodPdf,
-                      ),
-                    ],
-                  ];
-                  if (constraints.maxWidth < 700) {
-                    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      titleBlock,
-                      const SizedBox(height: 16),
-                      Wrap(spacing: 12, runSpacing: 12, children: buttons),
-                    ]);
-                  }
-                  return Row(children: [
-                    Expanded(child: titleBlock),
-                    ...buttons,
-                  ]);
-                }),
-                const SizedBox(height: 20),
-                // Date scrubber
-                _buildDateScrubber(),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Summary row
-          LayoutBuilder(builder: (ctx, constraints) {
-            final tiles = [
-              _summaryTileInner('Workers', '${_isVirtual ? _virtualTotals['total_workers'] : p['total_workers'] ?? 0}', Icons.people_outline),
-              _summaryTileInner('Regular Hours', _fmtHrs((_isVirtual ? _virtualTotals['total_regular_hours'] : p['total_regular_hours'] ?? 0).toDouble()), Icons.access_time),
-              _summaryTileInner('Overtime Hours', _fmtHrs((_isVirtual ? _virtualTotals['total_overtime_hours'] : p['total_overtime_hours'] ?? 0).toDouble()), Icons.timer_outlined),
-              _summaryTileInner('Total Cost', _fmt((_isVirtual ? _virtualTotals['total_cost'] : p['total_cost'] ?? 0).toDouble()), Icons.attach_money, isHighlight: true),
-            ];
-            if (constraints.maxWidth < 700) {
-              final half = (constraints.maxWidth - 12) / 2;
-              return Wrap(spacing: 12, runSpacing: 12, children: [
-                for (final t in tiles) SizedBox(width: half, child: t),
-              ]);
-            }
-            return Row(children: [
-              Expanded(child: tiles[0]),
-              const SizedBox(width: 16),
-              Expanded(child: tiles[1]),
-              const SizedBox(width: 16),
-              Expanded(child: tiles[2]),
-              const SizedBox(width: 16),
-              Expanded(child: tiles[3]),
-            ]);
-          }),
-          const SizedBox(height: 28),
-
-          // Table
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppTheme.slate200),
-            ),
-            child: MediaQuery.of(context).size.width < 768
-              ? Column(
-                  children: [
-                    if (_isVirtual && _virtualEntries.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Center(child: Text('No labor logs found for this period.')),
-                      )
-                    else if (!_isVirtual && _entries.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Center(child: Text('No labor logs found for this period.')),
-                      )
-                    else ...[
-                      ...(_isVirtual ? _virtualEntries : _entries).map((e) => _buildMobileWorkerCard(e, onTap: _isIndividualLoading ? null : () => _exportIndividualReport(e), onEmail: _isIndividualLoading ? null : () => _emailIndividualReport(e))),
-                      _buildMobileTotalCard(),
-                    ],
-                  ],
-                )
-              : Column(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
-                      child: Row(
-                        children: [
-                          _col('WORKER', 25),
-                          _col('ROLE', 18),
-                          _col('RATE', 10),
-                          _col('REG HRS', 10),
-                          _col('OT HRS', 10),
-                          _col('TOTAL HRS', 12),
-                          _col('TOTAL COST', 15),
-                        ],
-                      ),
                     ),
-                    if (_isVirtual && _virtualEntries.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Center(child: Text('No labor logs found for this period.')),
-                      )
-                    else if (!_isVirtual && _entries.isEmpty)
-                      const Padding(
-                        padding: EdgeInsets.all(32),
-                        child: Center(child: Text('No labor logs found for this period.')),
-                      )
-                    else
-                      ...(_isVirtual ? _virtualEntries : _entries).map((e) => _buildRow(e, onTap: _isIndividualLoading ? null : () => _exportIndividualReport(e), onEmail: _isIndividualLoading ? null : () => _emailIndividualReport(e))),
-                    // Grand total row
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                      decoration: BoxDecoration(
-                        border: Border(top: BorderSide(color: AppTheme.slate200)),
-                        color: AppTheme.slate50,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(flex: 25, child: Text(
-                            'TOTAL',
-                            style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-                          )),
-                          const Expanded(flex: 18, child: SizedBox.shrink()),
-                          const Expanded(flex: 10, child: SizedBox.shrink()),
-                          Expanded(flex: 10, child: Text(
-                            _fmtHrs((_isVirtual ? _virtualTotals['total_regular_hours'] : _period?['total_regular_hours'] ?? 0).toDouble()),
-                            style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-                          )),
-                          Expanded(flex: 10, child: Text(
-                            _fmtHrs((_isVirtual ? _virtualTotals['total_overtime_hours'] : _period?['total_overtime_hours'] ?? 0).toDouble()),
-                            style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-                          )),
-                          Expanded(flex: 12, child: Text(
-                            _fmtHrs(((_isVirtual ? _virtualTotals['total_regular_hours'] : _period?['total_regular_hours'] ?? 0) + (_isVirtual ? _virtualTotals['total_overtime_hours'] : _period?['total_overtime_hours'] ?? 0)).toDouble()),
-                            style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900),
-                          )),
-                          Expanded(flex: 15, child: Text(
-                            _fmt((_isVirtual ? _virtualTotals['total_cost'] : _period?['total_cost'] ?? 0).toDouble()),
-                            style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen),
-                          )),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-          ),
-        ],
-      ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Widget _summaryTileInner(String label, String value, IconData icon, {bool isHighlight = false}) {
+  Widget _summaryTileInner(
+    String label,
+    String value,
+    IconData icon, {
+    bool isHighlight = false,
+  }) {
     return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: isHighlight ? AppTheme.primaryGreen.withOpacity(0.05) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isHighlight ? AppTheme.primaryGreen.withOpacity(0.2) : AppTheme.slate200),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isHighlight
+            ? AppTheme.primaryGreen.withOpacity(0.05)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isHighlight
+              ? AppTheme.primaryGreen.withOpacity(0.2)
+              : AppTheme.slate200,
         ),
-        child: Row(children: [
+      ),
+      child: Row(
+        children: [
           Container(
-            width: 40, height: 40,
+            width: 40,
+            height: 40,
             decoration: BoxDecoration(
-              color: isHighlight ? AppTheme.primaryGreen.withOpacity(0.1) : AppTheme.slate50,
+              color: isHighlight
+                  ? AppTheme.primaryGreen.withOpacity(0.1)
+                  : AppTheme.slate50,
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(icon, color: isHighlight ? AppTheme.primaryGreen : AppTheme.slate500, size: 20),
+            child: Icon(
+              icon,
+              color: isHighlight ? AppTheme.primaryGreen : AppTheme.slate500,
+              size: 20,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: GoogleFonts.manrope(fontSize: 11, color: AppTheme.slate500, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(
+                  label,
+                  style: GoogleFonts.manrope(
+                    fontSize: 11,
+                    color: AppTheme.slate500,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 const SizedBox(height: 2),
-                Text(value, style: GoogleFonts.manrope(fontSize: 18, fontWeight: FontWeight.w800, color: isHighlight ? AppTheme.primaryGreen : AppTheme.slate900), maxLines: 1, overflow: TextOverflow.ellipsis),
+                Text(
+                  value,
+                  style: GoogleFonts.manrope(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: isHighlight
+                        ? AppTheme.primaryGreen
+                        : AppTheme.slate900,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),
-        ]),
-      );
+        ],
+      ),
+    );
   }
 
   Widget _col(String title, int flex) {
@@ -1081,12 +1454,21 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
       flex: flex,
       child: Text(
         title,
-        style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w800, letterSpacing: 0.5, color: AppTheme.slate500),
+        style: GoogleFonts.manrope(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.5,
+          color: AppTheme.slate500,
+        ),
       ),
     );
   }
 
-  Widget _buildMobileWorkerCard(Map<String, dynamic> e, {VoidCallback? onTap, VoidCallback? onEmail}) {
+  Widget _buildMobileWorkerCard(
+    Map<String, dynamic> e, {
+    VoidCallback? onTap,
+    VoidCallback? onEmail,
+  }) {
     final reg = (e['regular_hours'] ?? 0).toDouble();
     final ot = (e['overtime_hours'] ?? 0).toDouble();
     final rate = (e['hourly_rate'] ?? 0).toDouble();
@@ -1094,48 +1476,79 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
 
     final card = Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(children: [
-            Expanded(
-              child: Text(
-                e['full_name'] ?? 'N/A',
-                style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate900),
-                overflow: TextOverflow.ellipsis,
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  e['full_name'] ?? 'N/A',
+                  style: GoogleFonts.manrope(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.slate900,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-            ),
-            const SizedBox(width: 8),
-            Text(_fmt(totalCost), style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
-            if (onEmail != null) ...[
-              const SizedBox(width: 4),
-              IconButton(
-                tooltip: 'Email individual report',
-                onPressed: onEmail,
-                icon: const Icon(Icons.email_outlined, size: 18, color: AppTheme.primaryGreen),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
+              const SizedBox(width: 8),
+              Text(
+                _fmt(totalCost),
+                style: GoogleFonts.manrope(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.primaryGreen,
+                ),
               ),
+              if (onEmail != null) ...[
+                const SizedBox(width: 4),
+                IconButton(
+                  tooltip: 'Email individual report',
+                  onPressed: onEmail,
+                  icon: const Icon(
+                    Icons.email_outlined,
+                    size: 18,
+                    color: AppTheme.primaryGreen,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
             ],
-          ]),
+          ),
           const SizedBox(height: 4),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(color: AppTheme.slate50, borderRadius: BorderRadius.circular(4)),
+            decoration: BoxDecoration(
+              color: AppTheme.slate50,
+              borderRadius: BorderRadius.circular(4),
+            ),
             child: Text(
               (e['role_name'] ?? '').toUpperCase(),
-              style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate600, letterSpacing: 0.3),
+              style: GoogleFonts.manrope(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.slate600,
+                letterSpacing: 0.3,
+              ),
               overflow: TextOverflow.ellipsis,
             ),
           ),
           const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 6, children: [
-            _mobileStatChip('Rate', _fmt(rate)),
-            _mobileStatChip('Reg', '${_fmtHrs(reg)}h'),
-            _mobileStatChip('OT', '${_fmtHrs(ot)}h'),
-            _mobileStatChip('Total', '${_fmtHrs(reg + ot)}h'),
-          ]),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              _mobileStatChip('Rate', _fmt(rate)),
+              _mobileStatChip('Reg', '${_fmtHrs(reg)}h'),
+              _mobileStatChip('OT', '${_fmtHrs(ot)}h'),
+              _mobileStatChip('Total', '${_fmtHrs(reg + ot)}h'),
+            ],
+          ),
         ],
       ),
     );
@@ -1147,40 +1560,78 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
   }
 
   Widget _buildMobileTotalCard() {
-    final reg = (_isVirtual ? _virtualTotals['total_regular_hours'] : _period?['total_regular_hours'] ?? 0).toDouble();
-    final ot = (_isVirtual ? _virtualTotals['total_overtime_hours'] : _period?['total_overtime_hours'] ?? 0).toDouble();
-    final cost = (_isVirtual ? _virtualTotals['total_cost'] : _period?['total_cost'] ?? 0).toDouble();
+    final reg = _totalReg.toDouble();
+    final ot = _totalOT.toDouble();
+    final cost = _totalCost.toDouble();
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(color: AppTheme.slate50, border: const Border(top: BorderSide(color: AppTheme.slate200))),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Text('TOTAL', style: GoogleFonts.manrope(fontSize: 13, fontWeight: FontWeight.w800, color: AppTheme.slate900)),
-          const Spacer(),
-          Text(_fmt(cost), style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen)),
-        ]),
-        const SizedBox(height: 6),
-        Wrap(spacing: 8, runSpacing: 6, children: [
-          _mobileStatChip('Reg', '${_fmtHrs(reg)}h'),
-          _mobileStatChip('OT', '${_fmtHrs(ot)}h'),
-          _mobileStatChip('Total', '${_fmtHrs(reg + ot)}h'),
-        ]),
-      ]),
+      decoration: BoxDecoration(
+        color: AppTheme.slate50,
+        border: const Border(top: BorderSide(color: AppTheme.slate200)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                'TOTAL',
+                style: GoogleFonts.manrope(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.slate900,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _fmt(cost),
+                style: GoogleFonts.manrope(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.primaryGreen,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              _mobileStatChip('Reg', '${_fmtHrs(reg)}h'),
+              _mobileStatChip('OT', '${_fmtHrs(ot)}h'),
+              _mobileStatChip('Total', '${_fmtHrs(reg + ot)}h'),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
   Widget _mobileStatChip(String label, String value) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: AppTheme.slate50, borderRadius: BorderRadius.circular(4), border: Border.all(color: AppTheme.slate200)),
+      decoration: BoxDecoration(
+        color: AppTheme.slate50,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: AppTheme.slate200),
+      ),
       child: Text(
         '$label $value',
-        style: GoogleFonts.manrope(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.slate700),
+        style: GoogleFonts.manrope(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: AppTheme.slate700,
+        ),
       ),
     );
   }
 
-  Widget _buildRow(Map<String, dynamic> e, {VoidCallback? onTap, VoidCallback? onEmail}) {
+  Widget _buildRow(
+    Map<String, dynamic> e, {
+    VoidCallback? onTap,
+    VoidCallback? onEmail,
+  }) {
     final reg = (e['regular_hours'] ?? 0).toDouble();
     final ot = (e['overtime_hours'] ?? 0).toDouble();
     final rate = (e['hourly_rate'] ?? 0).toDouble();
@@ -1188,42 +1639,80 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
 
     final row = Row(
       children: [
-        Expanded(flex: 25, child: Text(
-          e['full_name'] ?? 'N/A',
-          style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.slate900),
-        )),
-        Expanded(flex: 18, child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-          decoration: BoxDecoration(
-            color: AppTheme.slate50,
-            borderRadius: BorderRadius.circular(4),
-          ),
+        Expanded(
+          flex: 25,
           child: Text(
-            (e['role_name'] ?? '').toUpperCase(),
-            style: GoogleFonts.manrope(fontSize: 10, fontWeight: FontWeight.w700, color: AppTheme.slate600, letterSpacing: 0.3),
-            overflow: TextOverflow.ellipsis,
+            e['full_name'] ?? 'N/A',
+            style: GoogleFonts.manrope(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.slate900,
+            ),
           ),
-        )),
-        Expanded(flex: 10, child: Text(
-          _fmt(rate),
-          style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700),
-        )),
-        Expanded(flex: 10, child: Text(
-          _fmtHrs(reg),
-          style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700),
-        )),
-        Expanded(flex: 10, child: Text(
-          _fmtHrs(ot),
-          style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700),
-        )),
-        Expanded(flex: 12, child: Text(
-          _fmtHrs(reg + ot),
-          style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w700, color: AppTheme.slate900),
-        )),
-        Expanded(flex: 15, child: Text(
-          _fmt(totalCost),
-          style: GoogleFonts.manrope(fontSize: 14, fontWeight: FontWeight.w800, color: AppTheme.primaryGreen),
-        )),
+        ),
+        Expanded(
+          flex: 18,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: AppTheme.slate50,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              (e['role_name'] ?? '').toUpperCase(),
+              style: GoogleFonts.manrope(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.slate600,
+                letterSpacing: 0.3,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+        Expanded(
+          flex: 10,
+          child: Text(
+            _fmt(rate),
+            style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700),
+          ),
+        ),
+        Expanded(
+          flex: 10,
+          child: Text(
+            _fmtHrs(reg),
+            style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700),
+          ),
+        ),
+        Expanded(
+          flex: 10,
+          child: Text(
+            _fmtHrs(ot),
+            style: GoogleFonts.manrope(fontSize: 13, color: AppTheme.slate700),
+          ),
+        ),
+        Expanded(
+          flex: 12,
+          child: Text(
+            _fmtHrs(reg + ot),
+            style: GoogleFonts.manrope(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.slate900,
+            ),
+          ),
+        ),
+        Expanded(
+          flex: 15,
+          child: Text(
+            _fmt(totalCost),
+            style: GoogleFonts.manrope(
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.primaryGreen,
+            ),
+          ),
+        ),
         SizedBox(
           width: 32,
           child: onEmail == null
@@ -1231,7 +1720,11 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
               : IconButton(
                   tooltip: 'Email individual report',
                   onPressed: onEmail,
-                  icon: const Icon(Icons.email_outlined, size: 18, color: AppTheme.primaryGreen),
+                  icon: const Icon(
+                    Icons.email_outlined,
+                    size: 18,
+                    color: AppTheme.primaryGreen,
+                  ),
                   padding: EdgeInsets.zero,
                   constraints: const BoxConstraints(),
                 ),
@@ -1246,23 +1739,28 @@ class _PayrollPeriodPageState extends ConsumerState<PayrollPeriodPage> {
 
     if (onTap == null) {
       return Container(
-        decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+        ),
         child: content,
       );
     }
     return Container(
-      decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9)))),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: Color(0xFFF1F5F9))),
+      ),
       child: MouseRegion(
         cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: onTap,
-          child: content,
-        ),
+        child: GestureDetector(onTap: onTap, child: content),
       ),
     );
   }
 
-  Widget _exportButton({required IconData icon, required String label, required VoidCallback onTap}) {
+  Widget _exportButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
