@@ -219,7 +219,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
           final machRentals = await supabase
               .from('machinery_inspections')
               .select('project_machinery_id')
-              .is_('returned_at', null)
+              .isFilter('returned_at', null)
               .eq('ownership_type', 'rented');
           for (final r in (machRentals as List? ?? [])) {
             final pmId = r['project_machinery_id'] as String?;
@@ -230,7 +230,7 @@ class _ReceptionPageState extends State<ReceptionPage> with TickerProviderStateM
           final instrRentals = await supabase
               .from('instrument_inspections')
               .select('project_instrument_id')
-              .is_('returned_at', null);
+              .isFilter('returned_at', null);
           for (final r in (instrRentals as List? ?? [])) {
             final piId = r['project_instrument_id'] as String?;
             if (piId != null) instrCounts[piId] = (instrCounts[piId] ?? 0) + 1;

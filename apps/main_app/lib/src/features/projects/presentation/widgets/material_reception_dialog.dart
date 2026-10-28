@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:noel_app/src/shared/utils/image_selection.dart';
 
 class MaterialReceptionDialog extends StatefulWidget {
   final String projectId;
@@ -40,7 +40,7 @@ class _MaterialReceptionDialogState extends State<MaterialReceptionDialog> {
   final _notesController = TextEditingController();
 
   String _selectedCondition = 'good';
-  final List<PlatformFile> _selectedFiles = [];
+  final List<SelectedImage> _selectedFiles = [];
   final List<String> _existingPhotos = [];
   DateTime _receptionDate = DateTime.now();
   bool _isLoading = false;
@@ -121,13 +121,9 @@ class _MaterialReceptionDialogState extends State<MaterialReceptionDialog> {
 
   Future<void> _pickFiles() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: true,
-        withData: true,
-      );
-      if (result != null) {
-        setState(() => _selectedFiles.addAll(result.files));
+      final result = await pickImages(multiple: true);
+      if (result.isNotEmpty) {
+        setState(() => _selectedFiles.addAll(result));
       }
     } catch (e) {
       if (mounted) {
@@ -183,14 +179,14 @@ class _MaterialReceptionDialogState extends State<MaterialReceptionDialog> {
       // 1. Upload Photos
       final List<String> photoUrls = List.from(_existingPhotos);
       for (final file in _selectedFiles) {
-        if (file.bytes == null) continue;
+
         
         final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name.replaceAll(' ', '_')}';
         final filePath = '${widget.projectId}/${widget.projectMaterialId}/$fileName';
 
         await supabase.storage.from('machinery_evidence').uploadBinary(
           filePath,
-          file.bytes!,
+          file.bytes,
           fileOptions: FileOptions(contentType: 'image/${file.extension ?? 'jpeg'}'),
         );
 

@@ -10,7 +10,6 @@ import 'package:intl/intl.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import 'package:file_picker/file_picker.dart';
-import 'dart:io';
 import 'dart:typed_data';
 import '../providers/billing_controller.dart';
 import '../utils/invoice_pdf_generator.dart';
@@ -90,7 +89,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
         final links = await Supabase.instance.client
             .from('invoice_change_order_links')
             .select('change_order_id')
-            .eq('invoice_id', widget.invoiceId);
+            .eq('invoice_id', widget.invoiceId!);
         _linkedCoIds.clear();
         _linkedCoIds.addAll(links.map<String>((l) => l['change_order_id'].toString()));
 
@@ -101,7 +100,7 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
             final coTypes = await Supabase.instance.client
                 .from('change_orders')
                 .select('co_number, co_type')
-                .in_('id', _linkedCoIds.toList());
+                .inFilter('id', _linkedCoIds.toList());
             for (final ct in coTypes ?? []) {
               final num = ct['co_number']?.toString();
               final type = ct['co_type']?.toString();
@@ -783,15 +782,14 @@ class _BillingMatrixPageState extends ConsumerState<BillingMatrixPage> {
     final bytes = InvoiceExcelGenerator.generate(
         invoice: _invoice!, lines: _lines, machineryDeductions: allDeductions);
 
-    final path = await FilePicker.platform.saveFile(
+    final path = await FilePicker.saveFile(
       dialogTitle: 'Save Pay Application Excel',
       fileName: 'PayApp_${_invoice?['invoice_number'] ?? 'export'}.xlsx',
-      type: FileType.custom,
-      allowedExtensions: ['xlsx'],
+      bytes: Uint8List.fromList(bytes),
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
 
     if (path != null) {
-      await File(path).writeAsBytes(bytes);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Saved to $path', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.primaryGreen),

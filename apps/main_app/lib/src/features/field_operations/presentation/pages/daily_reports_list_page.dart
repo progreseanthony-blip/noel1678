@@ -47,7 +47,7 @@ class _DailyReportsListPageState extends ConsumerState<DailyReportsListPage> {
         final sections = await Supabase.instance.client
             .from('daily_report_sections')
             .select('daily_report_id,status')
-            .in_(
+            .inFilter(
               'daily_report_id',
               reports.map((r) => r['id'] as String).toList(),
             );

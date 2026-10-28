@@ -5,7 +5,7 @@ import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_data/noel_data.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:noel_app/src/shared/utils/image_selection.dart';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/top_header.dart';
 import '../../../../shared/widgets/completed_project_banner.dart';
@@ -141,15 +141,10 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
 
   Future<void> _addEvidence() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: true,
-        withData: true,
-      );
+      final result = await pickImages(multiple: true);
 
-      if (result != null && result.files.isNotEmpty) {
-        for (final file in result.files) {
-          if (file.bytes != null) {
+      if (result.isNotEmpty) {
+        for (final file in result) {
             setState(() {
               _pendingEvidenceFiles.add({
                 'bytes': file.bytes,
@@ -157,7 +152,6 @@ class _InspectionFormPageState extends State<InspectionFormPage> {
                 'description': file.name,
               });
             });
-          }
         }
       }
     } catch (e) {

@@ -66,22 +66,22 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
           .select('*, quote_services(name)')
           .eq('project_id', widget.projectId)
           .eq('is_unplanned', true)
-          .is_('project_service_id', null);
+          .isFilter('project_service_id', null);
       final laborResult = await supabase.from('project_labor')
           .select('*, quote_services(name)')
           .eq('project_id', widget.projectId)
           .eq('is_unplanned', true)
-          .is_('project_service_id', null);
+          .isFilter('project_service_id', null);
       final matResult = await supabase.from('project_materials')
           .select('*, quote_services(name)')
           .eq('project_id', widget.projectId)
           .eq('is_unplanned', true)
-          .is_('project_service_id', null);
+          .isFilter('project_service_id', null);
       final instResult = await supabase.from('project_instruments')
           .select('*, quote_services(name)')
           .eq('project_id', widget.projectId)
           .eq('is_unplanned', true)
-          .is_('project_service_id', null);
+          .isFilter('project_service_id', null);
 
       double original = (pResult['quotes']?['total_amount'] as num?)?.toDouble() ?? 0.0;
       double deviation = 0.0;
@@ -281,7 +281,7 @@ class _ProjectBaselinePageState extends State<ProjectBaselinePage> {
           .eq('project_id', widget.projectId)
           .eq('quote_service_id', serviceId)
           .eq('is_unplanned', true)
-          .is_('project_service_id', null)
+          .isFilter('project_service_id', null)
           .order('created_at', ascending: true);
 
       double otherUnplannedProdSum = 0;

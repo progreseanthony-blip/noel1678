@@ -119,11 +119,11 @@ class _InstrumentSchedulingDialogState extends State<InstrumentSchedulingDialog>
             _batchEndDate = DateTime.tryParse(estEndStr);
           }
         }
-        if (_batchStartDate == null) {
+        if (_batchStartDate == null && _quoteServiceId != null) {
         final laborAssign = await supabase
             .from('project_labor_assignments')
             .select('start_date, end_date')
-            .eq('project_labor.quote_service_id', _quoteServiceId)
+            .eq('project_labor.quote_service_id', _quoteServiceId!)
             .limit(1)
             .maybeSingle();
         

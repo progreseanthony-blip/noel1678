@@ -87,7 +87,7 @@ class BaselineService {
       await _supabase.from(table).update({
         'baseline_snapshot_id': snapshotId,
         'change_type': 'planning',
-      }).eq('project_id', projectId).is_('baseline_snapshot_id', null);
+      }).eq('project_id', projectId).isFilter('baseline_snapshot_id', null);
     }
   }
 

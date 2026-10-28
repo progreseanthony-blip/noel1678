@@ -3124,7 +3124,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
       final rawDisruptions = await supabase
           .from('change_order_disruptions')
           .select('id, start_date, end_date, disruption_type, change_order_id')
-          .in_('change_order_id', approvedCOIds);
+          .inFilter('change_order_id', approvedCOIds);
 
       debugPrint('[_loadDisruptions] disruption rows=${rawDisruptions?.length ?? 0}');
       if (rawDisruptions == null) return;
@@ -3147,7 +3147,7 @@ class _FullscreenTimelineDialogState extends State<_FullscreenTimelineDialog> {
         final rawLinks = await supabase
             .from('change_order_disruption_services')
             .select('change_order_id, project_tasks(quote_service_id, project_service_id)')
-            .in_('change_order_id', approvedCOIds);
+            .inFilter('change_order_id', approvedCOIds);
         final links = List<Map<String, dynamic>>.from(rawLinks ?? []);
         final map = <String, Set<String>>{};
         for (final link in links) {

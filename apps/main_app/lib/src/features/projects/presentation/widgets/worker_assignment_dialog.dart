@@ -197,7 +197,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
       final assignmentsResult = await supabase
           .from('project_labor_assignments')
           .select('worker_id, start_date, end_date, project_labor_id')
-          .in_('project_labor_id', _siblingIds);
+          .inFilter('project_labor_id', _siblingIds);
 
       final Map<String, Map<String, String>> workerDatesMap = {};
       final Set<String> assignedIds = {};
@@ -487,7 +487,7 @@ class _WorkerAssignmentDialogState extends State<WorkerAssignmentDialog> {
         await supabase
             .from('project_labor_assignments')
             .delete()
-            .in_('project_labor_id', _siblingIds)
+            .inFilter('project_labor_id', _siblingIds)
             .eq('worker_id', workerId);
         setState(() {
           _assignedWorkerIds.remove(workerId);

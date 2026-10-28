@@ -98,7 +98,7 @@ class IncidentsService {
     final response = await _supabase
         .from('incidents')
         .select('*, incident_categories(name, icon, color), projects(title), reported_by_profile:profiles!incidents_reported_by_fkey(name)')
-        .in_('status', ['open', 'in_progress'])
+        .inFilter('status', ['open', 'in_progress'])
         .order('priority', ascending: false)
         .order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(response ?? []);

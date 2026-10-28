@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:noel_app/src/shared/utils/image_selection.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
@@ -37,7 +37,7 @@ class _MachineryReceptionDialogState extends State<MachineryReceptionDialog> {
   String _selectedOwnership = 'owned';
   String _odometerUnit = 'hours'; // 'hours' or 'miles'
   DateTime _receptionDate = DateTime.now();
-  final List<PlatformFile> _selectedFiles = [];
+  final List<SelectedImage> _selectedFiles = [];
   final List<String> _existingPhotos = [];
   bool _isLoading = false;
   bool _isSaving = false;
@@ -112,13 +112,9 @@ class _MachineryReceptionDialogState extends State<MachineryReceptionDialog> {
 
   Future<void> _pickFiles() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: true,
-        withData: true,
-      );
-      if (result != null) {
-        setState(() => _selectedFiles.addAll(result.files));
+      final result = await pickImages(multiple: true);
+      if (result.isNotEmpty) {
+        setState(() => _selectedFiles.addAll(result));
       }
     } catch (e) {
       if (mounted) {
@@ -159,7 +155,7 @@ class _MachineryReceptionDialogState extends State<MachineryReceptionDialog> {
           .from('machinery_inspections')
           .select('id, brand_model, project_machinery(project_id, projects(title))')
           .eq('internal_code', _serialController.text.trim())
-          .is_('returned_at', null);
+          .isFilter('returned_at', null);
       final filteredQuery = hasInspectionId
           ? baseQuery.neq('id', inspectionId!)
           : baseQuery;
@@ -222,12 +218,12 @@ class _MachineryReceptionDialogState extends State<MachineryReceptionDialog> {
       // Upload Photos
       final List<String> photoUrls = List.from(_existingPhotos);
       for (final file in _selectedFiles) {
-        if (file.bytes == null) continue;
+
         final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name.replaceAll(' ', '_')}';
         final filePath = '${widget.projectId}/${widget.projectMachineryId}/$fileName';
         await supabase.storage.from('machinery_evidence').uploadBinary(
           filePath,
-          file.bytes!,
+          file.bytes,
           fileOptions: FileOptions(contentType: 'image/${file.extension ?? 'jpeg'}'),
         );
         final publicUrl = supabase.storage.from('machinery_evidence').getPublicUrl(filePath);

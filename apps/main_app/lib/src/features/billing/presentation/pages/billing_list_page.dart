@@ -12,7 +12,6 @@ import '../providers/billing_providers.dart';
 import '../utils/invoice_pdf_generator.dart';
 import '../utils/invoice_excel_generator.dart';
 import 'package:file_picker/file_picker.dart';
-import 'dart:io';
 import 'dart:typed_data';
 import '../../../../shared/widgets/sidebar.dart';
 import '../../../../shared/widgets/send_email_dialog.dart';
@@ -131,15 +130,14 @@ class _BillingListPageState extends ConsumerState<BillingListPage> {
     final details = (invoice['details'] as List<dynamic>?)?.cast<Map<String, dynamic>>() ?? [];
     final bytes = InvoiceExcelGenerator.generate(invoice: invoice, lines: details);
 
-    final path = await FilePicker.platform.saveFile(
+    final path = await FilePicker.saveFile(
       dialogTitle: 'Save Pay Application Excel',
       fileName: 'PayApp_${invoice['invoice_number'] ?? 'export'}.xlsx',
-      type: FileType.custom,
-      allowedExtensions: ['xlsx'],
+      bytes: Uint8List.fromList(bytes),
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     );
 
     if (path != null) {
-      await File(path).writeAsBytes(bytes);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Saved to $path', style: GoogleFonts.manrope(color: Colors.white)), backgroundColor: AppTheme.primaryGreen),

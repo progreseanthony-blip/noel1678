@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:noel_app/src/shared/utils/image_selection.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -1719,14 +1719,10 @@ class _StepMachineryState extends State<StepMachinery> {
   Future<void> _pickAndUploadPhoto(int index, String shiftKey) async {
     widget.onUploadStateChanged?.call(true);
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: false,
-        withData: true,
-      );
-      if (result == null || result.files.isEmpty) return;
-      final file = result.files.first;
-      if (file.bytes == null) return;
+      final result = await pickImages();
+      if (result.isEmpty) return;
+      final file = result.first;
+
 
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final ext = file.extension ?? 'jpg';
@@ -1737,7 +1733,7 @@ class _StepMachineryState extends State<StepMachinery> {
           .from('machinery_evidence')
           .uploadBinary(
             filePath,
-            file.bytes!,
+            file.bytes,
             fileOptions: FileOptions(contentType: 'image/$ext'),
           );
 

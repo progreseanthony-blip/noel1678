@@ -10,7 +10,7 @@ class ProjectBalanceHelper {
       daily_reports!inner(status),
       project_materials!inner(project_id)
     ''').eq('project_materials.project_id', projectId)
-        .in_('daily_reports.status', ['submitted', 'approved']);
+        .inFilter('daily_reports.status', ['submitted', 'approved']);
 
     final map = <String, double>{};
     for (final row in result ?? []) {
@@ -38,7 +38,7 @@ class ProjectBalanceHelper {
         machine_id, capacity_per_trip, trips_per_day, performance_per_day,
         machinery!inner(description)
       )
-    ''').in_('quote_service_id', ids);
+    ''').inFilter('quote_service_id', ids);
 
     final map = <String, Map<String, Map<String, dynamic>>>{};
     for (final row in result ?? []) {
@@ -74,7 +74,7 @@ class ProjectBalanceHelper {
       daily_reports!inner(status),
       project_machinery!inner(project_id)
     ''').eq('project_machinery.project_id', projectId)
-        .in_('daily_reports.status', ['submitted', 'approved']);
+        .inFilter('daily_reports.status', ['submitted', 'approved']);
 
     final map = <String, double>{};
     for (final row in result ?? []) {
@@ -98,7 +98,7 @@ class ProjectBalanceHelper {
       daily_reports!inner(status),
       project_machinery!inner(project_id)
     ''').eq('project_machinery.project_id', projectId)
-        .in_('daily_reports.status', ['submitted', 'approved'])
+        .inFilter('daily_reports.status', ['submitted', 'approved'])
         .order('id');
 
     final map = <String, List<double>>{};

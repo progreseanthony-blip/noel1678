@@ -1,4 +1,4 @@
-import 'package:file_picker/file_picker.dart';
+import 'package:noel_app/src/shared/utils/image_selection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -175,21 +175,18 @@ class _IncidentFormPageState extends ConsumerState<IncidentFormPage> {
   }
 
   Future<void> _pickPhotos() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      allowMultiple: true,
-    );
-    if (result == null || result.files.isEmpty) return;
+    final result = await pickImages(multiple: true);
+    if (result.isEmpty) return;
 
     setState(() => _isUploading = true);
     try {
-      for (final file in result.files) {
-        if (file.bytes == null) continue;
+      for (final file in result) {
+
         final ext = file.extension ?? 'jpg';
         final path = '${widget.projectId}/${_uuid.v4()}.$ext';
         await Supabase.instance.client.storage
             .from('incident-photos')
-            .uploadBinary(path, file.bytes!);
+            .uploadBinary(path, file.bytes);
         final url = Supabase.instance.client.storage
             .from('incident-photos')
             .getPublicUrl(path);

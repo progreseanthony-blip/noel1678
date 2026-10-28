@@ -170,7 +170,7 @@ class DailyReportService {
   ];
 
   Future<void> saveLaborLogs(String reportId, List<Map<String, dynamic>> logs) async {
-    await _supabase.from('report_labor_logs').delete().eq('daily_report_id', reportId).is_('crew_report_id', null);
+    await _supabase.from('report_labor_logs').delete().eq('daily_report_id', reportId).isFilter('crew_report_id', null);
     logs = logs.where((log) => log['crew_report_id'] == null).toList();
     if (logs.isEmpty) return;
     await _supabase.from('report_labor_logs').insert(
@@ -207,7 +207,7 @@ class DailyReportService {
     if (nonStandby.any((l) => l['operator_id'] == null || l['machinery_id'] == null)) {
       throw Exception('All non-standby machinery logs must have operator_id and machinery_id');
     }
-    await _supabase.from('report_machinery_logs').delete().eq('daily_report_id', reportId).is_('crew_report_id', null);
+    await _supabase.from('report_machinery_logs').delete().eq('daily_report_id', reportId).isFilter('crew_report_id', null);
     logs = logs.where((log) => log['crew_report_id'] == null).toList();
     if (logs.isEmpty) return;
     await _supabase.from('report_machinery_logs').insert(
@@ -239,7 +239,7 @@ class DailyReportService {
   ];
 
   Future<void> saveMaterialUsage(String reportId, List<Map<String, dynamic>> usage) async {
-    await _supabase.from('report_material_usage').delete().eq('daily_report_id', reportId).is_('crew_report_id', null);
+    await _supabase.from('report_material_usage').delete().eq('daily_report_id', reportId).isFilter('crew_report_id', null);
     usage = usage.where((log) => log['crew_report_id'] == null).toList();
     if (usage.isEmpty) return;
     await _supabase.from('report_material_usage').insert(
@@ -338,7 +338,7 @@ class DailyReportService {
     final labor = await _supabase
         .from('project_labor')
         .select('quote_service_id')
-        .in_('id', laborIds);
+        .inFilter('id', laborIds);
     final qsIds = (labor as List)
         .map((l) => l['quote_service_id'] as String?)
         .where((id) => id != null)
@@ -348,7 +348,7 @@ class DailyReportService {
     final tasks = await _supabase
         .from('project_tasks')
         .select('id')
-        .in_('quote_service_id', qsIds);
+        .inFilter('quote_service_id', qsIds);
     final taskIds = (tasks as List)
         .map((t) => t['id'] as String?)
         .where((id) => id != null)
@@ -362,7 +362,7 @@ class DailyReportService {
           project_tasks!inner(id, name),
           change_orders!inner(id, co_number, title, status)
         ''')
-        .in_('project_task_id', taskIds)
+        .inFilter('project_task_id', taskIds)
         .eq('affectation_type', 'total_stop')
         .eq('change_orders.status', 'approved');
     return List<Map<String, dynamic>>.from(response ?? []);
@@ -398,10 +398,10 @@ class DailyReportService {
           project_tasks!inner(id, name, quote_service_id),
           change_orders!inner(id, co_number, title, status, co_type)
         ''')
-        .in_('change_order_id', disruptionIds.toList())
+        .inFilter('change_order_id', disruptionIds.toList())
         .eq('change_orders.co_type', 'disruption')
         .eq('change_orders.project_id', projectId)
-        .in_('change_orders.status', ['approved', 'submitted']);
+        .inFilter('change_orders.status', ['approved', 'submitted']);
 
     final result = <String, dynamic>{};
     for (final row in rows ?? []) {

@@ -19,7 +19,8 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+3
 
 environment:
-  sdk: ^3.10.4
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -30,6 +31,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  app_links: ^7.2.2
+  sign_in_with_apple: ^8.2.0
   cupertino_icons: ^1.0.8
   noel_core:
     path: ../../packages/core
@@ -40,12 +43,12 @@ dependencies:
   go_router: ^12.0.0
   flutter_riverpod: ^2.3.6
   intl: ^0.20.2
-  file_picker: ^8.0.7
+  file_picker: ^13.3.0
   uuid: ^4.5.1
   google_fonts: ^6.1.0
   mask_text_input_formatter: ^2.5.0
   pdf: ^3.12.0
-  printing: ^5.13.1
+  printing: ^5.14.3
   excel: ^4.0.6
   # flutter_dotenv: ^5.1.0
 
@@ -65,10 +68,6 @@ dependency_overrides:
   riverpod_annotation: 2.6.1
   flutter_riverpod: 2.6.1
   build_runner: 2.4.14
-  # supabase_flutter v1 arrastra sign_in_with_apple 5.0.0, cuyo codigo
-  # nativo usa el embedding v1 eliminado de Flutter y rompe el build
-  # Android. No se usa en codigo Dart; se fuerza version compatible.
-  sign_in_with_apple: ^7.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

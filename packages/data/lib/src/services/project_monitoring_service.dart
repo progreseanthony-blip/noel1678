@@ -80,7 +80,7 @@ class ProjectMonitoringService {
           workers!operator_id!inner(role_id, labor_roles!inner(hourly_rate))
         ''')
         .eq('project_machinery.project_id', projectId)
-        .in_('daily_reports.status', ['submitted', 'approved']);
+        .inFilter('daily_reports.status', ['submitted', 'approved']);
     final machList = List<Map<String, dynamic>>.from(machLogs ?? []);
 
     final laborLogs = await _supabase
@@ -92,7 +92,7 @@ class ProjectMonitoringService {
           workers!worker_id!inner(role_id, labor_roles!inner(hourly_rate))
         ''')
         .eq('project_labor.project_id', projectId)
-        .in_('daily_reports.status', ['submitted', 'approved']);
+        .inFilter('daily_reports.status', ['submitted', 'approved']);
     final laborList = List<Map<String, dynamic>>.from(laborLogs ?? []);
 
     final Map<String, double> prodByService = {};
@@ -163,7 +163,7 @@ class ProjectMonitoringService {
         .from('report_material_usage')
         .select('quantity_used, project_materials!inner(quote_service_id, project_id), daily_reports!inner(status)')
         .eq('project_materials.project_id', projectId)
-        .in_('daily_reports.status', ['submitted', 'approved']);
+        .inFilter('daily_reports.status', ['submitted', 'approved']);
     final matList = List<Map<String, dynamic>>.from(matLogs ?? []);
 
     // Material unit prices from quote_service_materials
@@ -197,7 +197,7 @@ class ProjectMonitoringService {
     final instrRows = await _supabase
         .from('quote_service_instruments')
         .select('quote_service_id, total_cost, days')
-        .in_('quote_service_id', services.map((s) => s['id']).toList());
+        .inFilter('quote_service_id', services.map((s) => s['id']).toList());
     for (final row in instrRows ?? []) {
       final qsId = row['quote_service_id']?.toString();
       if (qsId == null) continue;
@@ -274,7 +274,7 @@ class ProjectMonitoringService {
         ''')
         .eq('project_machinery.project_id', projectId)
         .eq('project_machinery.quote_service_id', serviceId)
-        .in_('daily_reports.status', ['submitted', 'approved']);
+        .inFilter('daily_reports.status', ['submitted', 'approved']);
     final machList = List<Map<String, dynamic>>.from(machResult ?? []);
 
     final Map<String, Map<String, dynamic>> machMap = {};
@@ -310,7 +310,7 @@ class ProjectMonitoringService {
       final inspResult = await _supabase
           .from('machinery_inspections')
           .select('project_machinery_id, odometer_unit')
-          .in_('project_machinery_id', pmIds);
+          .inFilter('project_machinery_id', pmIds);
       final Map<String, String> odometerMap = {};
       for (final row in inspResult ?? []) {
         final pmId = row['project_machinery_id']?.toString();
@@ -335,7 +335,7 @@ class ProjectMonitoringService {
         ''')
         .eq('project_labor.project_id', projectId)
         .eq('project_labor.quote_service_id', serviceId)
-        .in_('daily_reports.status', ['submitted', 'approved']);
+        .inFilter('daily_reports.status', ['submitted', 'approved']);
     final laborList = List<Map<String, dynamic>>.from(laborResult ?? []);
 
     final Map<String, Map<String, dynamic>> workerMap = {};
@@ -384,7 +384,7 @@ class ProjectMonitoringService {
             deviation_reasons(code, description)
           ''')
           .eq('project_machinery_id', resourceId)
-          .in_('daily_reports.status', ['submitted', 'approved'])
+          .inFilter('daily_reports.status', ['submitted', 'approved'])
           .order('id', ascending: true);
       return List<Map<String, dynamic>>.from(logs ?? []);
     } else if (resourceType == 'labor') {
@@ -397,7 +397,7 @@ class ProjectMonitoringService {
           ''')
           .eq('worker_id', resourceId)
           .eq('daily_reports.project_id', projectId)
-          .in_('daily_reports.status', ['submitted', 'approved'])
+          .inFilter('daily_reports.status', ['submitted', 'approved'])
           .order('id', ascending: true);
       return List<Map<String, dynamic>>.from(logs ?? []);
     }
@@ -415,7 +415,7 @@ class ProjectMonitoringService {
           deviation_reasons(code, description)
         ''')
         .eq('project_labor.project_id', projectId)
-        .in_('daily_reports.status', ['submitted', 'approved']);
+        .inFilter('daily_reports.status', ['submitted', 'approved']);
     final allLogs = List<Map<String, dynamic>>.from(logs ?? []);
 
     final Map<String, Map<String, dynamic>> workers = {};
@@ -473,7 +473,7 @@ class ProjectMonitoringService {
           deviation_reasons(code, description)
         ''')
         .eq('project_machinery.project_id', projectId)
-        .in_('daily_reports.status', ['submitted', 'approved']);
+        .inFilter('daily_reports.status', ['submitted', 'approved']);
     final allLogs = List<Map<String, dynamic>>.from(logs ?? []);
 
     final Map<String, Map<String, dynamic>> machines = {};
@@ -511,7 +511,7 @@ class ProjectMonitoringService {
       final inspResult = await _supabase
           .from('machinery_inspections')
           .select('project_machinery_id, odometer_unit')
-          .in_('project_machinery_id', pmIds);
+          .inFilter('project_machinery_id', pmIds);
       final Map<String, String> odometerMap = {};
       for (final row in inspResult ?? []) {
         final pmId = row['project_machinery_id']?.toString();

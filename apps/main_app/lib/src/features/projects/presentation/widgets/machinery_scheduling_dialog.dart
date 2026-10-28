@@ -172,7 +172,7 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
           final laborAssign = await supabase
               .from('project_labor_assignments')
               .select('start_date, end_date')
-              .eq('project_labor.quote_service_id', _quoteServiceId)
+              .eq('project_labor.quote_service_id', _quoteServiceId!)
               .limit(1)
               .maybeSingle();
 
@@ -191,7 +191,7 @@ class _MachinerySchedulingDialogState extends State<MachinerySchedulingDialog> {
             final otherMachAssign = await supabase
                 .from('project_machinery_assignments')
                 .select('start_date, end_date')
-                .eq('project_machinery.quote_service_id', _quoteServiceId)
+                .eq('project_machinery.quote_service_id', _quoteServiceId!)
                 .neq('project_machinery_id', widget.projectMachineryId)
                 .limit(1)
                 .maybeSingle();

@@ -10,7 +10,7 @@ import 'package:noel_app/src/features/field_operations/presentation/widgets/step
 import 'package:noel_app/src/features/field_operations/presentation/widgets/step_review_sign.dart';
 
 class FakeExecution extends DailyExecutionService {
-  FakeExecution() : super(SupabaseClient('http://localhost', 'test-key'));
+  FakeExecution() : super(SupabaseClient('http://localhost', 'test-key', authOptions: const AuthClientOptions(autoRefreshToken: false)));
   final saved = <Map<String, dynamic>>[];
   final requests = <String>[];
   bool failSave = false;

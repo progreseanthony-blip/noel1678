@@ -52,7 +52,7 @@ Map<String, dynamic> hoursData() => {
 };
 
 class FakeHours extends LaborHoursService {
-  FakeHours() : super(SupabaseClient('http://localhost', 'test-key'));
+  FakeHours() : super(SupabaseClient('http://localhost', 'test-key', authOptions: const AuthClientOptions(autoRefreshToken: false)));
   final calls = <List<String?>>[];
   bool fail = false;
   Map<String, dynamic>? response;
@@ -80,6 +80,8 @@ class FakeTimeReportPrinting extends PrintingPlatform {
     PdfPageFormat format,
     bool dynamicLayout,
     bool usePrinterSettings,
+    OutputType outputType,
+    bool forceCustomPrintPaper,
   ) async {
     names.add(name);
     documents.add(await onLayout(format));

@@ -102,7 +102,7 @@ Map<String, dynamic> snapshot({String status = 'active'}) => {
 };
 
 class FakePlanning extends LaborCrewPlanningService {
-  FakePlanning() : super(SupabaseClient('http://localhost', 'test-key'));
+  FakePlanning() : super(SupabaseClient('http://localhost', 'test-key', authOptions: const AuthClientOptions(autoRefreshToken: false)));
   Map<String, dynamic> data = snapshot();
   final calls = <Map<String, dynamic>>[];
   final changes = <Map<String, dynamic>>[];

@@ -5,7 +5,7 @@ import 'package:noel_core/noel_core.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:noel_app/src/shared/utils/image_selection.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
 
@@ -98,16 +98,12 @@ class _MachineryDialogState extends ConsumerState<MachineryDialog> {
 
   Future<void> _pickImage() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: false,
-        withData: true,
-      );
+      final result = await pickImages();
 
-      if (result != null && result.files.first.bytes != null) {
+      if (result.isNotEmpty) {
         setState(() {
-          _pickedFileBytes = result.files.first.bytes;
-          _pickedFileName = result.files.first.name;
+          _pickedFileBytes = result.first.bytes;
+          _pickedFileName = result.first.name;
         });
       }
     } catch (e) {

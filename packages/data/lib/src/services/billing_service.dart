@@ -662,6 +662,9 @@ class BillingService {
       final quoteServiceId = detail['quote_service_id'] as String?;
 
       if (lineType == 'existing_service' && plans.isNotEmpty) {
+        if (quoteServiceId == null) {
+          throw StateError('Existing service plan requires a quote_service_id');
+        }
         for (final plan in plans) {
           final factor = (plan['proportional_factor'] as num?)?.toDouble() ?? 1;
           if (factor <= 0) continue;
@@ -859,25 +862,25 @@ class BillingService {
               .update({'change_type': 'change_order', 'source_co_id': changeOrderId})
               .eq('quote_service_id', quoteServiceId)
               .eq('project_id', projectId)
-              .is_('source_co_id', null);
+              .isFilter('source_co_id', null);
           await _supabase
               .from('project_machinery')
               .update({'change_type': 'change_order', 'source_co_id': changeOrderId})
               .eq('quote_service_id', quoteServiceId)
               .eq('project_id', projectId)
-              .is_('source_co_id', null);
+              .isFilter('source_co_id', null);
           await _supabase
               .from('project_materials')
               .update({'change_type': 'change_order', 'source_co_id': changeOrderId})
               .eq('quote_service_id', quoteServiceId)
               .eq('project_id', projectId)
-              .is_('source_co_id', null);
+              .isFilter('source_co_id', null);
           await _supabase
               .from('project_instruments')
               .update({'change_type': 'change_order', 'source_co_id': changeOrderId})
               .eq('quote_service_id', quoteServiceId)
               .eq('project_id', projectId)
-              .is_('source_co_id', null);
+              .isFilter('source_co_id', null);
         }
       }
     }
@@ -1114,7 +1117,7 @@ class BillingService {
       final assignments = await _supabase
           .from(assignmentTable)
           .select('id, $parentIdCol, start_date, end_date')
-          .in_(parentIdCol, allParentIds);
+          .inFilter(parentIdCol, allParentIds);
 
       final Map<String, List<Map<String, dynamic>>> assignmentsByParent = {};
       for (final a in assignments ?? <Map<String, dynamic>>[]) {
@@ -1353,7 +1356,7 @@ class BillingService {
             .from(table)
             .select('id, $idField, quote_service_id, start_date, end_date')
             .eq('project_id', projectId)
-            .in_('quote_service_id', affectedServiceIds.toList());
+            .inFilter('quote_service_id', affectedServiceIds.toList());
 
         if (result == null || result.isEmpty) continue;
 
@@ -1728,7 +1731,7 @@ class BillingService {
           .select('date, partial_ratio')
           .eq('project_id', projectId);
       return (result ?? [])
-          .where((r) => (r['partial_ratio'] as num?)?.toDouble() ?? 0 >= 1.0)
+          .where((r) => ((r['partial_ratio'] as num?)?.toDouble() ?? 0) >= 1.0)
           .map((r) {
             final d = r['date'];
             if (d is DateTime) return DateTime(d.year, d.month, d.day);

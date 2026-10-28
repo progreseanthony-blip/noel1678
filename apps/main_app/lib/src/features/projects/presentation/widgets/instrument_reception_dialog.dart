@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:noel_app/src/shared/utils/image_selection.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
@@ -35,7 +35,7 @@ class _InstrumentReceptionDialogState extends State<InstrumentReceptionDialog> {
   String _selectedCondition = 'operational';
   String _selectedOwnership = 'owned';
   DateTime _receptionDate = DateTime.now();
-  final List<PlatformFile> _selectedFiles = [];
+  final List<SelectedImage> _selectedFiles = [];
   final List<String> _existingPhotos = []; // Keep track of old photos in edit mode
   bool _isLoading = false;
   bool _isSaving = false;
@@ -108,15 +108,11 @@ class _InstrumentReceptionDialogState extends State<InstrumentReceptionDialog> {
 
   Future<void> _pickFiles() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: true,
-        withData: true,
-      );
+      final result = await pickImages(multiple: true);
 
-      if (result != null) {
+      if (result.isNotEmpty) {
         setState(() {
-          _selectedFiles.addAll(result.files);
+          _selectedFiles.addAll(result);
         });
       }
     } catch (e) {
@@ -162,14 +158,14 @@ class _InstrumentReceptionDialogState extends State<InstrumentReceptionDialog> {
       // 1. Upload Photos
       final List<String> photoUrls = List.from(_existingPhotos);
       for (final file in _selectedFiles) {
-        if (file.bytes == null) continue;
+
         
         final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name.replaceAll(' ', '_')}';
         final filePath = '${widget.projectId}/instruments/${widget.projectInstrumentId}/$fileName';
 
         await supabase.storage.from('machinery_evidence').uploadBinary(
           filePath,
-          file.bytes!,
+          file.bytes,
           fileOptions: FileOptions(contentType: 'image/${file.extension ?? 'jpeg'}'),
         );
 
@@ -429,9 +425,7 @@ class _InstrumentReceptionDialogState extends State<InstrumentReceptionDialog> {
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(color: AppTheme.slate200),
-                                image: file.bytes != null 
-                                  ? DecorationImage(image: MemoryImage(file.bytes!), fit: BoxFit.cover) 
-                                  : null,
+                                image: DecorationImage(image: MemoryImage(file.bytes), fit: BoxFit.cover),
                               ),
                               child: Align(
                                 alignment: Alignment.topRight,

@@ -80,7 +80,7 @@ class _LaborSchedulingDialogState extends State<LaborSchedulingDialog> {
             .eq('id', projectId)
             .maybeSingle();
         projectStart = pRes?['start_date'] != null
-            ? DateTime.tryParse(pRes['start_date'].toString())
+            ? DateTime.tryParse(pRes!['start_date'].toString())
             : null;
       } catch (_) {}
 

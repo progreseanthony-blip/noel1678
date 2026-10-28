@@ -252,7 +252,7 @@ class InspectionService {
         .eq('project_machinery.project_id', projectId)
         .eq('project_machinery.quote_service_id', quoteServiceId)
         .lte('daily_reports.report_date', upToDate)
-        .in_('daily_reports.status', ['submitted', 'approved']);
+        .inFilter('daily_reports.status', ['submitted', 'approved']);
     for (final log in machResult ?? []) {
       final prod = (log['production_value'] as num?)?.toDouble() ?? 0;
       final cap = (log['machinery']?['capacity_yards'] as num?)?.toDouble() ?? 0;
@@ -326,7 +326,7 @@ class InspectionService {
         .from('progress_comparisons')
         .select(
             '*, quote_services(name, unit_of_measure), weekly_inspections!inner(inspection_date, project_id, projects!inner(title))')
-        .in_('status', ['exceeds_threshold', 'pending_approval'])
+        .inFilter('status', ['exceeds_threshold', 'pending_approval'])
         .order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(response ?? []);
   }

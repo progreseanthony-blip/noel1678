@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:noel_app/src/shared/utils/image_selection.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
 import 'package:noel_ui_components/noel_ui_components.dart';
@@ -45,7 +45,7 @@ class _MachineryReturnDialogState extends State<MachineryReturnDialog> {
   String _selectedCondition = 'operational';
   String _odometerUnit = 'hours';
   DateTime _returnDate = DateTime.now();
-  final List<PlatformFile> _selectedFiles = [];
+  final List<SelectedImage> _selectedFiles = [];
   List<String> _existingPhotoUrls = [];
   bool _isSaving = false;
   bool _showPhotoError = false;
@@ -144,13 +144,9 @@ class _MachineryReturnDialogState extends State<MachineryReturnDialog> {
 
   Future<void> _pickFiles() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        allowMultiple: true,
-        withData: true,
-      );
-      if (result != null) {
-        setState(() => _selectedFiles.addAll(result.files));
+      final result = await pickImages(multiple: true);
+      if (result.isNotEmpty) {
+        setState(() => _selectedFiles.addAll(result));
       }
     } catch (e) {
       if (mounted) {
@@ -205,12 +201,12 @@ class _MachineryReturnDialogState extends State<MachineryReturnDialog> {
       final user = supabase.auth.currentUser;
       final List<String> photoUrls = [..._existingPhotoUrls];
       for (final file in _selectedFiles) {
-        if (file.bytes == null) continue;
+
         final fileName = 'return_${DateTime.now().millisecondsSinceEpoch}_${file.name.replaceAll(' ', '_')}';
         final filePath = '${widget.projectId}/${widget.projectMachineryId}/$fileName';
         await supabase.storage.from('machinery_evidence').uploadBinary(
           filePath,
-          file.bytes!,
+          file.bytes,
           fileOptions: FileOptions(contentType: 'image/${file.extension ?? 'jpeg'}'),
         );
         photoUrls.add(supabase.storage.from('machinery_evidence').getPublicUrl(filePath));

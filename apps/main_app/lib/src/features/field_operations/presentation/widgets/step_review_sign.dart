@@ -1,4 +1,4 @@
-import 'package:file_picker/file_picker.dart';
+import 'package:noel_app/src/shared/utils/image_selection.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_core/noel_core.dart';
@@ -84,15 +84,9 @@ class _StepReviewSignState extends State<StepReviewSign> {
     setState(() => _isUploading = true);
     widget.onUploadStateChanged?.call(true);
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.image,
-        withData: true,
-      );
-      if (result == null ||
-          result.files.isEmpty ||
-          result.files.single.bytes == null)
-        return;
-      final file = result.files.single;
+      final result = await pickImages();
+      if (result.isEmpty) return;
+      final file = result.single;
       final ext = file.extension?.toLowerCase() ?? 'jpg';
       final contentType = ext == 'jpg' || ext == 'jpeg'
           ? 'image/jpeg'
@@ -103,7 +97,7 @@ class _StepReviewSignState extends State<StepReviewSign> {
           .from('equipment_evidence')
           .uploadBinary(
             fileName,
-            file.bytes!,
+            file.bytes,
             fileOptions: FileOptions(contentType: contentType),
           );
       final url = Supabase.instance.client.storage
