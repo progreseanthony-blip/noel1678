@@ -29,6 +29,10 @@ class StandardPeriodPickerDialog extends StatefulWidget {
   final double maxWidth;
   final ValueChanged<DateTimeRange>? onConfirm;
 
+  /// Optional suggestion when the planner changes the start. The end remains
+  /// independently editable after this suggestion is applied.
+  final DateTime? Function(DateTime start)? proposeEndDate;
+
   const StandardPeriodPickerDialog({
     super.key,
     this.title = 'Select Period',
@@ -47,6 +51,7 @@ class StandardPeriodPickerDialog extends StatefulWidget {
     this.canConfirm = true,
     this.maxWidth = 480,
     this.onConfirm,
+    this.proposeEndDate,
   });
 
   @override
@@ -76,9 +81,13 @@ class _StandardPeriodPickerDialogState
       firstDate: _firstDate,
       lastDate: _lastDate,
     );
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
     setState(() {
+      final suggestedEnd = picked != _start
+          ? widget.proposeEndDate?.call(picked)
+          : null;
       _start = picked;
+      if (suggestedEnd != null) _end = suggestedEnd;
       if (_end == null || _end!.isBefore(picked)) {
         _end = picked;
       }
@@ -92,7 +101,7 @@ class _StandardPeriodPickerDialogState
       firstDate: _start ?? _firstDate,
       lastDate: _lastDate,
     );
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
     setState(() => _end = picked);
   }
 

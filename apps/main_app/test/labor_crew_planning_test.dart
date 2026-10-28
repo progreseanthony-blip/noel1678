@@ -2,9 +2,19 @@ import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/src/google_fonts_base.dart' as font_testing;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:noel_data/noel_data.dart';
 import 'package:noel_app/src/features/projects/presentation/widgets/labor_crew_panel.dart';
+
+class _TestFontManifest implements AssetManifest {
+  @override
+  List<String> listAssets() => ['Manrope-Regular.ttf', 'Manrope-ExtraBold.ttf'];
+  @override
+  List<AssetMetadata>? getAssetVariants(String key) => null;
+}
 
 Map<String, dynamic> snapshot({String status = 'active'}) => {
   'project': {'id': 'project', 'status': status},
@@ -96,6 +106,33 @@ class FakePlanning extends LaborCrewPlanningService {
   Map<String, dynamic> data = snapshot();
   final calls = <Map<String, dynamic>>[];
   final changes = <Map<String, dynamic>>[];
+  final dateChanges = <Map<String, dynamic>>[];
+  @override
+  Future<void> dates(String id, String from, String until) async {
+    dateChanges.add({
+      'ids': [id],
+      'from': from,
+      'until': until,
+    });
+    if (fail) throw const PostgrestException(message: 'Fechas en conflicto');
+  }
+
+  @override
+  Future<void> datesBatch(
+    String project,
+    List<String> ids,
+    String from,
+    String until,
+  ) async {
+    dateChanges.add({
+      'project': project,
+      'ids': ids,
+      'from': from,
+      'until': until,
+    });
+    if (fail) throw const PostgrestException(message: 'Fechas en conflicto');
+  }
+
   @override
   Future<void> changeWorker(
     String id,
@@ -242,6 +279,227 @@ Future<void> changeRole(WidgetTester tester, String name) async {
 }
 
 void main() {
+  setUpAll(() async {
+    GoogleFonts.config.allowRuntimeFetching = false;
+    font_testing.assetManifest = _TestFontManifest();
+    final sdkFont = File(
+      '${Platform.environment['FLUTTER_ROOT']}/bin/cache/artifacts/material_fonts/roboto-regular.ttf',
+    );
+    final regular = File('../../scratch/manrope-400.ttf');
+    final bold = File('../../scratch/manrope-800.ttf');
+    final fallback = await sdkFont.readAsBytes();
+    final regularData =
+        const bool.fromEnvironment('CAPTURE_MODAL') && regular.existsSync()
+        ? await regular.readAsBytes()
+        : fallback;
+    final boldData =
+        const bool.fromEnvironment('CAPTURE_MODAL') && bold.existsSync()
+        ? await bold.readAsBytes()
+        : fallback;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMessageHandler('flutter/assets', (message) async {
+          final key = const StringCodec().decodeMessage(message);
+          if (key == 'Manrope-Regular.ttf')
+            return ByteData.sublistView(regularData);
+          if (key == 'Manrope-ExtraBold.ttf')
+            return ByteData.sublistView(boldData);
+          return null;
+        });
+    await ui.loadFontFromList(fallback, fontFamily: 'Roboto');
+    if (const bool.fromEnvironment('CAPTURE_MODAL')) {
+      final icons = File(
+        'build/unit_test_assets/fonts/MaterialIcons-Regular.otf',
+      );
+      if (icons.existsSync())
+        await ui.loadFontFromList(
+          await icons.readAsBytes(),
+          fontFamily: 'MaterialIcons',
+        );
+    }
+  });
+  for (final width in [390.0, 1280.0]) {
+    testWidgets(
+      'redesigned personnel modal keeps selection and date editing at width $width',
+      (tester) async {
+        final api = FakePlanning();
+        tester.view.physicalSize = Size(width, 900);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await tester.binding.setSurfaceSize(Size(width, 900));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        const preview = ValueKey('redesign-preview');
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: preview,
+            child: MaterialApp(
+              home: LaborCrewDialog(
+                projectId: 'project',
+                serviceKey: 'q:service',
+                data: api.data,
+                initialRows: [],
+                newPeople: true,
+                service: api,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        if (const bool.fromEnvironment('CAPTURE_MODAL')) {
+          await tester.runAsync(() => GoogleFonts.pendingFonts());
+          await tester.pumpAndSettle();
+        }
+        await tester.ensureVisible(find.text('Pedro'));
+        await tester.tap(find.text('Pedro'));
+        await tester.pumpAndSettle();
+        await acceptCurrentRole(tester);
+        if (width < 900) {
+          await tester.tap(find.text('Resumen (1)'));
+          await tester.pumpAndSettle();
+        } else {
+          expect(
+            tester.getTopLeft(find.byKey(const ValueKey('summary-column'))).dx,
+            greaterThan(
+              tester
+                  .getTopLeft(find.byKey(const ValueKey('personnel-column')))
+                  .dx,
+            ),
+          );
+        }
+        final edit = find.byTooltip('Edit dates for Pedro');
+        await tester.ensureVisible(edit);
+        await tester.tap(edit);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byType(TextFormField).last);
+        await tester.pumpAndSettle();
+        expect(find.byType(DatePickerDialog), findsOneWidget);
+        await tester.tap(find.text('23').last);
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Done'));
+        await tester.pumpAndSettle();
+        expect(find.textContaining('2026-10-01 → 2026-10-23'), findsOneWidget);
+        expect(find.text('Save plan').hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        if (const bool.fromEnvironment('CAPTURE_MODAL')) {
+          await tester.runAsync(() async {
+            final boundary = tester.renderObject<RenderRepaintBoundary>(
+              find.byKey(preview),
+            );
+            final picture = await boundary.toImage(pixelRatio: 1);
+            final bytes = await picture.toByteData(
+              format: ui.ImageByteFormat.png,
+            );
+            await File(
+              '../../scratch/crew_redesign_${width.toInt()}.png',
+            ).writeAsBytes(bytes!.buffer.asUint8List());
+            picture.dispose();
+          });
+        }
+      },
+    );
+  }
+  for (final width in [390.0, 1600.0]) {
+    testWidgets(
+      'calendar updates selected worker dates atomically at width $width',
+      (tester) async {
+        final api = FakePlanning();
+        await tester.binding.setSurfaceSize(Size(width, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: LaborCrewPanel(projectId: 'project', service: api),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Seleccionar disponibles'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Cambiar fechas'));
+        await tester.tap(find.text('Cambiar fechas'));
+        await tester.pumpAndSettle();
+        expect(find.text('Fechas de 2 trabajadores'), findsOneWidget);
+        final fields = find.descendant(
+          of: find.byType(AlertDialog),
+          matching: find.byType(TextFormField),
+        );
+        expect(
+          tester
+              .widget<TextField>(
+                find.descendant(
+                  of: fields.first,
+                  matching: find.byType(TextField),
+                ),
+              )
+              .readOnly,
+          isTrue,
+        );
+        await tester.tap(fields.first);
+        await tester.pumpAndSettle();
+        expect(find.byType(DatePickerDialog), findsOneWidget);
+        await tester.tap(find.text('9').last);
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+        await tester.tap(fields.last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('23').last);
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+        api.fail = true;
+        await tester.tap(find.text('Guardar'));
+        await tester.pumpAndSettle();
+        expect(find.text('Fechas en conflicto'), findsOneWidget);
+        expect(find.text('Fechas de 2 trabajadores'), findsOneWidget);
+        api.fail = false;
+        await tester.tap(find.text('Guardar'));
+        await tester.pumpAndSettle();
+        expect(api.dateChanges.last, {
+          'project': 'project',
+          'ids': ['assignment-a', 'assignment-b'],
+          'from': '2026-10-09',
+          'until': '2026-10-23',
+        });
+        expect(find.byType(AlertDialog), findsNothing);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+  testWidgets('individual planning dates open a calendar', (tester) async {
+    final api = FakePlanning();
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LaborCrewPanel(projectId: 'project', service: api),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Editar fechas de planificación').first);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find
+          .descendant(
+            of: find.byType(AlertDialog),
+            matching: find.byType(TextFormField),
+          )
+          .last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('23').last);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Guardar'));
+    await tester.pumpAndSettle();
+    expect(api.dateChanges.single, {
+      'ids': ['assignment-a'],
+      'from': '2026-10-01',
+      'until': '2026-10-23',
+    });
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('covered service reuses the original shared personnel slot', (
     tester,
   ) async {
@@ -440,8 +698,8 @@ void main() {
       await tester.tap(find.text('Aaron'));
       await tester.pumpAndSettle();
       await acceptCurrentRole(tester);
-      expect(find.text('Trade: Operador'), findsOneWidget);
-      await tester.tap(find.text('Save Personnel and Crew'));
+      expect(find.text('Operador · 1 confirmed'), findsOneWidget);
+      await tester.tap(find.text('Save plan'));
       await tester.pumpAndSettle();
       final row = (api.calls.single['rows'] as List).single;
       expect(row['worker_id'], 'other-worker');
@@ -558,7 +816,7 @@ void main() {
       'Cuadrilla A',
     );
     await chooseForeman(tester);
-    await tester.tap(find.text('Save Personnel and Crew'));
+    await tester.tap(find.text('Save plan'));
     await tester.pumpAndSettle();
     expect(api.calls, hasLength(1));
     final call = api.calls.single;
@@ -582,7 +840,7 @@ void main() {
       'Cuadrilla A',
     );
     await chooseForeman(tester);
-    await tester.tap(find.text('Save Personnel and Crew'));
+    await tester.tap(find.text('Save plan'));
     await tester.pumpAndSettle();
     expect(find.byType(LaborCrewDialog), findsOneWidget);
     expect(find.textContaining('Conflicto de vigencias'), findsOneWidget);
@@ -599,7 +857,7 @@ void main() {
       await tester.tap(find.text('Pedro'));
       await tester.pumpAndSettle();
       await acceptCurrentRole(tester);
-      await tester.tap(find.text('Save Personnel and Crew'));
+      await tester.tap(find.text('Save plan'));
       await tester.pumpAndSettle();
       expect(api.calls, hasLength(1));
       final row = (api.calls.single['rows'] as List).single;
@@ -649,7 +907,7 @@ void main() {
       await tester.tap(find.text('Pedro'));
       await tester.pumpAndSettle();
       await acceptCurrentRole(tester);
-      await tester.tap(find.text('Save Personnel and Crew'));
+      await tester.tap(find.text('Save plan'));
       await tester.pumpAndSettle();
       final row = (api.calls.single['rows'] as List).single;
       expect(row['valid_from'], '2026-11-02');
@@ -678,10 +936,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(
-        find.text('Save Personnel and Crew').hitTestable(),
-        findsOneWidget,
-      );
+      expect(find.text('Save plan').hitTestable(), findsOneWidget);
       final end = find.byKey(const ValueKey('common-end'));
       await tester.ensureVisible(end);
       await tester.pumpAndSettle();
@@ -735,7 +990,7 @@ void main() {
       tester.getBottomLeft(label).dy,
       lessThan(tester.getTopLeft(input).dy),
     );
-    expect(find.text('Save Personnel and Crew').hitTestable(), findsOneWidget);
+    expect(find.text('Save plan').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
     if (const bool.fromEnvironment('CAPTURE_MODAL')) {
       await tester.runAsync(() async {
@@ -782,7 +1037,7 @@ void main() {
       await tester.pumpAndSettle();
       await acceptCurrentRole(tester);
       expect(find.text('Confirmed personnel · 2'), findsOneWidget);
-      await tester.tap(find.text('Save Personnel and Crew'));
+      await tester.tap(find.text('Save plan'));
       await tester.pumpAndSettle();
       expect(api.calls, hasLength(1));
       final rows = api.calls.single['rows'] as List;
@@ -798,7 +1053,7 @@ void main() {
       await tester.ensureVisible(find.text('Pedro'));
       await tester.tap(find.text('Pedro'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Save Personnel and Crew'));
+      await tester.tap(find.text('Save plan'));
       await tester.pumpAndSettle();
       expect(api.calls, isEmpty);
       expect(
@@ -848,7 +1103,7 @@ void main() {
       await tester.tap(find.text('Pedro'));
       await tester.pumpAndSettle();
       await acceptCurrentRole(tester);
-      await tester.tap(find.text('Save Personnel and Crew'));
+      await tester.tap(find.text('Save plan'));
       await tester.pumpAndSettle();
       final row = (api.calls.single['rows'] as List).single;
       expect(row['valid_from'], '2026-10-05');
@@ -861,6 +1116,8 @@ void main() {
     final api = FakePlanning();
     (api.data['labor'] as List).removeWhere((l) => l['id'] == 'vacant-a');
     await openDialog(tester, api, newPeople: true);
+    await tester.tap(find.byKey(const PageStorageKey('occupancy-details')));
+    await tester.pumpAndSettle();
     expect(
       find.text('Period occupancy: 1/1 · Available positions: 0'),
       findsOneWidget,
@@ -884,6 +1141,8 @@ void main() {
         'role_name': 'Operador',
       });
       await openDialog(tester, api, newPeople: true);
+      await tester.tap(find.byKey(const PageStorageKey('occupancy-details')));
+      await tester.pumpAndSettle();
       expect(
         find.text('Period occupancy: 1/2 · Available positions: 1'),
         findsOneWidget,
@@ -934,6 +1193,8 @@ void main() {
       ];
       await openDialog(tester, api, newPeople: true);
       expect(find.text('Operador · 1/1 assigned'), findsOneWidget);
+      await tester.tap(find.byKey(const PageStorageKey('occupancy-details')));
+      await tester.pumpAndSettle();
       expect(find.text('Registered positions: 1/1'), findsOneWidget);
       expect(
         find.text('Period occupancy: 0/1 · Available positions: 1'),
@@ -1018,7 +1279,7 @@ void main() {
       await tester.pumpAndSettle();
       await acceptCurrentRole(tester);
       api.busy = {'new-worker'};
-      await tester.tap(find.text('Save Personnel and Crew'));
+      await tester.tap(find.text('Save plan'));
       await tester.pumpAndSettle();
       expect(api.calls, isEmpty);
       expect(find.text('Confirmed personnel · 1'), findsOneWidget);

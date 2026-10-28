@@ -79,6 +79,21 @@ class _MachineryBatchScheduleDialogState
       maxWidth: 640,
       initialStart: initial?.start,
       initialEnd: initial?.end,
+      proposeEndDate: (start) {
+        // A common bulk period must cover the longest targeted service.
+        DateTime? end;
+        for (final name in targets.map((m) => m['service_name']).toSet()) {
+          final proposed = LaborPlanningDates.endFor(
+            start,
+            widget.durations[name],
+            widget.calendar,
+          );
+          // Do not invent a common duration when an estimate is missing.
+          if (proposed == null) return null;
+          if (end == null || proposed.isAfter(end)) end = proposed;
+        }
+        return end;
+      },
       referenceLabel: 'SERVICE PERIOD (REFERENCE)',
       referenceStart: reference?.start,
       referenceEnd: reference?.end,

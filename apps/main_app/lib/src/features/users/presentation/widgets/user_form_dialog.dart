@@ -377,27 +377,49 @@ class _UserFormDialogState extends State<UserFormDialog> {
                         if (_isEditing && !_loadingRoles)
                           Padding(
                             padding: const EdgeInsets.symmetric(vertical: 16),
-                            child: DropdownButtonFormField<String>(
-                              initialValue: _workerId,
-                              decoration: const InputDecoration(
-                                labelText: 'Ficha del trabajador vinculada',
+                            child: DropdownMenu<String>(
+                              key: ValueKey('worker_${_workerId ?? 'none'}'),
+                              initialSelection: _workerId ?? '',
+                              enabled: !_isSaving,
+                              expandedInsets: EdgeInsets.zero,
+                              enableSearch: true,
+                              enableFilter: true,
+                              requestFocusOnTap: true,
+                              menuHeight: 240,
+                              label: const Text(
+                                'Ficha del trabajador vinculada',
                               ),
-                              isExpanded: true,
-                              items: [
-                                const DropdownMenuItem<String>(
-                                  value: null,
-                                  child: Text('Sin ficha vinculada'),
+                              hintText: 'Buscar trabajador por nombre...',
+                              leadingIcon: const Icon(Icons.search),
+                              filterCallback: (entries, query) {
+                                final search = query.trim().toLowerCase();
+                                return entries
+                                    .where(
+                                      (entry) =>
+                                          entry.value.isEmpty ||
+                                          entry.label.toLowerCase().contains(
+                                            search,
+                                          ),
+                                    )
+                                    .toList();
+                              },
+                              dropdownMenuEntries: [
+                                const DropdownMenuEntry<String>(
+                                  value: '',
+                                  label: 'Sin ficha vinculada',
                                 ),
                                 ..._workers.map(
-                                  (w) => DropdownMenuItem(
+                                  (w) => DropdownMenuEntry<String>(
                                     value: w['id'] as String,
-                                    child: Text(w['full_name'] as String),
+                                    label: w['full_name'] as String,
                                   ),
                                 ),
                               ],
-                              onChanged: _isSaving
-                                  ? null
-                                  : (v) => setState(() => _workerId = v),
+                              onSelected: (value) => setState(
+                                () => _workerId = value == null || value.isEmpty
+                                    ? null
+                                    : value,
+                              ),
                             ),
                           ),
                         if (_isEditing)

@@ -112,6 +112,8 @@ void main() {
     WidgetTester tester,
     List<Map<String, dynamic>> machines, {
     Map<String, Map<String, DateTime?>>? references,
+    Map<String, double?> durations = const {},
+    Map<String, double> calendar = const {},
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -127,8 +129,8 @@ void main() {
                       {
                         'Clearing': {'start': start, 'end': end},
                       },
-                  durations: const {},
-                  calendar: const {},
+                  durations: durations,
+                  calendar: calendar,
                 ),
               ),
               child: const Text('Open'),
@@ -149,6 +151,67 @@ void main() {
     await tester.tap(find.text('Replace dates for all shown units').last);
     await tester.pumpAndSettle();
   }
+
+  Future<void> pickDay(WidgetTester tester, String field, int day) async {
+    await tester.tap(find.text(field));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('$day').last);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    'changed start proposes working-day end and permits manual override',
+    (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await open(
+        tester,
+        [machine('m')],
+        durations: {'Clearing': 2},
+        calendar: {'2026-11-09': 1},
+      );
+      // Existing reference is shown until the planner changes the start.
+      expect(find.text('2026-11-19'), findsOneWidget);
+      await pickDay(tester, 'Start Date', 1);
+      expect(find.text('2026-11-03'), findsOneWidget);
+      // Friday + half Saturday + holiday Monday => Tuesday.
+      await pickDay(tester, 'Start Date', 6);
+      expect(find.text('2026-11-10'), findsOneWidget);
+      await pickDay(tester, 'End Date', 12);
+      expect(find.text('2026-11-12'), findsOneWidget);
+      await pickDay(tester, 'Start Date', 6);
+      expect(find.text('2026-11-12'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('bulk proposal covers longest service duration', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await open(
+      tester,
+      [machine('m1'), machine('m2', service: 'Topsoil')],
+      references: {
+        'Clearing': {'start': start, 'end': end},
+        'Topsoil': {'start': start, 'end': end},
+      },
+      durations: {'Clearing': 1, 'Topsoil': 2},
+      calendar: {'2026-11-09': 1},
+    );
+    await pickDay(tester, 'Start Date', 6);
+    expect(find.text('2026-11-10'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('missing duration retains the manually editable end', (
+    tester,
+  ) async {
+    await open(tester, [machine('m')]);
+    await pickDay(tester, 'Start Date', 6);
+    expect(find.text('2026-11-19'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets(
     'pending counts missing units; replacement includes all shown units',
