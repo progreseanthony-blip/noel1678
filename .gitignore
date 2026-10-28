@@ -37,6 +37,7 @@ melos_noel_1678.iml
 
 # Temp files
 status*.json
+releases/
 
 # Generated
 *.freezed.dart

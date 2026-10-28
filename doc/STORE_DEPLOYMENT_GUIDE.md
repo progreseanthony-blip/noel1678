@@ -1,5 +1,9 @@
 # Guia de Despliegue a Tiendas — Android, iOS y Web
 
+Para las entregas de **Global Golf**, seguir [STORE_RELEASE_PROCESS.md](STORE_RELEASE_PROCESS.md)
+y [CODEMAGIC_DEFAULT_WORKFLOW.md](CODEMAGIC_DEFAULT_WORKFLOW.md). Los ejemplos
+genéricos de este documento corresponden a otro proyecto.
+
 Referencia basada en la sesion de trabajo del proyecto JFA Quality Drywall. Sirve como checklist y guia para publicar y actualizar apps Flutter en Google Play Store, Apple App Store y Firebase Hosting.
 
 ---
