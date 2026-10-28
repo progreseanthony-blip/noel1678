@@ -19,6 +19,7 @@ import '../widgets/labor_scheduling_dialog.dart';
 import '../widgets/standard_period_picker_dialog.dart';
 import '../widgets/machinery_batch_schedule_dialog.dart';
 import '../utils/machinery_planning_dates.dart';
+import '../utils/labor_planning_dates.dart';
 import 'package:flutter/gestures.dart';
 import 'package:printing/printing.dart';
 import '../utils/timeline_pdf_generator.dart';
@@ -1923,6 +1924,7 @@ currentPath: '/projects/${widget.projectId}',
     final picked=await showSafeDialog<DateTimeRange>(context:context,fullscreenOnMobile:true,builder:(_)=>StandardPeriodPickerDialog(
       title:'Set Machinery Dates',subtitle:'${m['machinery_name']} · ${m['expected_quantity']} unit(s)',
       initialStart:proposed.start,initialEnd:proposed.end,
+      proposeEndDate:(start)=>LaborPlanningDates.endFor(start,_serviceDurations[serviceName],_machineryCalendar),
       referenceLabel:'SERVICE PERIOD (REFERENCE)',referenceStart:ref?['start'],referenceEnd:ref?['end'],
       referenceFallback:'No service reference dates. Choose the planned period.',
       details:const Text('Applies to all units of this machine. Existing unit dates are replaced; actual execution dates are retained.'),

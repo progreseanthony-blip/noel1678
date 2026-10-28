@@ -34,9 +34,7 @@ class MobileDialogFrame extends StatelessWidget {
           padding: EdgeInsets.only(bottom: keyboard),
           child: Theme(
             data: Theme.of(context).copyWith(
-              dialogTheme: const DialogThemeData(
-                insetPadding: EdgeInsets.zero,
-              ),
+              dialogTheme: const DialogThemeData(insetPadding: EdgeInsets.zero),
             ),
             child: SizedBox.expand(child: child),
           ),
@@ -67,6 +65,9 @@ class ResponsiveDialogShell extends StatelessWidget {
   final EdgeInsets? bodyPadding;
   final double maxWidth;
 
+  /// Set false for forms that manage bounded columns and their own scrolling.
+  final bool scrollBody;
+
   const ResponsiveDialogShell({
     super.key,
     required this.title,
@@ -80,6 +81,7 @@ class ResponsiveDialogShell extends StatelessWidget {
     this.footerColor,
     this.bodyPadding,
     this.maxWidth = 550,
+    this.scrollBody = true,
   });
 
   @override
@@ -208,10 +210,15 @@ class ResponsiveDialogShell extends StatelessWidget {
             children: [
               _buildHeader(context, isMobile: false),
               Flexible(
-                child: ScrollIndicator(
-                  padding: bodyPadding ?? const EdgeInsets.all(32),
-                  child: body,
-                ),
+                child: scrollBody
+                    ? ScrollIndicator(
+                        padding: bodyPadding ?? const EdgeInsets.all(32),
+                        child: body,
+                      )
+                    : Padding(
+                        padding: bodyPadding ?? const EdgeInsets.all(32),
+                        child: body,
+                      ),
               ),
               if (footer != null) _buildFooter(context, isMobile: false),
             ],
@@ -235,10 +242,15 @@ class ResponsiveDialogShell extends StatelessWidget {
             children: [
               _buildHeader(context, isMobile: true),
               Expanded(
-                child: ScrollIndicator(
-                  padding: bodyPadding ?? const EdgeInsets.all(20),
-                  child: body,
-                ),
+                child: scrollBody
+                    ? ScrollIndicator(
+                        padding: bodyPadding ?? const EdgeInsets.all(20),
+                        child: body,
+                      )
+                    : Padding(
+                        padding: bodyPadding ?? const EdgeInsets.all(20),
+                        child: body,
+                      ),
               ),
               if (footer != null) _buildFooter(context, isMobile: true),
             ],

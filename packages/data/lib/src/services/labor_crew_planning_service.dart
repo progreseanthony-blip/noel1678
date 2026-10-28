@@ -63,6 +63,23 @@ class LaborCrewPlanningService {
     );
   }
 
+  Future<void> datesBatch(
+    String projectId,
+    List<String> assignmentIds,
+    String from,
+    String until,
+  ) async {
+    await client.rpc(
+      'update_labor_crew_dates_batch',
+      params: {
+        'p_project': projectId,
+        'p_assignments': assignmentIds,
+        'p_from': from,
+        'p_until': until,
+      },
+    );
+  }
+
   Future<void> end(String kind, String id, String until) async {
     await client.rpc(
       'end_labor_crew_period',

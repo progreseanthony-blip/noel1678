@@ -424,7 +424,11 @@ class _LaborCrewPanelState extends State<LaborCrewPanel> {
     if (result == true && mounted) await refresh();
   }
 
-  Future<void> editDates(Map<String, dynamic> row, {String? kind}) async {
+  Future<void> editDates(
+    Map<String, dynamic> row, {
+    String? kind,
+    List<Map<String, dynamic>>? batch,
+  }) async {
     if (!editable) return;
     final from = TextEditingController(
       text: (row[kind == null ? 'start_date' : 'valid_from'] ?? '').toString(),
@@ -435,12 +439,51 @@ class _LaborCrewPanelState extends State<LaborCrewPanel> {
     final form = GlobalKey<FormState>();
     String? failure;
     bool working = false;
+    Future<void> pickDate(
+      BuildContext dialogContext,
+      StateSetter update, {
+      required bool start,
+    }) async {
+      if (working) return;
+      final controller = start ? from : until;
+      final first = !start && _date(from.text)
+          ? DateTime.parse(from.text)
+          : DateTime(2020);
+      final last = DateTime(2100, 12, 31).isBefore(first)
+          ? first
+          : DateTime(2100, 12, 31);
+      var initial = DateTime.tryParse(controller.text) ?? DateTime.now();
+      if (initial.isBefore(first)) initial = first;
+      if (initial.isAfter(last)) initial = last;
+      final picked = await showDatePicker(
+        context: dialogContext,
+        initialDate: initial,
+        firstDate: first,
+        lastDate: last,
+        initialEntryMode: DatePickerEntryMode.calendarOnly,
+      );
+      if (picked == null || !dialogContext.mounted) return;
+      update(() {
+        controller.text = LaborPlanningDates.iso(picked);
+        if (start &&
+            (!_date(until.text) ||
+                DateTime.parse(until.text).isBefore(picked))) {
+          until.text = controller.text;
+        }
+        failure = null;
+      });
+    }
+
     final result = await showSafeDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, update) => AlertDialog(
           title: Text(
-            kind == null ? 'Fechas de planificación' : 'Finalizar vigencia',
+            batch != null
+                ? 'Fechas de ${batch.length} trabajadores'
+                : kind == null
+                ? 'Fechas de planificación'
+                : 'Finalizar vigencia',
           ),
           content: SizedBox(
             width: 430,
@@ -453,18 +496,34 @@ class _LaborCrewPanelState extends State<LaborCrewPanel> {
                     'Las fechas utilizadas por reportes e integrantes se conservarán.',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
+                  const SizedBox(height: 16),
+                  if (batch != null) ...[
+                    const Text(
+                      'Las fechas elegidas se aplicarán a todos los seleccionados. Si existe un conflicto, no se guardará ningún cambio.',
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                   if (kind == null)
                     TextFormField(
                       controller: from,
+                      readOnly: true,
+                      enabled: !working,
+                      onTap: () => pickDate(ctx, update, start: true),
                       decoration: const InputDecoration(
-                        labelText: 'Desde (AAAA-MM-DD)',
+                        labelText: 'Desde',
+                        suffixIcon: Icon(Icons.calendar_month_outlined),
                       ),
                       validator: (v) => _date(v) ? null : 'Fecha inválida',
                     ),
+                  if (kind == null) const SizedBox(height: 16),
                   TextFormField(
                     controller: until,
+                    readOnly: true,
+                    enabled: !working,
+                    onTap: () => pickDate(ctx, update, start: false),
                     decoration: const InputDecoration(
-                      labelText: 'Hasta (AAAA-MM-DD)',
+                      labelText: 'Hasta',
+                      suffixIcon: Icon(Icons.calendar_month_outlined),
                     ),
                     validator: (v) => _date(v) ? null : 'Fecha inválida',
                   ),
@@ -494,7 +553,14 @@ class _LaborCrewPanelState extends State<LaborCrewPanel> {
                         failure = null;
                       });
                       try {
-                        if (kind == null) {
+                        if (batch != null) {
+                          await api.datesBatch(
+                            widget.projectId,
+                            batch.map((a) => a['id'] as String).toList(),
+                            from.text,
+                            until.text,
+                          );
+                        } else if (kind == null) {
                           await api.dates(
                             row['id'] as String,
                             from.text,
@@ -508,7 +574,9 @@ class _LaborCrewPanelState extends State<LaborCrewPanel> {
                         if (ctx.mounted)
                           update(() {
                             working = false;
-                            failure = e.toString();
+                            failure = e is PostgrestException
+                                ? e.message
+                                : e.toString();
                           });
                       }
                     },
@@ -681,6 +749,29 @@ class _LaborCrewPanelState extends State<LaborCrewPanel> {
                                     ),
                                   ),
                                 Text('${selected.length} seleccionados'),
+                                if (editable)
+                                  FilledButton.tonalIcon(
+                                    onPressed: selected.isEmpty
+                                        ? null
+                                        : () {
+                                            final rows = assignments
+                                                .where(
+                                                  (a) => selected.contains(
+                                                    a['id'],
+                                                  ),
+                                                )
+                                                .toList();
+                                            if (rows.isNotEmpty)
+                                              editDates(
+                                                rows.first,
+                                                batch: rows,
+                                              );
+                                          },
+                                    icon: const Icon(
+                                      Icons.edit_calendar_outlined,
+                                    ),
+                                    label: const Text('Cambiar fechas'),
+                                  ),
                                 if (editable)
                                   FilledButton.tonal(
                                     onPressed: selected.isEmpty
@@ -1221,6 +1312,7 @@ class _LaborCrewDialogState extends State<LaborCrewDialog> {
   String query = '';
   int revision = 0;
   bool saving = false;
+  bool summaryTab = false;
   bool checkingWorkers = true;
   String? availabilityFailure;
   Set<String> globalBusy = {};
@@ -1470,7 +1562,10 @@ class _LaborCrewDialogState extends State<LaborCrewDialog> {
       );
       return;
     }
-    if (!form.currentState!.validate()) return;
+    if (!form.currentState!.validate()) {
+      if (widget.newPeople) setState(() => summaryTab = true);
+      return;
+    }
     final problem = selected.map(rowError).whereType<String>().firstOrNull;
     if (selected.isEmpty || problem != null) {
       setState(() => error = problem ?? 'Select workers');
@@ -1663,28 +1758,63 @@ class _LaborCrewDialogState extends State<LaborCrewDialog> {
               runSpacing: 8,
               children: acceptedFor(r['id'] as String)
                   .map(
-                    (person) => InputChip(
-                      avatar: const Icon(Icons.check_circle_outline, size: 18),
-                      label: Text(person['worker_name'] as String),
-                      tooltip:
-                          '${person['valid_from']} → ${person['valid_until']}',
-                      onDeleted: saving
-                          ? null
-                          : () => setState(() {
-                              selected.remove(person);
-                              choices[person['project_labor_id']]?.remove(
-                                person['worker_id'],
-                              );
-                              if (acceptedFor(
-                                    person['project_labor_id'] as String?,
-                                  ).isEmpty &&
-                                  (choices[person['project_labor_id']]
-                                          ?.isEmpty ??
-                                      true))
-                                changedPeriods.remove(
-                                  person['project_labor_id'],
-                                );
-                            }),
+                    (person) => Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        InputChip(
+                          avatar: const Icon(
+                            Icons.check_circle_outline,
+                            size: 18,
+                          ),
+                          label: Text(person['worker_name'] as String),
+                          tooltip:
+                              '${person['valid_from']} → ${person['valid_until']}',
+                          onDeleted: saving
+                              ? null
+                              : () => setState(() {
+                                  selected.remove(person);
+                                  choices[person['project_labor_id']]?.remove(
+                                    person['worker_id'],
+                                  );
+                                  if (acceptedFor(
+                                        person['project_labor_id'] as String?,
+                                      ).isEmpty &&
+                                      (choices[person['project_labor_id']]
+                                              ?.isEmpty ??
+                                          true))
+                                    changedPeriods.remove(
+                                      person['project_labor_id'],
+                                    );
+                                }),
+                        ),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${person['valid_from']} → ${person['valid_until']}',
+                                style: theme.textTheme.bodySmall,
+                              ),
+                            ),
+                            IconButton(
+                              tooltip:
+                                  'Edit dates for ${person['worker_name']}',
+                              visualDensity: VisualDensity.compact,
+                              icon: const Icon(
+                                Icons.edit_calendar_outlined,
+                                size: 18,
+                              ),
+                              onPressed: saving
+                                  ? null
+                                  : () => editPersonDates(person),
+                            ),
+                          ],
+                        ),
+                        if (rowError(person) != null)
+                          Text(
+                            rowError(person)!,
+                            style: TextStyle(color: theme.colorScheme.error),
+                          ),
+                      ],
                     ),
                   )
                   .toList(),
@@ -1693,6 +1823,55 @@ class _LaborCrewDialogState extends State<LaborCrewDialog> {
           const SizedBox(height: 8),
           const Text('Selections are saved when you save the plan.'),
         ],
+      ),
+    );
+  }
+
+  Future<void> editPersonDates(Map<String, dynamic> person) async {
+    await showSafeDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, update) => AlertDialog(
+          title: Text(person['worker_name'] as String),
+          content: SizedBox(
+            width: 380,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final start in [true, false])
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: TextFormField(
+                      key: ValueKey('person-date-$start-$revision'),
+                      initialValue:
+                          person[start ? 'valid_from' : 'valid_until']
+                              as String?,
+                      readOnly: true,
+                      decoration: InputDecoration(
+                        labelText: start ? 'Start date' : 'End date',
+                        suffixIcon: const Icon(Icons.calendar_month_outlined),
+                      ),
+                      onTap: () async {
+                        await pick(start, row: person);
+                        if (ctx.mounted) update(() {});
+                      },
+                    ),
+                  ),
+                if (rowError(person) != null)
+                  Text(
+                    rowError(person)!,
+                    style: TextStyle(color: Theme.of(ctx).colorScheme.error),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1981,42 +2160,13 @@ class _LaborCrewDialogState extends State<LaborCrewDialog> {
           ? name
           : (a['id'] as String).compareTo(b['id'] as String);
     });
-    return Theme(
-      data: theme.copyWith(
-        inputDecorationTheme: theme.inputDecorationTheme.copyWith(
-          filled: true,
-          fillColor: theme.colorScheme.surfaceContainerLowest,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 16,
-            vertical: 16,
-          ),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-          floatingLabelBehavior: FloatingLabelBehavior.never,
-        ),
-      ),
-      child: ResponsiveDialogShell(
-        title: widget.newPeople
-            ? 'Assign Personnel and Crew'
-            : 'Organize Selected Personnel',
-        subtitle: serviceName,
-        icon: Icons.groups_outlined,
-        maxWidth: 900,
-        bodyPadding: const EdgeInsets.all(24),
-        headerColor: theme.colorScheme.surface,
-        footerColor: theme.colorScheme.surface,
-        onClose: () {
-          if (!saving) Navigator.pop(context, false);
-        },
-        body: Form(
-          key: form,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              reference(),
-              if (widget.newPeople)
-                section('1. Service personnel', [
-                  acceptedSummary(),
+    final personnelPanel = widget.newPeople
+        ? LayoutBuilder(
+            key: const ValueKey('personnel-column'),
+            builder: (context, bounds) {
+              final controls = Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
                   field(
                     'Planned trade',
                     DropdownButtonFormField<String>(
@@ -2046,20 +2196,14 @@ class _LaborCrewDialogState extends State<LaborCrewDialog> {
                             },
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Proposed trade dates',
-                    style: theme.textTheme.titleSmall,
-                  ),
                   const SizedBox(height: 8),
                   pair(dateField(true), dateField(false)),
                   const SizedBox(height: 8),
                   Text(
-                    'The end date follows the service duration. Confirm the selection to apply these dates.',
+                    'The end date follows the service duration.',
                     style: theme.textTheme.bodySmall,
                   ),
-                  const SizedBox(height: 16),
-                  vacancySummary(),
+                  const SizedBox(height: 8),
                   if (freeForCurrent > 0 && draft.length >= freeForCurrent)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
@@ -2079,373 +2223,598 @@ class _LaborCrewDialogState extends State<LaborCrewDialog> {
                       onChanged: (v) => setState(() => query = v),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 8,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      Text(
-                        '${draft.length} selected for this trade · ${acceptedFor(roleId).length} confirmed',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                      FilledButton.icon(
-                        key: const ValueKey('accept-role'),
-                        icon: const Icon(Icons.check),
-                        onPressed:
-                            saving ||
-                                checkingWorkers ||
-                                availabilityFailure != null ||
-                                (draft.isEmpty && acceptedFor(roleId).isEmpty)
-                            ? null
-                            : acceptRole,
-                        label: Text(
-                          currentChanged || acceptedFor(roleId).isEmpty
-                              ? 'Confirm trade selection'
-                              : 'Selection confirmed',
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    height: 200,
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: theme.colorScheme.outlineVariant,
-                      ),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: checkingWorkers
-                        ? const Center(child: CircularProgressIndicator())
-                        : availabilityFailure != null
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(availabilityFailure!),
-                                  TextButton(
-                                    onPressed: refreshWorkerAvailability,
-                                    child: const Text('Retry availability'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                        : candidates.isEmpty
-                        ? const Center(
-                            child: Text('No workers match your search.'),
-                          )
-                        : ListView.separated(
-                            primary: false,
-                            padding: EdgeInsets.zero,
-                            itemCount: candidates.length,
-                            separatorBuilder: (_, i) =>
-                                const Divider(height: 1),
-                            itemBuilder: (context, i) {
-                              final w = candidates[i];
-                              final busy = globalBusy.contains(w['id']);
-                              final responsibility =
-                                  role?['operational_role'] ?? 'none';
-                              final needsAccount =
-                                  responsibility != 'none' &&
-                                  (w['profile_id'] == null ||
-                                      w['access_status'] != 'active' ||
-                                      w['profile_role'] != responsibility);
-                              final staged = stagedElsewhere(w['id'] as String);
-                              final reasons = bookings.where(
-                                (b) => b['worker_id'] == w['id'],
-                              );
-                              return Material(
-                                color: theme.colorScheme.surface,
-                                child: CheckboxListTile(
-                                  dense: true,
-                                  key: ValueKey('worker-option-${w['id']}'),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 2,
-                                  ),
-                                  visualDensity: const VisualDensity(
-                                    horizontal: -1,
-                                    vertical: -2,
-                                  ),
-                                  minTileHeight: 48,
-                                  title: workerIdentity(
-                                    w,
-                                    responsibility,
-                                    needsAccount,
-                                  ),
-                                  subtitle:
-                                      !needsAccount &&
-                                          reasons.isEmpty &&
-                                          !staged
-                                      ? null
-                                      : Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            if (needsAccount)
-                                              Text(
-                                                'Requires an active linked $responsibility account.',
-                                                style:
-                                                    theme.textTheme.bodySmall,
-                                              ),
-                                            for (final booking in reasons)
-                                              Text(
-                                                'Booked in ${booking['project_title']} · ${booking['role_name'] ?? 'Worker'} · ${booking['start_date'] ?? 'No start'} → ${booking['end_date'] ?? 'No end'}',
-                                                style: theme.textTheme.bodySmall
-                                                    ?.copyWith(
-                                                      color: theme
-                                                          .colorScheme
-                                                          .error,
-                                                    ),
-                                              ),
-                                            if (staged)
-                                              const Text(
-                                                'Already selected for another trade in this service.',
-                                              ),
-                                          ],
-                                        ),
-                                  value: draft.contains(w['id']),
-                                  onChanged:
-                                      saving ||
-                                          busy ||
-                                          needsAccount ||
-                                          staged ||
-                                          (!draft.contains(w['id']) &&
-                                              draft.length >= freeForCurrent)
-                                      ? null
-                                      : (v) => setState(() {
-                                          if (v == true) {
-                                            draft.add(w['id'] as String);
-                                          } else {
-                                            draft.remove(w['id']);
-                                          }
-                                        }),
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                  const SizedBox(height: 12),
                   const SizedBox(height: 8),
-                  Text(
-                    'Confirm each trade, then save the plan.',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ]),
-              if (widget.onlyTeamResourceId == null)
-                section(
-                  widget.newPeople
-                      ? '2. Crew and leader'
-                      : '1. Crew and leader',
-                  [
-                    field(
-                      'Crew',
-                      DropdownButtonFormField<String>(
-                        initialValue: crew,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          hintText: 'Plan without a crew for now',
-                        ),
-                        items: [
-                          if (widget.newPeople)
-                            const DropdownMenuItem<String>(
-                              value: null,
-                              child: Text('Plan without a crew for now'),
-                            ),
-                          const DropdownMenuItem(
-                            value: '__new__',
-                            child: Text('Create new crew'),
-                          ),
-                          ..._rows(widget.data['crews'])
-                              .where((c) => c['active'] == true)
-                              .map(
-                                (c) => DropdownMenuItem(
-                                  value: c['id'] as String,
-                                  child: Text(
-                                    c['name'] as String,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
-                        ],
-                        onChanged: saving
-                            ? null
-                            : (v) => setState(() {
-                                crew = v;
-                                foreman = null;
-                              }),
-                      ),
-                    ),
-                    if (crew == '__new__') ...[
-                      const SizedBox(height: 16),
-                      field(
-                        'Crew name',
-                        TextFormField(
-                          key: const ValueKey('crew-name'),
-                          controller: name,
-                          enabled: !saving,
-                          decoration: const InputDecoration(
-                            hintText: 'e.g. Crew A',
-                          ),
-                          validator: (v) => v == null || v.trim().isEmpty
-                              ? 'Enter a name'
-                              : null,
-                        ),
-                      ),
-                    ],
-                    if (crew != null) ...[
-                      const SizedBox(height: 16),
-                      field(
-                        'Authorized Foreman',
-                        DropdownButtonFormField<String>(
-                          key: ValueKey(crew),
-                          initialValue: foreman,
-                          isExpanded: true,
-                          decoration: const InputDecoration(
-                            hintText: 'Select Foreman',
-                          ),
-                          items: foremen.entries
-                              .map(
-                                (f) => DropdownMenuItem(
-                                  value: f.key,
-                                  child: Text(
-                                    f.value,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: saving
-                              ? null
-                              : (v) => setState(() => foreman = v),
-                          validator: (v) => crew == '__new__' && v == null
-                              ? 'Select an authorized Foreman'
-                              : null,
-                        ),
-                        help: foremen.isEmpty
-                            ? 'An administrator must authorize a Foreman under Project Access.'
-                            : 'Leave blank to retain the existing crew leader.',
-                      ),
-                    ],
-                  ],
+                ],
+              );
+              final candidatesList = Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-              section(
-                widget.newPeople
-                    ? '3. Assignment dates'
-                    : '2. Participation dates',
-                [
-                  if (!widget.newPeople) ...[
-                    const Text('Proposed common period'),
-                    const SizedBox(height: 8),
-                    pair(dateField(true), dateField(false)),
-                    const SizedBox(height: 12),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.date_range),
-                        label: const Text('Apply period to selected'),
-                        onPressed: saving || selected.isEmpty
-                            ? null
-                            : () {
-                                if (!_date(from.text) ||
-                                    !_date(until.text) ||
-                                    until.text.compareTo(from.text) < 0) {
-                                  setState(
-                                    () =>
-                                        error = 'Select a valid common period',
-                                  );
-                                  return;
-                                }
-                                setState(() {
-                                  revision++;
-                                  error = null;
-                                  for (final r in selected) {
-                                    r['valid_from'] = from.text;
-                                    r['valid_until'] = until.text;
-                                  }
-                                });
-                              },
+                child: checkingWorkers
+                    ? const Center(child: CircularProgressIndicator())
+                    : availabilityFailure != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(availabilityFailure!),
+                              TextButton(
+                                onPressed: refreshWorkerAvailability,
+                                child: const Text('Retry availability'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : candidates.isEmpty
+                    ? const Center(child: Text('No workers match your search.'))
+                    : ListView.separated(
+                        primary: false,
+                        padding: EdgeInsets.zero,
+                        itemCount: candidates.length,
+                        separatorBuilder: (_, i) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final w = candidates[i];
+                          final busy = globalBusy.contains(w['id']);
+                          final responsibility =
+                              role?['operational_role'] ?? 'none';
+                          final needsAccount =
+                              responsibility != 'none' &&
+                              (w['profile_id'] == null ||
+                                  w['access_status'] != 'active' ||
+                                  w['profile_role'] != responsibility);
+                          final staged = stagedElsewhere(w['id'] as String);
+                          final reasons = bookings.where(
+                            (b) => b['worker_id'] == w['id'],
+                          );
+                          return Material(
+                            color: theme.colorScheme.surface,
+                            child: CheckboxListTile(
+                              dense: true,
+                              key: ValueKey('worker-option-${w['id']}'),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 2,
+                              ),
+                              visualDensity: const VisualDensity(
+                                horizontal: -1,
+                                vertical: -2,
+                              ),
+                              minTileHeight: 48,
+                              title: workerIdentity(
+                                w,
+                                responsibility,
+                                needsAccount,
+                              ),
+                              subtitle:
+                                  !needsAccount && reasons.isEmpty && !staged
+                                  ? null
+                                  : Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        if (needsAccount)
+                                          Text(
+                                            'Requires an active linked $responsibility account.',
+                                            style: theme.textTheme.bodySmall,
+                                          ),
+                                        for (final booking in reasons)
+                                          Text(
+                                            'Booked in ${booking['project_title']} · ${booking['role_name'] ?? 'Worker'} · ${booking['start_date'] ?? 'No start'} → ${booking['end_date'] ?? 'No end'}',
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                                  color:
+                                                      theme.colorScheme.error,
+                                                ),
+                                          ),
+                                        if (staged)
+                                          const Text(
+                                            'Already selected for another trade in this service.',
+                                          ),
+                                      ],
+                                    ),
+                              value: draft.contains(w['id']),
+                              onChanged:
+                                  saving ||
+                                      busy ||
+                                      needsAccount ||
+                                      staged ||
+                                      (!draft.contains(w['id']) &&
+                                          draft.length >= freeForCurrent)
+                                  ? null
+                                  : (v) => setState(() {
+                                      if (v == true) {
+                                        draft.add(w['id'] as String);
+                                      } else {
+                                        draft.remove(w['id']);
+                                      }
+                                    }),
+                            ),
+                          );
+                        },
                       ),
-                    ),
-                  ],
-                  const SizedBox(height: 20),
+              );
+              final actions = Wrap(
+                spacing: 12,
+                runSpacing: 4,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
                   Text(
-                    'Individual periods (${selected.length})',
-                    style: theme.textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    widget.newPeople
-                        ? 'These workers are confirmed. Adjust their dates before saving.'
-                        : 'Crew participation must remain within each worker’s original plan.',
+                    '${draft.length} selected · $freeForCurrent positions available',
                     style: theme.textTheme.bodySmall,
                   ),
-                  if (selected.isEmpty)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Text('Select workers to set their dates.'),
-                    ),
-                  ...selected.map(
-                    (r) => Container(
-                      margin: const EdgeInsets.only(top: 16),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: theme.colorScheme.outlineVariant,
-                        ),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Text(
-                            r['worker_name'] as String,
-                            style: theme.textTheme.titleSmall,
-                          ),
-                          if (r['role_name'] != null)
-                            Text(
-                              'Trade: ${r['role_name']}',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                          if (r['assignment_id'] != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                'Original plan: ${r['start_date'] ?? 'Not set'} → ${r['end_date'] ?? 'Not set'}',
-                                style: theme.textTheme.bodySmall,
-                              ),
-                            ),
-                          const SizedBox(height: 12),
-                          pair(
-                            dateField(true, row: r),
-                            dateField(false, row: r),
-                          ),
-                        ],
-                      ),
+                  FilledButton.icon(
+                    key: const ValueKey('accept-role'),
+                    icon: const Icon(Icons.add),
+                    onPressed:
+                        saving ||
+                            checkingWorkers ||
+                            availabilityFailure != null ||
+                            (draft.isEmpty && acceptedFor(roleId).isEmpty)
+                        ? null
+                        : acceptRole,
+                    label: Text(
+                      currentChanged || acceptedFor(roleId).isEmpty
+                          ? 'Add to summary'
+                          : 'Selection added',
                     ),
                   ),
                 ],
-              ),
-              if (error != null && !widget.newPeople)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Text(
-                    error!,
-                    style: TextStyle(color: theme.colorScheme.error),
-                  ),
-                ),
-            ],
+              );
+              if (bounds.maxHeight < 550) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    actions,
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            controls,
+                            SizedBox(height: 240, child: candidatesList),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  actions,
+                  const SizedBox(height: 8),
+                  controls,
+                  Expanded(child: candidatesList),
+                ],
+              );
+            },
+          )
+        : const SizedBox.shrink();
+    final summaryPanel = Column(
+      key: const ValueKey('summary-column'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        acceptedSummary(),
+        reference(),
+        Material(
+          color: theme.colorScheme.surface,
+          child: ExpansionTile(
+            key: const PageStorageKey('occupancy-details'),
+            tilePadding: EdgeInsets.zero,
+            title: Text(
+              'Available positions: $freeForCurrent',
+              style: theme.textTheme.labelLarge,
+            ),
+            children: [vacancySummary()],
           ),
         ),
+
+        if (widget.onlyTeamResourceId == null)
+          section(
+            widget.newPeople ? '2. Crew and leader' : '1. Crew and leader',
+            [
+              field(
+                'Crew',
+                DropdownButtonFormField<String>(
+                  initialValue: crew,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Plan without a crew for now',
+                  ),
+                  items: [
+                    if (widget.newPeople)
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text('Plan without a crew for now'),
+                      ),
+                    const DropdownMenuItem(
+                      value: '__new__',
+                      child: Text('Create new crew'),
+                    ),
+                    ..._rows(widget.data['crews'])
+                        .where((c) => c['active'] == true)
+                        .map(
+                          (c) => DropdownMenuItem(
+                            value: c['id'] as String,
+                            child: Text(
+                              c['name'] as String,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                  ],
+                  onChanged: saving
+                      ? null
+                      : (v) => setState(() {
+                          crew = v;
+                          foreman = null;
+                        }),
+                ),
+              ),
+              if (crew == '__new__') ...[
+                const SizedBox(height: 16),
+                field(
+                  'Crew name',
+                  TextFormField(
+                    key: const ValueKey('crew-name'),
+                    controller: name,
+                    enabled: !saving,
+                    decoration: const InputDecoration(hintText: 'e.g. Crew A'),
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Enter a name' : null,
+                  ),
+                ),
+              ],
+              if (crew != null) ...[
+                const SizedBox(height: 16),
+                field(
+                  'Authorized Foreman',
+                  DropdownButtonFormField<String>(
+                    key: ValueKey(crew),
+                    initialValue: foreman,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      hintText: 'Select Foreman',
+                    ),
+                    items: foremen.entries
+                        .map(
+                          (f) => DropdownMenuItem(
+                            value: f.key,
+                            child: Text(
+                              f.value,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: saving
+                        ? null
+                        : (v) => setState(() => foreman = v),
+                    validator: (v) => crew == '__new__' && v == null
+                        ? 'Select an authorized Foreman'
+                        : null,
+                  ),
+                  help: foremen.isEmpty
+                      ? 'An administrator must authorize a Foreman under Project Access.'
+                      : 'Leave blank to retain the existing crew leader.',
+                ),
+              ],
+            ],
+          ),
+      ],
+    );
+    return Theme(
+      data: theme.copyWith(
+        inputDecorationTheme: theme.inputDecorationTheme.copyWith(
+          filled: true,
+          fillColor: theme.colorScheme.surfaceContainerLowest,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+          floatingLabelBehavior: FloatingLabelBehavior.never,
+        ),
+      ),
+      child: ResponsiveDialogShell(
+        title: widget.newPeople
+            ? 'Assign Personnel and Crew'
+            : 'Organize Selected Personnel',
+        subtitle: serviceName,
+        icon: Icons.groups_outlined,
+        maxWidth: 1200,
+        scrollBody: !widget.newPeople,
+        bodyPadding: const EdgeInsets.all(24),
+        headerColor: theme.colorScheme.surface,
+        footerColor: theme.colorScheme.surface,
+        onClose: () {
+          if (!saving) Navigator.pop(context, false);
+        },
+        body: widget.newPeople
+            ? Form(
+                key: form,
+                child: LayoutBuilder(
+                  builder: (context, bounds) {
+                    Widget panel(Widget child, String id) =>
+                        SingleChildScrollView(
+                          key: PageStorageKey(id),
+                          padding: const EdgeInsets.only(right: 8),
+                          child: child,
+                        );
+                    if (bounds.maxWidth >= 900) {
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(flex: 65, child: personnelPanel),
+                          const SizedBox(width: 24),
+                          Expanded(
+                            flex: 35,
+                            child: panel(summaryPanel, 'summary-scroll'),
+                          ),
+                        ],
+                      );
+                    }
+                    return Column(
+                      children: [
+                        SegmentedButton<bool>(
+                          segments: [
+                            const ButtonSegment(
+                              value: false,
+                              label: Text('Personal'),
+                              icon: Icon(Icons.people_outline),
+                            ),
+                            ButtonSegment(
+                              value: true,
+                              label: Text('Resumen (${selected.length})'),
+                              icon: const Icon(Icons.fact_check_outlined),
+                            ),
+                          ],
+                          selected: {summaryTab},
+                          onSelectionChanged: (value) =>
+                              setState(() => summaryTab = value.first),
+                        ),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: IndexedStack(
+                            index: summaryTab ? 1 : 0,
+                            children: [
+                              personnelPanel,
+                              panel(summaryPanel, 'summary-scroll'),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              )
+            : Form(
+                key: form,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    reference(),
+                    if (widget.onlyTeamResourceId == null)
+                      section(
+                        widget.newPeople
+                            ? '2. Crew and leader'
+                            : '1. Crew and leader',
+                        [
+                          field(
+                            'Crew',
+                            DropdownButtonFormField<String>(
+                              initialValue: crew,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                hintText: 'Plan without a crew for now',
+                              ),
+                              items: [
+                                if (widget.newPeople)
+                                  const DropdownMenuItem<String>(
+                                    value: null,
+                                    child: Text('Plan without a crew for now'),
+                                  ),
+                                const DropdownMenuItem(
+                                  value: '__new__',
+                                  child: Text('Create new crew'),
+                                ),
+                                ..._rows(widget.data['crews'])
+                                    .where((c) => c['active'] == true)
+                                    .map(
+                                      (c) => DropdownMenuItem(
+                                        value: c['id'] as String,
+                                        child: Text(
+                                          c['name'] as String,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ),
+                              ],
+                              onChanged: saving
+                                  ? null
+                                  : (v) => setState(() {
+                                      crew = v;
+                                      foreman = null;
+                                    }),
+                            ),
+                          ),
+                          if (crew == '__new__') ...[
+                            const SizedBox(height: 16),
+                            field(
+                              'Crew name',
+                              TextFormField(
+                                key: const ValueKey('crew-name'),
+                                controller: name,
+                                enabled: !saving,
+                                decoration: const InputDecoration(
+                                  hintText: 'e.g. Crew A',
+                                ),
+                                validator: (v) => v == null || v.trim().isEmpty
+                                    ? 'Enter a name'
+                                    : null,
+                              ),
+                            ),
+                          ],
+                          if (crew != null) ...[
+                            const SizedBox(height: 16),
+                            field(
+                              'Authorized Foreman',
+                              DropdownButtonFormField<String>(
+                                key: ValueKey(crew),
+                                initialValue: foreman,
+                                isExpanded: true,
+                                decoration: const InputDecoration(
+                                  hintText: 'Select Foreman',
+                                ),
+                                items: foremen.entries
+                                    .map(
+                                      (f) => DropdownMenuItem(
+                                        value: f.key,
+                                        child: Text(
+                                          f.value,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    )
+                                    .toList(),
+                                onChanged: saving
+                                    ? null
+                                    : (v) => setState(() => foreman = v),
+                                validator: (v) => crew == '__new__' && v == null
+                                    ? 'Select an authorized Foreman'
+                                    : null,
+                              ),
+                              help: foremen.isEmpty
+                                  ? 'An administrator must authorize a Foreman under Project Access.'
+                                  : 'Leave blank to retain the existing crew leader.',
+                            ),
+                          ],
+                        ],
+                      ),
+                    section(
+                      widget.newPeople
+                          ? '3. Assignment dates'
+                          : '2. Participation dates',
+                      [
+                        if (!widget.newPeople) ...[
+                          const Text('Proposed common period'),
+                          const SizedBox(height: 8),
+                          pair(dateField(true), dateField(false)),
+                          const SizedBox(height: 12),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: OutlinedButton.icon(
+                              icon: const Icon(Icons.date_range),
+                              label: const Text('Apply period to selected'),
+                              onPressed: saving || selected.isEmpty
+                                  ? null
+                                  : () {
+                                      if (!_date(from.text) ||
+                                          !_date(until.text) ||
+                                          until.text.compareTo(from.text) < 0) {
+                                        setState(
+                                          () => error =
+                                              'Select a valid common period',
+                                        );
+                                        return;
+                                      }
+                                      setState(() {
+                                        revision++;
+                                        error = null;
+                                        for (final r in selected) {
+                                          r['valid_from'] = from.text;
+                                          r['valid_until'] = until.text;
+                                        }
+                                      });
+                                    },
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 20),
+                        Text(
+                          'Individual periods (${selected.length})',
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          widget.newPeople
+                              ? 'These workers are confirmed. Adjust their dates before saving.'
+                              : 'Crew participation must remain within each worker’s original plan.',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                        if (selected.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 16),
+                            child: Text('Select workers to set their dates.'),
+                          ),
+                        ...selected.map(
+                          (r) => Container(
+                            margin: const EdgeInsets.only(top: 16),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: theme.colorScheme.outlineVariant,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  r['worker_name'] as String,
+                                  style: theme.textTheme.titleSmall,
+                                ),
+                                if (r['role_name'] != null)
+                                  Text(
+                                    'Trade: ${r['role_name']}',
+                                    style: theme.textTheme.bodySmall,
+                                  ),
+                                if (r['assignment_id'] != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text(
+                                      'Original plan: ${r['start_date'] ?? 'Not set'} → ${r['end_date'] ?? 'Not set'}',
+                                      style: theme.textTheme.bodySmall,
+                                    ),
+                                  ),
+                                const SizedBox(height: 12),
+                                pair(
+                                  dateField(true, row: r),
+                                  dateField(false, row: r),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (error != null && !widget.newPeople)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Text(
+                          error!,
+                          style: TextStyle(color: theme.colorScheme.error),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
         footer: Wrap(
           alignment: WrapAlignment.end,
           spacing: 12,
           runSpacing: 8,
           children: [
+            Text(
+              '${selected.length} workers selected',
+              style: theme.textTheme.labelLarge,
+            ),
             if (widget.newPeople && error != null)
               SizedBox(
                 width: double.infinity,
@@ -2465,7 +2834,7 @@ class _LaborCrewDialogState extends State<LaborCrewDialog> {
             ),
             ElevatedButton(
               onPressed: saving ? null : save,
-              child: Text(saving ? 'Saving…' : 'Save Personnel and Crew'),
+              child: Text(saving ? 'Saving…' : 'Save plan'),
             ),
           ],
         ),
